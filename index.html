@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <script>
+      (function() {
+        try {
+          var originalFetch = window.fetch;
+          var fetchValue = originalFetch;
+          Object.defineProperty(window, 'fetch', {
+            get: function() {
+              return fetchValue;
+            },
+            set: function(val) {
+              fetchValue = val;
+            },
+            configurable: true,
+            enumerable: true
+          });
+        } catch (e) {
+          console.warn('Failed to patch fetch property descriptor:', e);
+        }
+      })();
+    </script>
+    <meta charset="UTF-8" />
+    <script type="text/javascript">
+      // Single Page Apps for GitHub Pages SPA routing decoder
+      (function(l) {
+        if (l.search[1] === '/' ) {
+          var decoded = l.search.slice(1).split('&').map(function(s) { 
+            return s.replace(/~and~/g, '&')
+          }).join('?');
+          window.history.replaceState(null, null,
+              l.pathname.slice(0, -1) + decoded + l.hash
+          );
+        }
+      }(window.location));
+    </script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
+    <title>Aeirmist | Neural Resonance Social Matrix</title>
+    <meta name="description" content="Connect with the Aeirmist. Experience high-fidelity story sharing, crystal clear calls, and deep social resonance in a next-generation neural matrix." />
+    <meta property="og:title" content="Aeirmist | Social Matrix" />
+    <meta property="og:description" content="Experience high-fidelity story sharing and deep social resonance." />
+    <meta property="og:image" content="og-image.jpg" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Aeirmist" />
+    <meta name="application-name" content="Aeirmist" />
+    <meta name="msapplication-TileColor" content="#030712" />
+    <link rel="icon" type="image/png" sizes="64x64" href="/custom_uploaded_logo.png?v=200" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/custom_uploaded_logo.png?v=200" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/custom_uploaded_logo.png?v=200" />
+    <link rel="manifest" href="/manifest.json?v=100" />
+    <meta name="theme-color" content="#030712" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+

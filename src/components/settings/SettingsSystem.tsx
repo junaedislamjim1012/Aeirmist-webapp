@@ -441,7 +441,7 @@ const SettingsSystem = () => {
           </div>
 
           {/* Mobile Settings Home Header */}
-          <div className={`p-5 lg:hidden border-b flex items-center justify-between ${
+          <div className={`p-5 pt-[calc(1rem+env(safe-area-inset-top,0px))] lg:hidden border-b flex items-center justify-between ${
             isLight ? 'border-slate-200 bg-slate-100/80' : 'border-white/10 bg-white/[0.02]'
           }`}>
             <div>
@@ -624,7 +624,7 @@ const SettingsSystem = () => {
           activeTab === null ? 'hidden lg:flex' : 'flex'
         }`}>
           {/* Header Bar */}
-          <div className={`h-14 lg:h-16 border-b flex items-center justify-between px-4 lg:px-8 backdrop-blur-md shrink-0 sticky top-0 z-30 ${
+          <div className={`h-[calc(3.5rem+env(safe-area-inset-top,0px))] pt-[env(safe-area-inset-top,0px)] lg:h-16 lg:pt-0 border-b flex items-center justify-between px-4 lg:px-8 backdrop-blur-md shrink-0 sticky top-0 z-30 ${
             isLight ? 'border-slate-200 bg-white/90' : 'border-white/10 bg-black/40'
           }`}>
             <div className="flex items-center gap-2 lg:gap-4">

@@ -543,7 +543,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
         className="fixed inset-y-0 right-0 w-full md:w-[465px] z-[1000] bg-neutral-950/98 backdrop-blur-3xl border-l border-white/15 shadow-[-25px_0_75px_rgba(0,0,0,0.9)] overflow-hidden flex flex-col"
       >
       {/* Header Panel */}
-      <header className="p-3.5 sm:p-5 border-b border-white/15 bg-black/60 backdrop-blur-3xl relative z-10">
+      <header className="p-3.5 sm:p-5 pt-[calc(0.875rem+env(safe-area-inset-top,0px))] md:pt-5 border-b border-white/15 bg-black/60 backdrop-blur-3xl relative z-10">
         <div className="flex items-center justify-between gap-2 min-w-0">
           <div className="flex items-center gap-2 sm:gap-3 min-w-0 shrink">
             <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl sm:rounded-2xl bg-aeirmist-cyan/20 flex items-center justify-center text-aeirmist-cyan border border-aeirmist-cyan/40 shadow-[0_0_15px_rgba(0,242,255,0.3)] shrink-0">

@@ -100,7 +100,7 @@ export const RequestsSection = ({ chats, onBack, onUserClick, onChatSelect }: { 
 
   return (
     <div className="flex flex-col h-full bg-aeirmist-bg">
-      <div className="p-6 border-b border-white/10 flex items-center gap-4">
+      <div className="p-6 pt-[calc(1rem+env(safe-area-inset-top,0px))] md:pt-6 border-b border-white/10 flex items-center gap-4">
         <button onClick={onBack} className="text-white/60 hover:text-white transition-colors">
           <ChevronLeft size={24} />
         </button>

@@ -512,7 +512,7 @@ const Messenger = ({ initialRecipient, onUserClick }: { initialRecipient?: any, 
     setForwardingMessage(null);
   };
 
-  // Global chats filtering logic - moved to useMemo for better reactivity with follow status
+  // Global chats filtering logic - strictly mutually exclusive to prevent duplicated inboxes
   const mainChats = useMemo(() => {
     return chats.filter(data => {
       // Hide Vaulted conversations from Main Inbox
@@ -522,15 +522,12 @@ const Messenger = ({ initialRecipient, onUserClick }: { initialRecipient?: any, 
       const otherId = data.otherParticipantId;
       if (otherId && isBlocked(otherId)) return false;
 
-      // Hide requests from main list
-      const isReq = (data.status === 'request' || (otherId && !isFollowing(otherId))) && data.status !== 'active';
-      
-      // If it's a request and I'm not the sender of the last message, hide it from main list
-      if (isReq && data.lastMessageSenderId !== profile?.id) return false;
+      // Strictly mutually exclusive: if status is 'request', it belongs only in Requests
+      if (data.status === 'request') return false;
       
       return true;
     });
-  }, [chats, isFollowing, isBlocked, profile?.id]);
+  }, [chats, isBlocked, profile?.id]);
 
   const requestChats = useMemo(() => {
     return chats.filter(data => {
@@ -541,14 +538,14 @@ const Messenger = ({ initialRecipient, onUserClick }: { initialRecipient?: any, 
       const otherId = data.otherParticipantId;
       if (otherId && isBlocked(otherId)) return false;
 
-      const isReq = (data.status === 'request' || (otherId && !isFollowing(otherId))) && data.status !== 'active';
-      
-      // Only show inbound requests
-      if (isReq && data.lastMessageSenderId !== profile?.id) return true;
+      // Inbound message requests only
+      if (data.status === 'request') {
+        return data.lastMessageSenderId !== profile?.id;
+      }
       
       return false;
     });
-  }, [chats, isFollowing, isBlocked, profile?.id]);
+  }, [chats, isBlocked, profile?.id]);
 
   // Visual Viewport Height Tracking for Mobile Keyboards
   useEffect(() => {
@@ -1523,7 +1520,7 @@ const Messenger = ({ initialRecipient, onUserClick }: { initialRecipient?: any, 
         ) : (
           /* Normal Sidebar View starts here */
           <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-            <div className="p-3.5 md:p-4 pb-1.5 space-y-2.5 min-w-0 relative">
+            <div className="pt-[calc(0.875rem+env(safe-area-inset-top,0px))] md:pt-4 px-3.5 md:px-4 pb-1.5 space-y-2.5 min-w-0 relative">
               <div className="flex items-center justify-between gap-3">
                 <div 
                   className="flex flex-col cursor-pointer group min-w-0 flex-1" 
@@ -2109,6 +2106,15 @@ const ChatWindow = ({
   const [isHDActive, setIsHDActive] = useState(false);
   const inputCaptureRef = useRef<((file: File) => void) | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = 'auto') => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior, block: 'end' });
+    } else if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, []);
   const [failedMessages, setFailedMessages] = useState<Set<string>>(new Set());
   const [otherProfile, setOtherProfile] = useState<any>(null);
   const [otherProfileLoaded, setOtherProfileLoaded] = useState(false);
@@ -2289,15 +2295,11 @@ const ChatWindow = ({
     const unsubscribe = messagingService.subscribeToMessages(db, chat.id, profile.id, chat, (fetchedMessages) => {
       setMessages(fetchedMessages);
       setLoading(false);
-      
-      // Auto-scroll on new messages
-      setTimeout(() => {
-        if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-      }, 100);
+      requestAnimationFrame(() => scrollToBottom('auto'));
     });
 
     return () => unsubscribe();
-  }, [db, chat.id, user?.uid, profile?.id]);
+  }, [db, chat.id, user?.uid, profile?.id, scrollToBottom]);
 
   // Derive processed messages with live read/delivered status
   const displayedMessages = useMemo(() => {
@@ -2330,7 +2332,8 @@ const ChatWindow = ({
     });
 
     const sorted = merged.map(m => {
-       const timestampMs = m.timestampMs || (m.timestamp?.toMillis ? m.timestamp.toMillis() : Date.now());
+       const rawTs = m.timestampMs || parseTimestampMs(m.timestamp) || parseTimestampMs(m.createdAt);
+       const timestampMs = rawTs || (m.isOptimistic ? Date.now() : 0);
        return {
          ...m,
          timestampMs,
@@ -2338,7 +2341,16 @@ const ChatWindow = ({
          isDelivered: m.isDelivered || (m.senderId === profile.id && timestampMs <= lastDelivered),
          isFailed: failedMessages.has(m.id)
        };
-    }).sort((a, b) => (a.timestampMs || 0) - (b.timestampMs || 0));
+    }).sort((a, b) => {
+      // Ensure optimistic messages anchor stably at the bottom
+      if (a.isOptimistic && !b.isOptimistic) {
+        return Math.max(a.timestampMs, (b.timestampMs || 0) + 1) - (b.timestampMs || 0);
+      }
+      if (!a.isOptimistic && b.isOptimistic) {
+        return (a.timestampMs || 0) - Math.max(b.timestampMs, (a.timestampMs || 0) + 1);
+      }
+      return (a.timestampMs || 0) - (b.timestampMs || 0);
+    });
 
     return sorted.map((m, i) => ({
       ...m,
@@ -2349,16 +2361,23 @@ const ChatWindow = ({
     }));
   }, [messages, optimistic, chat.lastRead, chat.lastDelivered, chat.id, profile.id, failedMessages]);
   
+  // Stable auto-scroll on new messages or list growth
+  const prevMsgLengthRef = useRef(displayedMessages.length);
+  useEffect(() => {
+    if (displayedMessages.length !== prevMsgLengthRef.current) {
+      prevMsgLengthRef.current = displayedMessages.length;
+      requestAnimationFrame(() => scrollToBottom('auto'));
+    }
+  }, [displayedMessages.length, scrollToBottom]);
+
   // Refined scroll behavior for keyboard events
   const prevViewportHeight = useRef(viewportHeight);
   useEffect(() => {
     if (prevViewportHeight.current !== viewportHeight) {
-      if (scrollRef.current) {
-        scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-      }
+      requestAnimationFrame(() => scrollToBottom('auto'));
       prevViewportHeight.current = viewportHeight;
     }
-  }, [viewportHeight]);
+  }, [viewportHeight, scrollToBottom]);
 
   // Separate Typing Effect to avoid rebuilding message listener
   useEffect(() => {
@@ -2508,6 +2527,8 @@ const ChatWindow = ({
     };
     
     setOptimistic(prev => [...prev, optimisticMsg]);
+    requestAnimationFrame(() => scrollToBottom('auto'));
+    setTimeout(() => scrollToBottom('auto'), 60);
     
     try {
       const isNew = chat.id.startsWith('new_');
@@ -2675,7 +2696,7 @@ const ChatWindow = ({
         />
 
         {/* Header */}
-        <header className="flex-shrink-0 w-full px-4 py-2 md:px-6 md:py-3 border-b border-white/10 flex items-center justify-between glass-panel z-[40] relative min-h-0 h-[64px]">
+        <header className="flex-shrink-0 w-full px-4 pt-[calc(0.5rem+env(safe-area-inset-top,0px))] md:pt-3 pb-2 md:pb-3 md:px-6 border-b border-white/10 flex items-center justify-between glass-panel z-[40] relative min-h-0 min-h-[calc(4rem+env(safe-area-inset-top,0px))] md:h-[64px]">
         <div className="flex items-center gap-3 md:gap-4 min-w-0 flex-1">
           <button onClick={onBack} className="md:hidden p-1 -ml-1 text-white/60 hover:text-white transition-colors shrink-0">
             <ChevronLeft size={22} />
@@ -2778,7 +2799,7 @@ const ChatWindow = ({
       {/* Messages */}
       <div 
         ref={scrollRef} 
-        className="flex-1 w-full max-w-full overflow-y-auto pt-6 space-y-1 scroll-smooth overflow-x-hidden min-w-0"
+        className="flex-1 w-full max-w-full overflow-y-auto pt-6 space-y-1 overflow-x-hidden min-w-0 chat-messages-container"
       >
         <AnimatePresence>
           {chat.isVanishMode && (
@@ -2909,7 +2930,7 @@ const ChatWindow = ({
         )}
         
         {/* Anchor for scroll to bottom */}
-        <div className="h-4 flex-shrink-0" />
+        <div ref={messagesEndRef} className="h-4 w-full flex-shrink-0" />
       </div>
 
       {/* Input Area - Docked at Bottom */}
@@ -2936,6 +2957,7 @@ const ChatWindow = ({
                             status: 'active',
                             acceptedAt: serverTimestamp()
                           });
+                          onChatUpdate?.({ ...chat, status: 'active' });
                           if (otherId) {
                             try {
                               await toggleFollow(otherId);

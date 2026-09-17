@@ -137,6 +137,37 @@
     .shadow-2xl, .shadow-xl {
       box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5) !important;
     }
+
+    /* Universal Mobile Safe Area Helpers */
+    .safe-top-padding {
+      padding-top: max(env(safe-area-inset-top, 0px), 12px) !important;
+    }
+    .safe-top-header {
+      padding-top: calc(0.75rem + env(safe-area-inset-top, 0px)) !important;
+    }
+    .safe-bottom-padding {
+      padding-bottom: max(env(safe-area-inset-bottom, 0px), 8px) !important;
+    }
+  }
+
+  /* Universal Safe Area utilities */
+  .safe-top-padding {
+    padding-top: max(env(safe-area-inset-top, 0px), 0px);
+  }
+  .safe-top-header {
+    padding-top: calc(0.75rem + env(safe-area-inset-top, 0px));
+  }
+  .safe-bottom-padding {
+    padding-bottom: max(env(safe-area-inset-bottom, 0px), 0px);
+  }
+
+  /* Chat Message Container - Prevents Text Jumping */
+  .chat-messages-container {
+    overflow-anchor: auto !important;
+    overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
+    transform: translateZ(0);
+    -webkit-transform: translateZ(0);
   }
 
   /* Prevent auto-zoom on iOS when tapping inputs */

@@ -5571,7 +5571,7 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     login, loginWithProvider, linkAccountMethod, unlinkAccountMethod, requestDeleteAccount, cancelDeleteAccount, logActivity, pendingLinkEmail, pendingLinkCredential, isScheduledForPurge, loginWithEmail, loginAsGuestSandbox, signupWithEmail, completeSignup, resetPassword, logout,
     refreshProfile, reloadAuthUser,
     updateProfile, deleteAccount, purgeUser, toggleUserBan, toggleVerification, checkUsernameAvailable, registerUsername, switchProfile, toggleFollow,
-    isFollowing, searchUsers, globalSearch, toggleLike, toggleBookmark, createPost, editPost, deletePost, archivePost, sendMessage,
+    isFollowing, isFollowPending, acceptFollowRequest, rejectFollowRequest, getFollowers, getFollowing, searchUsers, globalSearch, toggleLike, toggleBookmark, createPost, editPost, deletePost, archivePost, sendMessage,
     markAsRead, updateSeenStatus, setTypingStatus, goOnline, goOffline,
     onlineUsers, activeCall, callStream, remoteStream, startCall, acceptCall, rejectCall, endCall, createNotification, submitReport, toggleNotification, setConversationTheme, updateConversationThemeSettings, toggleVanishMode, toggleBlockUser, toggleRestrictUser, deleteConversation, toggleCloseFriend, isCloseFriend, isBlocked, isRestricted,
     suggestedUsers, needsUsername, setNeedsUsername, isSetup, isConnecting, connectionError, setConnectionError, isOffline, canWrite,

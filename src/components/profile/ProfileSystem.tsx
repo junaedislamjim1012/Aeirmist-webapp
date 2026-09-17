@@ -1647,7 +1647,7 @@ const ProfileSystem = ({ targetProfile, onMessageClick, onEditProfile, onUserCli
           </AnimatePresence>
 
           {/* Top Navigation Bar with Premium Layout */}
-          <div className="flex items-center justify-between py-2.5 px-4 border-b border-white/5 bg-[#01050a]/95 backdrop-blur-xl z-40 sticky top-0">
+          <div className="flex items-center justify-between pt-[calc(0.625rem+env(safe-area-inset-top,0px))] pb-2.5 px-4 border-b border-white/5 bg-[#01050a]/95 backdrop-blur-xl z-40 sticky top-0">
             {/* Left: Account Switcher if own profile */}
             <div className="flex items-center shrink-0 z-10 relative w-24">
               {isOwnProfile && (

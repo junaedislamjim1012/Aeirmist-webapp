@@ -259,12 +259,26 @@ class MessagingService {
       if (!exists) {
         logger.info(`[MessagingService] Initialising new activity: ${finalConvId}`);
         
-        // Social Graph Check: Determine if it starts as a request
-        const isFollower = metadata.isFollower || false;
-        
-        let initialStatus = 'request';
-        if (targetProfileId === profile.id || isFollower) {
-          initialStatus = 'active';
+        // Social Graph & Account Privacy Check:
+        // 1. Self-chat is always 'active'
+        // 2. Private accounts route to 'request' unless sender is already connected
+        // 3. Public accounts route to 'active' for seamless instant chat
+        const targetProf = metadata.targetProfile;
+        const isTargetPrivate = Boolean(
+          targetProf?.isPrivate ||
+          targetProf?.isProfileLocked ||
+          targetProf?.privacySettings?.privateProfile
+        );
+
+        let initialStatus: 'active' | 'request' = 'active';
+        if (targetProfileId !== profile.id && isTargetPrivate) {
+          const targetFollowers: string[] = targetProf?.social?.followers || targetProf?.followers || [];
+          const isSenderConnected = targetFollowers.includes(profile.id) || 
+                                    (profile.following || []).includes(targetProfileId) || 
+                                    metadata.isFollower;
+          if (!isSenderConnected) {
+            initialStatus = 'request';
+          }
         }
 
         batch.set(convRef, cleanUndefined({
@@ -314,8 +328,10 @@ class MessagingService {
               displayName: profile.displayName || profile.username,
               photoURL: profile.photoURL
             },
-            type: 'message',
-            message: type === 'text' ? (text.substring(0, 50) + (text.length > 50 ? '...' : '')) : `Sent a ${type}`,
+            type: initialStatus === 'request' ? 'message_request' : 'message',
+            message: initialStatus === 'request' 
+              ? `Sent you a message request: ${type === 'text' ? (text.substring(0, 45) + (text.length > 45 ? '...' : '')) : `Sent a ${type}`}`
+              : (type === 'text' ? (text.substring(0, 50) + (text.length > 50 ? '...' : '')) : `Sent a ${type}`),
             metadata: { conversationId: finalConvId },
             read: false,
             createdAt: serverTimestamp()

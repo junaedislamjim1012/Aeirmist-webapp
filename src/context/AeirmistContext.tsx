@@ -56,6 +56,33 @@ import { getStorage, ref, deleteObject } from 'firebase/storage';
 import firebaseConfig from '../../firebase-applet-config.json';
 import { normalizeUsername } from '../utils/usernameUtils';
 import { migrateUsernamesNormalized } from '../utils/migrateUsernames';
+import { consolidateAndSyncUserProfiles } from '../services/accountSyncService';
+
+/**
+ * Deduplicates profiles ensuring only one profile per normalized username / UID
+ * is retained in UI state, eliminating duplicate IDs with identical handles.
+ */
+export function deduplicateProfiles(profiles: any[]): any[] {
+  if (!Array.isArray(profiles)) return [];
+  const seenUsernames = new Set<string>();
+  const seenUids = new Set<string>();
+  const result: any[] = [];
+
+  for (const p of profiles) {
+    if (!p) continue;
+    const norm = p.usernameNormalized || (p.username ? normalizeUsername(p.username) : '');
+    const uid = p.uid || p.ownerUid;
+
+    // Skip if handle or user ID has already been included
+    if (norm && seenUsernames.has(norm)) continue;
+    if (uid && seenUids.has(uid)) continue;
+
+    if (norm) seenUsernames.add(norm);
+    if (uid) seenUids.add(uid);
+    result.push(p);
+  }
+  return result;
+}
 
 import { getCsrfToken } from '../lib/csrf';
 import { trackUserSession } from '../utils/sessionTracker';
@@ -70,7 +97,7 @@ import {
 import { usePermissions } from '../hooks/usePermissions';
 import { BLANK_DP, getAvatarUrl } from '../lib/avatar';
 import { aeirmistCache } from '../services/CacheService';
-export { MediaQuality };
+export { MediaQuality } from '../services/MediaService';
 import { mediaService, MediaQuality } from '../services/MediaService';
 import { aeirmistCall } from '../modules/calls/CallService';
 import { messagingService } from '../modules/messaging/MessagingService';
@@ -161,6 +188,7 @@ interface AeirmistContextType {
   checkUsernameAvailable: (username: string) => Promise<{ available: boolean, suggestions?: string[] }>;
   registerUsername: (username: string, additionalData?: any) => Promise<void>;
   switchProfile: (profileId: string) => Promise<void>;
+  syncDatabaseProfile: () => Promise<void>;
   rejectFollowRequest: (requestId: string) => Promise<void>;
   acceptFollowRequest: (requestId: string, fromProfileId: string) => Promise<void>;
   toggleFollow: (targetUid: string, targetProfileData?: any) => Promise<void>;
@@ -820,7 +848,7 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const isProfile = folder.includes('profile');
     const isCover = folder.includes('cover');
     const isStory = folder.includes('stories') || folder.includes('story');
-    const maxMB = isProfile ? 2 : (isCover ? 5 : 45);
+    const maxMB = isProfile ? 15 : (isCover ? 20 : 100);
     if (file.size > maxMB * 1024 * 1024) {
       const errorMsg = `File size too large. Max ${maxMB}MB allowed for ${isProfile ? 'profile' : (isCover ? 'cover' : 'story/media')} uploads.`;
       addToast({
@@ -1942,100 +1970,11 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     handleRedirect();
 
     const healUserAccountDocuments = async (authUser: User, profilesList: any[]) => {
-      if (!db || !authUser || !authUser.uid || !authUser.email) return;
-
-      const authEmail = authUser.email;
-      const userUid = authUser.uid;
-
-      if (!profilesList || profilesList.length === 0) return;
-
-      for (const p of profilesList) {
-        if (!p) continue;
-        const rawUsername = p.username || null;
-        const normUsername = p.usernameNormalized || (p.username ? normalizeUsername(p.username) : null);
-
-        if (!normUsername) continue;
-
-        // 1. Repair users/{userUid}
-        try {
-          const userRef = doc(db, 'users', userUid);
-          const userSnap = await getDoc(userRef);
-          const uData = userSnap.exists() ? userSnap.data() : null;
-
-          const needsUserRepair =
-            !uData ||
-            !uData.email ||
-            !uData.usernameNormalized ||
-            !uData.ownerUid ||
-            !uData.uid ||
-            uData.email !== authEmail;
-
-          if (needsUserRepair) {
-            logger.info(`[Self-Healing] Backfilling missing fields in users/${userUid}...`);
-            await setDoc(userRef, {
-              uid: userUid,
-              ownerUid: userUid,
-              email: authEmail,
-              username: p.username || rawUsername,
-              usernameNormalized: normUsername,
-              lastHealedAt: serverTimestamp()
-            }, { merge: true });
-          }
-        } catch (uErr) {
-          logger.warn("[Self-Healing] users doc repair warning:", uErr);
-        }
-
-        // 2. Repair usernames/{normUsername}
-        try {
-          const usernameRef = doc(db, 'usernames', normUsername);
-          const usernameSnap = await getDoc(usernameRef);
-          const unData = usernameSnap.exists() ? usernameSnap.data() : null;
-
-          const needsUsernameRepair =
-            !unData ||
-            !unData.email ||
-            !unData.ownerUid ||
-            !unData.uid ||
-            !unData.usernameNormalized ||
-            unData.email !== authEmail;
-
-          if (needsUsernameRepair) {
-            logger.info(`[Self-Healing] Backfilling missing fields in usernames/${normUsername}...`);
-            await setDoc(usernameRef, {
-              uid: userUid,
-              ownerUid: userUid,
-              email: authEmail,
-              username: p.username || rawUsername,
-              usernameNormalized: normUsername,
-              profileId: p.id || `profile_${userUid}`
-            }, { merge: true });
-          }
-        } catch (unErr) {
-          logger.warn("[Self-Healing] usernames doc repair warning:", unErr);
-        }
-
-        // 3. Repair profiles/{p.id}
-        try {
-          if (p.id) {
-            const needsProfileRepair =
-              !p.email ||
-              !p.ownerUid ||
-              !p.uid ||
-              !p.usernameNormalized;
-
-            if (needsProfileRepair) {
-              logger.info(`[Self-Healing] Backfilling missing fields in profiles/${p.id}...`);
-              await setDoc(doc(db, 'profiles', p.id), {
-                ownerUid: userUid,
-                uid: userUid,
-                email: authEmail,
-                usernameNormalized: normUsername
-              }, { merge: true });
-            }
-          }
-        } catch (pErr) {
-          logger.warn("[Self-Healing] profiles doc repair warning:", pErr);
-        }
+      if (!db || !authUser || !authUser.uid) return;
+      try {
+        await consolidateAndSyncUserProfiles(authUser);
+      } catch (err) {
+        logger.warn("[Self-Healing] consolidateAndSyncUserProfiles warning:", err);
       }
     };
 
@@ -2081,25 +2020,35 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         logger.info("[Diagnostics - Auth] Loading Profile for user:", effectiveUser.uid);
         
         const fetchProfilesForUser = async (u: any) => {
+          // 0. Primary: Consolidate and sync all disparate IDs for this user
+          try {
+            const syncResult = await consolidateAndSyncUserProfiles(u);
+            if (syncResult.success && syncResult.canonicalProfile) {
+              return [syncResult.canonicalProfile];
+            }
+          } catch (syncErr) {
+            logger.warn("[Diagnostics - Auth] Consolidate profile initial check warning:", syncErr);
+          }
+
           // 1. Query ownerUid
           try {
             const q1 = query(collection(db, 'profiles'), where('ownerUid', '==', u.uid));
             const s1 = await getDocs(q1);
-            if (!s1.empty) return s1.docs.map(d => ({ id: d.id, ...d.data() } as any));
+            if (!s1.empty) return deduplicateProfiles(s1.docs.map(d => ({ id: d.id, ...d.data() } as any)));
           } catch (e) {}
 
           // 2. Query uid
           try {
             const q2 = query(collection(db, 'profiles'), where('uid', '==', u.uid));
             const s2 = await getDocs(q2);
-            if (!s2.empty) return s2.docs.map(d => ({ id: d.id, ...d.data() } as any));
+            if (!s2.empty) return deduplicateProfiles(s2.docs.map(d => ({ id: d.id, ...d.data() } as any)));
           } catch (e) {}
 
           // 3. Query ownerId
           try {
             const q3 = query(collection(db, 'profiles'), where('ownerId', '==', u.uid));
             const s3 = await getDocs(q3);
-            if (!s3.empty) return s3.docs.map(d => ({ id: d.id, ...d.data() } as any));
+            if (!s3.empty) return deduplicateProfiles(s3.docs.map(d => ({ id: d.id, ...d.data() } as any)));
           } catch (e) {}
 
           // 4. Direct doc profile_UID
@@ -2203,6 +2152,7 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         };
 
         let foundProfiles = await fetchProfilesForUser(effectiveUser);
+        foundProfiles = deduplicateProfiles(foundProfiles);
 
         // Ensure admin account junaed_islam_jim9 always has full admin rights and correct handle
         if (effectiveUser.email?.toLowerCase() === 'junaedislamjim180@gmail.com' || effectiveUser.uid === 'iFqvwxqejCSte6K24gJe5ZE4NTo1') {
@@ -2266,9 +2216,9 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         const q = query(collection(db, 'profiles'), where('ownerUid', '==', freshUser.uid));
         unsubProfile = onSnapshot(q, (snap) => {
           if (!snap.empty) {
-            let profiles = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
+            let rawProfiles = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
             if (freshUser.email?.toLowerCase() === 'junaedislamjim180@gmail.com') {
-              profiles = profiles.map(p => ({
+              rawProfiles = rawProfiles.map(p => ({
                 ...p,
                 username: 'junaed_islam_jim9',
                 usernameNormalized: 'junaed_islam_jim9',
@@ -2279,13 +2229,17 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                 isVerified: true
               }));
             }
+            const profiles = deduplicateProfiles(rawProfiles);
             setAllProfiles(profiles);
             const active = profiles.find(p => p.isActive) || profiles[0];
             setProfile(active);
             setActiveProfileId(active.id);
             setNeedsUsername(false);
 
-            healUserAccountDocuments(freshUser, profiles).catch(() => {});
+            // If rawProfiles contained multiple conflicting IDs, trigger background cleanup to delete duplicate docs in Firestore
+            if (rawProfiles.length > 1) {
+              consolidateAndSyncUserProfiles(freshUser).catch(() => {});
+            }
           }
         }, (err) => {
           logger.error("[Diagnostics - Auth] Profile snapshot warning:", err);
@@ -3590,7 +3544,13 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       return;
     }
     
-    const targetProfileId = profile?.id || `profile_${user.uid}`;
+    const targetProfileId = `profile_${user.uid}`;
+    const legacyProfileId = (profile?.id && profile.id !== targetProfileId) ? profile.id : null;
+    if (legacyProfileId) {
+      deleteDoc(doc(db, 'profiles', legacyProfileId)).catch((e) => {
+        logger.warn("[AeirmistContext] Cleaned legacy duplicate profile id warning:", e);
+      });
+    }
     
     // Construct keys to identify update type
     const keys = Object.keys(data).filter(k => data[k] !== undefined);
@@ -4395,6 +4355,35 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     await batch.commit(); logger.security("User Ban Toggled", { action: "toggle_ban" });
   };
 
+  const syncDatabaseProfile = async () => {
+    if (!user || isSafeMode) return;
+    try {
+      addToast({
+        title: "Database Syncing",
+        message: "Consolidating user IDs and synchronizing data across database collections...",
+        type: "info"
+      });
+      const res = await consolidateAndSyncUserProfiles(user);
+      if (res.success && res.canonicalProfile) {
+        setProfile(res.canonicalProfile);
+        setAllProfiles([res.canonicalProfile]);
+        setActiveProfileId(res.canonicalProfile.id);
+        addToast({
+          title: "Database Synced",
+          message: `Database synchronized successfully! (Merged ${res.totalMerged} records into a single canonical ID)`,
+          type: "success"
+        });
+      }
+    } catch (e) {
+      logger.error("[syncDatabaseProfile] error:", e);
+      addToast({
+        title: "Sync Error",
+        message: "Failed to complete database sync.",
+        type: "warning"
+      });
+    }
+  };
+
   const checkUsernameAvailable = async (rawUsername: string, excludeUid?: string) => {
     const norm = normalizeUsername(rawUsername);
     if (!norm || norm.length < 3) return { available: false };
@@ -4489,7 +4478,7 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       setNeedsUsername(false);
       return;
     }
-    const profileId = `profile_${activeUser.uid}_${Date.now()}`;
+    const profileId = `profile_${activeUser.uid}`;
     const batch = writeBatch(db);
     
     // Check if username is already taken again inside batch (can't really do easily, but usually handled by UI)
@@ -4575,6 +4564,7 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       usernameNormalized: norm,
       normalizedUsername: norm,
       email: activeUser.email || data.email || data.personalEmail || '',
+      profileId: profileId,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp()
     });
@@ -4582,8 +4572,7 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     try {
       await batch.commit(); logger.security("User Ban Toggled", { action: "toggle_ban" });
       setNeedsUsername(false);
-      setProfile((prev: any) => ({
-        ...(prev || {}),
+      const unifiedProfile = {
         id: profileId,
         uid: activeUser.uid,
         ownerUid: activeUser.uid,
@@ -4593,8 +4582,15 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         displayName: data.displayName || activeUser.displayName || cleanRawUsername,
         photoURL: data.photoURL || activeUser.photoURL || "",
         onboardingStep: data.onboardingStep || 2,
-        onboardingCompleted: data.onboardingCompleted ?? false
+        onboardingCompleted: data.onboardingCompleted ?? false,
+        isActive: true
+      };
+      setProfile((prev: any) => ({
+        ...(prev || {}),
+        ...unifiedProfile
       }));
+      setAllProfiles([unifiedProfile]);
+      setActiveProfileId(profileId);
     } catch (e) {
       logger.warn("Batch commit failed", e);
       throw e;
@@ -5419,6 +5415,7 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     checkUsernameAvailable,
     registerUsername,
     switchProfile,
+    syncDatabaseProfile,
     toggleFollow,
     isFollowing,
     isFollowPending,

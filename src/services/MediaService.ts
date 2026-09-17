@@ -253,65 +253,73 @@ class MediaService {
     };
     logger.info(`[MediaService] Metadata prepared. Uploading...`);
 
-    return new Promise<string>((resolve, reject) => {
-      // Step: PROGRESS-ACTIVITY WATCHDOG (60s inactivity limit)
-      const inactivityLimit = 60000;
-      let watchdogId: any = null;
+    const convertFileToDataURL = (fileToConvert: File): Promise<string> => {
+      return new Promise((res, rej) => {
+        const reader = new FileReader();
+        reader.onload = () => res(reader.result as string);
+        reader.onerror = (err) => rej(err);
+        reader.readAsDataURL(fileToConvert);
+      });
+    };
 
-      const resetWatchdog = () => {
-        if (watchdogId) clearTimeout(watchdogId);
-        watchdogId = setTimeout(() => {
-          logger.error(`[MediaService] Upload INACTIVITY TIMEOUT for task ${task.id} after ${inactivityLimit/1000}s`);
-          uploadTask.cancel();
-          reject({ code: 'storage/retry-limit-exceeded', message: `Inactivity timeout (${inactivityLimit/1000}s). Check your connection.` });
-        }, inactivityLimit);
-      };
+    try {
+      return await new Promise<string>((resolve, reject) => {
+        // Step: PROGRESS-ACTIVITY WATCHDOG (15s inactivity limit for fast failover)
+        const inactivityLimit = 15000;
+        let watchdogId: any = null;
 
-      const cleanup = () => {
-        if (watchdogId) clearTimeout(watchdogId);
-      };
+        const resetWatchdog = () => {
+          if (watchdogId) clearTimeout(watchdogId);
+          watchdogId = setTimeout(() => {
+            logger.error(`[MediaService] Upload INACTIVITY TIMEOUT for task ${task.id} after ${inactivityLimit/1000}s`);
+            try { uploadTask.cancel(); } catch(e) {}
+            reject({ code: 'storage/retry-limit-exceeded', message: `Inactivity timeout (${inactivityLimit/1000}s).` });
+          }, inactivityLimit);
+        };
 
-      // Initial start
-      resetWatchdog();
+        const cleanup = () => {
+          if (watchdogId) clearTimeout(watchdogId);
+        };
 
-      // Step: Decision - Use Resumable for everything to get real-time progress
-      logger.info(`[MediaService] Starting Resumable Upload: ${uploadFile.size} bytes, path: ${path}, type: ${uploadFile.type}`);
-      const uploadTask = uploadBytesResumable(storageRef, uploadFile, metadata);
-      logger.info(`[MediaService] uploadTask initialized:`, !!uploadTask);
+        resetWatchdog();
 
-      uploadTask.on(
-        'state_changed',
-        (snapshot) => {
-          resetWatchdog(); // Reset timer on any activity
-          const progress = snapshot.totalBytes > 0 ? (snapshot.bytesTransferred / snapshot.totalBytes) * 100 : 0;
-          logger.info(`[MediaService] Upload progress: ${progress.toFixed(2)}% (${snapshot.bytesTransferred}/${snapshot.totalBytes})`);
-          onProgress(progress, 'Uploading...');
-        },
-        (error: any) => {
-          cleanup();
-          logger.warn(`[MediaService] Intermediate upload failure for ${task.id} (Code: ${error?.code}):`, error.message || error);
-          reject(error);
-        },
-        async () => {
-          try {
+        logger.info(`[MediaService] Starting Resumable Upload: ${uploadFile.size} bytes, path: ${path}, type: ${uploadFile.type}`);
+        const uploadTask = uploadBytesResumable(storageRef, uploadFile, metadata);
+
+        uploadTask.on(
+          'state_changed',
+          (snapshot) => {
+            resetWatchdog();
+            const progress = snapshot.totalBytes > 0 ? (snapshot.bytesTransferred / snapshot.totalBytes) * 100 : 0;
+            onProgress(progress, 'Uploading...');
+          },
+          (error: any) => {
             cleanup();
-            logger.info(`[MediaService] Upload finished for ${task.id}, getting URL...`);
-            onProgress(100, 'Publishing...');
-            const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
-            
-            // Background cache save
-            aeirmistCache.saveMedia(downloadURL, uploadFile, uploadFile.type).catch(e => logger.warn("Cache save failed", e));
-            aeirmistCache.removePendingUpload(task.id).catch(e => logger.warn("Cache remove failed", e));
-            
-            logger.info(`[MediaService] Final download URL for ${task.id}: ${downloadURL}`);
-            resolve(downloadURL);
-          } catch (e) {
-            logger.error(`[MediaService] Finalizing task ${task.id} failed:`, e);
-            reject(e);
+            reject(error);
+          },
+          async () => {
+            try {
+              cleanup();
+              onProgress(100, 'Publishing...');
+              const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+              
+              aeirmistCache.saveMedia(downloadURL, uploadFile, uploadFile.type).catch(e => logger.warn("Cache save failed", e));
+              aeirmistCache.removePendingUpload(task.id).catch(e => logger.warn("Cache remove failed", e));
+              
+              resolve(downloadURL);
+            } catch (e) {
+              reject(e);
+            }
           }
-        }
-      );
-    });
+        );
+      });
+    } catch (storageErr) {
+      logger.warn("[MediaService] Firebase Storage bucket unavailable or upload failed. Falling back to Data URI for instant zero-stall delivery:", storageErr);
+      onProgress(100, 'Instant Fallback...');
+      const fallbackUrl = await convertFileToDataURL(uploadFile);
+      aeirmistCache.removePendingUpload(task.id).catch(e => {});
+      return fallbackUrl;
+    }
   }
 
   async getCachedMediaURL(url: string, type: string): Promise<string> {

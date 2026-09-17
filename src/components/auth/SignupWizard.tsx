@@ -860,22 +860,22 @@ export const SignupWizard: React.FC<SignupWizardProps> = ({
 
             {/* Field 1: Mobile number or email */}
             <div className="space-y-1.5 pt-1">
-              <label className="text-[11px] font-bold text-white/70 tracking-wide uppercase">
+              <label className="text-xs font-bold text-slate-200 tracking-wider uppercase">
                 Mobile number or email
               </label>
-              <div className="relative rounded-2xl bg-white/[0.03] border border-white/10 focus-within:border-[var(--color-aeirmist-cyan)]/50 transition-all">
+              <div className="relative rounded-2xl bg-[#161a26] border border-white/20 focus-within:border-[var(--color-aeirmist-cyan)] focus-within:ring-2 focus-within:ring-[var(--color-aeirmist-cyan)]/25 transition-all shadow-inner">
                 <input
                   type="text"
                   required
                   placeholder="Mobile number or email"
                   value={identifier}
                   onChange={(e) => setIdentifier(e.target.value)}
-                  className="w-full py-3 pl-4 pr-4 bg-transparent outline-none text-sm text-white placeholder-white/25"
+                  className="w-full py-3.5 pl-4 pr-4 bg-transparent outline-none text-sm text-white placeholder:text-slate-400 font-medium"
                 />
               </div>
-              <p className="text-[10.5px] text-white/40 leading-snug">
+              <p className="text-[11px] text-slate-300 leading-snug">
                 You may receive notifications from us.{' '}
-                <span className="text-white/60 underline decoration-white/20 cursor-pointer">
+                <span className="text-cyan-300 underline decoration-cyan-300/30 cursor-pointer">
                   Learn why we ask for your contact information
                 </span>
               </p>
@@ -884,22 +884,22 @@ export const SignupWizard: React.FC<SignupWizardProps> = ({
             {/* Field 2: Password (If user not authenticated yet) */}
             {!user && (
               <div className="space-y-1.5">
-                <label className="text-[11px] font-bold text-white/70 tracking-wide uppercase">
+                <label className="text-xs font-bold text-slate-200 tracking-wider uppercase">
                   Password
                 </label>
-                <div className="relative rounded-2xl bg-white/[0.03] border border-white/10 focus-within:border-[var(--color-aeirmist-cyan)]/50 transition-all">
+                <div className="relative rounded-2xl bg-[#161a26] border border-white/20 focus-within:border-[var(--color-aeirmist-cyan)] focus-within:ring-2 focus-within:ring-[var(--color-aeirmist-cyan)]/25 transition-all shadow-inner">
                   <input
                     type={showPassword ? "text" : "password"}
                     required
                     placeholder="Password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="w-full py-3 pl-4 pr-11 bg-transparent outline-none text-sm text-white placeholder-white/25"
+                    className="w-full py-3.5 pl-4 pr-11 bg-transparent outline-none text-sm text-white placeholder:text-slate-400 font-medium"
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/70 transition-colors p-1"
+                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-white/60 hover:text-white transition-colors p-1 cursor-pointer"
                   >
                     {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                   </button>
@@ -1013,27 +1013,27 @@ export const SignupWizard: React.FC<SignupWizardProps> = ({
 
             {/* Field 4: Name */}
             <div className="space-y-1.5">
-              <label className="text-[11px] font-bold text-white/70 tracking-wide uppercase">
+              <label className="text-xs font-bold text-slate-200 tracking-wider uppercase">
                 Name
               </label>
-              <div className="relative rounded-2xl bg-white/[0.03] border border-white/10 focus-within:border-[var(--color-aeirmist-cyan)]/50 transition-all">
+              <div className="relative rounded-2xl bg-[#161a26] border border-white/20 focus-within:border-[var(--color-aeirmist-cyan)] focus-within:ring-2 focus-within:ring-[var(--color-aeirmist-cyan)]/25 transition-all shadow-inner">
                 <input
                   type="text"
                   required
                   placeholder="Full name"
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
-                  className="w-full py-3 pl-4 pr-4 bg-transparent outline-none text-sm text-white placeholder-white/25"
+                  className="w-full py-3.5 pl-4 pr-4 bg-transparent outline-none text-sm text-white placeholder:text-slate-400 font-medium"
                 />
               </div>
             </div>
 
             {/* Field 5: Username */}
             <div className="space-y-1.5">
-              <label className="text-[11px] font-bold text-white/70 tracking-wide uppercase">
+              <label className="text-xs font-bold text-slate-200 tracking-wider uppercase">
                 Username
               </label>
-              <div className="relative rounded-2xl bg-white/[0.03] border border-white/10 focus-within:border-[var(--color-aeirmist-cyan)]/50 transition-all">
+              <div className="relative rounded-2xl bg-[#161a26] border border-white/20 focus-within:border-[var(--color-aeirmist-cyan)] focus-within:ring-2 focus-within:ring-[var(--color-aeirmist-cyan)]/25 transition-all shadow-inner">
                 <input
                   type="text"
                   required
@@ -1041,25 +1041,25 @@ export const SignupWizard: React.FC<SignupWizardProps> = ({
                   placeholder="Username"
                   value={username}
                   onChange={(e) => setUsername(e.target.value.toLowerCase().trim().replace(/[^a-z0-9_]/g, ''))}
-                  className="w-full py-3 pl-4 pr-11 bg-transparent outline-none text-sm text-white placeholder-white/25"
+                  className="w-full py-3.5 pl-4 pr-11 bg-transparent outline-none text-sm text-white placeholder:text-slate-400 font-medium"
                 />
                 <div className="absolute right-3.5 top-1/2 -translate-y-1/2 flex items-center">
-                  {usernameStatus === 'checking' && <Loader2 size={16} className="animate-spin text-white/40" />}
+                  {usernameStatus === 'checking' && <Loader2 size={16} className="animate-spin text-cyan-400" />}
                   {usernameStatus === 'available' && <Check size={16} className="text-green-400" />}
                   {(usernameStatus === 'taken' || usernameStatus === 'invalid') && <AlertCircle size={16} className="text-red-400" />}
                 </div>
               </div>
               {usernameError && (
-                <p className="text-[10px] text-red-400 font-medium">{usernameError}</p>
+                <p className="text-xs text-red-400 font-medium">{usernameError}</p>
               )}
             </div>
 
             {/* Legal text block */}
-            <p className="text-[10.5px] text-white/35 leading-relaxed pt-1">
+            <p className="text-[11px] text-slate-300 leading-relaxed pt-1">
               By tapping Continue, you agree to create an account and to Aeirmist's{' '}
-              <span className="text-white/50 underline decoration-white/20 cursor-pointer">Terms</span>,{' '}
-              <span className="text-white/50 underline decoration-white/20 cursor-pointer">Privacy Policy</span> and{' '}
-              <span className="text-white/50 underline decoration-white/20 cursor-pointer">Cookies Policy</span>.
+              <span className="text-cyan-300 underline decoration-cyan-300/30 cursor-pointer">Terms</span>,{' '}
+              <span className="text-cyan-300 underline decoration-cyan-300/30 cursor-pointer">Privacy Policy</span> and{' '}
+              <span className="text-cyan-300 underline decoration-cyan-300/30 cursor-pointer">Cookies Policy</span>.
             </p>
 
             {/* Large primary button: Continue */}

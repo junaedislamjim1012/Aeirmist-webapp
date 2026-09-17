@@ -121,7 +121,15 @@ export const useInboxData = (allowedAuthorIds?: string[]) => {
     };
   }, [db, user?.uid, profile?.id, followingStr, allowedIdsStr]);
 
-  const createNote = async (content: string, audience: 'public' | 'followers' | 'closeFriends' = 'public', music?: string, mediaUrl?: string, mediaType?: 'image' | 'video', hiddenFrom: string[] = []) => {
+  const createNote = async (
+    content: string, 
+    audience: 'public' | 'followers' | 'closeFriends' = 'public', 
+    music?: string, 
+    mediaUrl?: string, 
+    mediaType?: 'image' | 'video', 
+    hiddenFrom: string[] = [],
+    musicData?: { title?: string; artist?: string; url?: string; coverUrl?: string; spotifyUrl?: string }
+  ) => {
     if (!db || !user || !profile || !canWrite('createNote', 10000)) return;
     try {
       const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
@@ -134,7 +142,10 @@ export const useInboxData = (allowedAuthorIds?: string[]) => {
         audience,
         visibleTo: audience === 'closeFriends' ? (profile.social?.closeFriends || []) : [],
         hiddenFrom: hiddenFrom || [],
-        music: music || null,
+        music: music || (musicData ? `${musicData.title} - ${musicData.artist}` : null),
+        musicUrl: musicData?.url || null,
+        musicCover: musicData?.coverUrl || null,
+        spotifyUrl: musicData?.spotifyUrl || null,
         mediaUrl: mediaUrl || null,
         mediaType: mediaType || null,
         createdAt: serverTimestamp(),

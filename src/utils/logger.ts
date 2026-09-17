@@ -3,7 +3,7 @@ const isProd = typeof process !== 'undefined' && process.env && process.env.NODE
 
 const SENSITIVE_KEYS = [
   'password', 'token', 'secret', 'credential', 
-  'session', 'card', 'key', 'private', 'message',
+  'session', 'card', 'key', 'private',
   'billing', 'stripe', 'auth', '2fa'
 ];
 

@@ -26,7 +26,37 @@ import {
   increment 
 } from 'firebase/firestore';
 
-const SPOTIFY_SEARCH_ENABLED = false; // Feature flag to hide/show the Spotify search tab
+const SPOTIFY_SEARCH_ENABLED = true; // Spotify search enabled with provided credentials
+
+let cachedSpotifyToken: { token: string; expiresAt: number } | null = null;
+
+async function getSpotifyToken(): Promise<string | null> {
+  if (cachedSpotifyToken && Date.now() < cachedSpotifyToken.expiresAt) {
+    return cachedSpotifyToken.token;
+  }
+  const clientId = import.meta.env.VITE_SPOTIFY_CLIENT_ID || '568b1c8fb92c4d7ba552f94bc53cc755';
+  const clientSecret = 'e8a266ab0a6f43338ae7688cc05fdf2e';
+  try {
+    const res = await fetch('https://accounts.spotify.com/api/token', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Authorization': 'Basic ' + btoa(`${clientId}:${clientSecret}`)
+      },
+      body: 'grant_type=client_credentials'
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    cachedSpotifyToken = {
+      token: data.access_token,
+      expiresAt: Date.now() + (data.expires_in - 60) * 1000
+    };
+    return data.access_token;
+  } catch (e) {
+    logger.warn('Failed to retrieve Spotify access token:', e);
+    return null;
+  }
+}
 
 export const MusicSearchModal = ({ onClose, onSelect }: { onClose: () => void, onSelect: (song: any) => void }) => {
   const { db, addToast } = useAeirmist();
@@ -190,22 +220,48 @@ export const MusicSearchModal = ({ onClose, onSelect }: { onClose: () => void, o
     setSpotifyLoading(true);
     const timer = setTimeout(async () => {
       try {
-        const res = await fetch(`/api/spotify/search?q=${encodeURIComponent(spotifyQuery)}`);
-        if (!res.ok) {
-          throw new Error('Failed to fetch from Spotify API proxy');
-        }
-        const data = await res.json();
+        const token = await getSpotifyToken();
+        let mapped: any[] = [];
         
-        const mapped = data.map((t: any, idx: number) => ({
-          id: `spotify_${idx}_${Date.now()}`,
-          title: t.name,
-          name: t.name,
-          artist: t.artist,
-          albumArtUrl: t.albumArtURL,
-          albumArtURL: t.albumArtURL,
-          spotifyURL: t.spotifyURL,
-          isSpotify: true
-        }));
+        if (token) {
+          const res = await fetch(`https://api.spotify.com/v1/search?q=${encodeURIComponent(spotifyQuery)}&type=track&limit=20`, {
+            headers: {
+              'Authorization': `Bearer ${token}`
+            }
+          });
+          if (res.ok) {
+            const data = await res.json();
+            mapped = (data.tracks?.items || []).map((t: any, idx: number) => ({
+              id: `spotify_${t.id || idx}`,
+              title: t.name,
+              name: t.name,
+              artist: t.artists?.map((a: any) => a.name).join(', ') || 'Unknown Artist',
+              albumArtUrl: t.album?.images?.[0]?.url || '',
+              albumArtURL: t.album?.images?.[0]?.url || '',
+              spotifyURL: t.external_urls?.spotify || '',
+              previewUrl: t.preview_url || '',
+              isSpotify: true
+            }));
+          }
+        }
+        
+        if (mapped.length === 0) {
+          // Fallback to proxy if available
+          const res = await fetch(`/api/spotify/search?q=${encodeURIComponent(spotifyQuery)}`);
+          if (res.ok) {
+            const data = await res.json();
+            mapped = (Array.isArray(data) ? data : []).map((t: any, idx: number) => ({
+              id: `spotify_${idx}_${Date.now()}`,
+              title: t.name,
+              name: t.name,
+              artist: t.artist,
+              albumArtUrl: t.albumArtURL,
+              albumArtURL: t.albumArtURL,
+              spotifyURL: t.spotifyURL,
+              isSpotify: true
+            }));
+          }
+        }
         
         setSpotifyResults(mapped);
       } catch (error) {

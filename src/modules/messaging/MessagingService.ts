@@ -26,6 +26,25 @@ import { handleFirestoreError, OperationType } from '../../lib/firebase';
 import { logger } from '@/src/utils/logger';
 import { getAvatarUrl } from '../../lib/avatar';
 
+function cleanUndefined(obj: any): any {
+  if (obj === null || typeof obj !== 'object') {
+    return obj === undefined ? null : obj;
+  }
+  if (Array.isArray(obj)) {
+    return obj.map(cleanUndefined);
+  }
+  const cleaned: any = {};
+  for (const key of Object.keys(obj)) {
+    const val = obj[key];
+    if (val !== undefined) {
+      cleaned[key] = cleanUndefined(val);
+    } else {
+      cleaned[key] = null;
+    }
+  }
+  return cleaned;
+}
+
 
 class MessagingService {
   private listeners: Map<string, () => void> = new Map();
@@ -132,6 +151,11 @@ class MessagingService {
       let targetProfileId = isNew ? conversationId.replace('new_', '') : (metadata.recipientId || null);
       let targetOwnerUid = metadata.receiverUid || metadata.targetProfile?.uid || metadata.targetProfile?.ownerUid || null;
 
+      if (!targetProfileId && finalConvId.includes('_')) {
+        const parts = finalConvId.split('_');
+        targetProfileId = parts.find(p => p !== profile.id) || parts[0];
+      }
+
       // 2. Deterministic ID resolution for 1v1
       if (isNew && targetProfileId) {
         finalConvId = [profile.id, targetProfileId].sort().join('_');
@@ -141,56 +165,61 @@ class MessagingService {
       const convSnap = await getDoc(convRef);
       const exists = convSnap.exists();
 
-      // 3. Robust parsing of finalConvId to extract missing identifiers if needed
-      if (!exists) {
-        if (finalConvId.includes('_profile_')) {
-          const parts = finalConvId.split('_profile_');
-          const p1 = parts[0];
-          const p2 = 'profile_' + parts[1];
-          if (!targetProfileId) {
-            targetProfileId = p1 === profile.id ? p2 : p1;
+      // If conversation exists, extract profileIds and participants if needed
+      if (exists) {
+        const cData = convSnap.data();
+        if (!targetProfileId) {
+          targetProfileId = cData.profileIds?.find((id: string) => id !== profile.id) || profile.id;
+        }
+        if (!targetOwnerUid) {
+          targetOwnerUid = cData.participants?.find((u: string) => u !== user.uid) || user.uid;
+        }
+        if (cData.participantDetails && targetProfileId && cData.participantDetails[targetProfileId]) {
+          const details = cData.participantDetails[targetProfileId];
+          if (details.uid && !targetOwnerUid) {
+            targetOwnerUid = details.uid;
           }
-        } else if (finalConvId.includes('_')) {
-          const parts = finalConvId.split('_');
-          const otherUid = parts.find(p => p !== user.uid && !p.startsWith('profile'));
-          if (otherUid && !targetOwnerUid) {
-            targetOwnerUid = otherUid;
+          if (!metadata.targetProfile) {
+            metadata.targetProfile = details;
           }
         }
+      }
 
-        // Fetch profile from Firestore if we only have the recipient UID
-        if (targetOwnerUid && !targetProfileId) {
+      // 3. Robust parsing of finalConvId and profile fetching
+      if (!targetOwnerUid || !targetProfileId || targetOwnerUid === targetProfileId) {
+        if (targetProfileId && targetProfileId !== 'unknown_profile') {
           try {
-            const q = query(collection(db, 'profiles'), where('ownerUid', '==', targetOwnerUid), limit(1));
-            const snap = await getDocs(q);
-            if (!snap.empty) {
-              targetProfileId = snap.docs[0].id;
+            const profileDocRef = doc(db, 'profiles', targetProfileId);
+            const profileDocSnap = await getDoc(profileDocRef);
+            if (profileDocSnap.exists()) {
+              const pData = profileDocSnap.data();
+              if (pData.ownerUid || pData.uid) {
+                targetOwnerUid = pData.ownerUid || pData.uid;
+              }
               if (!metadata.targetProfile) {
-                metadata.targetProfile = { id: snap.docs[0].id, ...snap.docs[0].data() };
+                metadata.targetProfile = { id: profileDocSnap.id, ...pData };
               }
             }
           } catch (e) {
-            logger.error("[MessagingService] Failed to resolve target profile by UID:", e);
+            logger.warn("[MessagingService] Could not fetch profile by ID:", e);
           }
         }
 
-        // Parse owner UID from profileId if missing
-        if (targetProfileId && !targetOwnerUid) {
-          if (targetProfileId.startsWith('profile_')) {
-            const parts = targetProfileId.split('_');
-            if (parts.length >= 2) {
-              targetOwnerUid = parts[1];
-            }
+        // If targetOwnerUid still missing, check if targetProfileId starts with profile_
+        if (targetProfileId && targetProfileId.startsWith('profile_') && (!targetOwnerUid || targetOwnerUid === targetProfileId)) {
+          const parts = targetProfileId.split('_');
+          if (parts.length >= 2) {
+            targetOwnerUid = parts[1];
           }
         }
+      }
 
-        // Absolute fallback to avoid crashes
-        if (!targetProfileId) {
-          targetProfileId = 'unknown_profile';
-        }
-        if (!targetOwnerUid) {
-          targetOwnerUid = targetProfileId;
-        }
+      // Absolute fallbacks
+      if (!targetProfileId) {
+        targetProfileId = profile.id;
+      }
+      if (!targetOwnerUid) {
+        targetOwnerUid = user.uid;
       }
 
       const isSelfChat = targetProfileId === profile.id;
@@ -238,7 +267,7 @@ class MessagingService {
           initialStatus = 'active';
         }
 
-        batch.set(convRef, {
+        batch.set(convRef, cleanUndefined({
           participants, 
           profileIds,   
           participantDetails: {
@@ -273,12 +302,12 @@ class MessagingService {
           status: initialStatus,
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp()
-        });
+        }));
 
         // Trigger initial notification
         const notifRef = doc(collection(db, 'notifications'));
         if (targetOwnerUid && !this.isSafeMode && !isSelfUid) {
-          batch.set(notifRef, {
+          batch.set(notifRef, cleanUndefined({
             userId: targetProfileId || targetOwnerUid,
             fromUserId: profile.id,
             fromUser: {
@@ -290,7 +319,7 @@ class MessagingService {
             metadata: { conversationId: finalConvId },
             read: false,
             createdAt: serverTimestamp()
-          });
+          }));
         }
       } else {
         logger.info(`[MessagingService] Updating existing chat: ${finalConvId}`);
@@ -305,7 +334,7 @@ class MessagingService {
       }
       
       const msgRef = doc(db, 'conversations', finalConvId, 'messages', messageId);
-      batch.set(msgRef, messageData);
+      batch.set(msgRef, cleanUndefined(messageData));
       
       logger.info("[MessagingService] Committing neural batch...");
       await batch.commit();
@@ -392,12 +421,12 @@ class MessagingService {
       updates[`isArchived.${receiverId}`] = false;
     }
 
-    batch.update(convRef, updates);
+    batch.update(convRef, cleanUndefined(updates));
 
     // Skip non-essential notifications in Safe Mode to save writes
     if (receiverUid && metadata.shouldNotify && !this.isSafeMode && metadata.senderUid !== receiverUid) {
       const notifRef = doc(collection(db, 'notifications'));
-      batch.set(notifRef, {
+      batch.set(notifRef, cleanUndefined({
         userId: receiverId || receiverUid, // Use Profile ID if available, else Auth UID
         fromUserId: senderId,
         fromUser: {
@@ -409,7 +438,7 @@ class MessagingService {
         metadata: { conversationId: convId },
         read: false,
         createdAt: serverTimestamp()
-      });
+      }));
     }
   }
 

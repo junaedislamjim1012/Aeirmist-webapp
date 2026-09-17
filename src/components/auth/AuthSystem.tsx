@@ -9,8 +9,9 @@ import { useAeirmist } from '../../context/AeirmistContext';
 import { useTheme } from '../../context/ThemeContext';
 import { analytics } from '../../services/AnalyticsService';
 import { AeirmistLogo } from '../ui/AeirmistLogo';
-import { confirmPasswordReset } from 'firebase/auth';
+import { confirmPasswordReset, sendPasswordResetEmail, getAuth } from 'firebase/auth';
 import { auth } from '../../lib/firebase';
+import { handleForgotPassword } from '../../services/forgotPassword';
 import { collection, addDoc, serverTimestamp, getDoc, doc, updateDoc, arrayUnion } from 'firebase/firestore';
 import { mapAuthError } from '../../utils/authErrorMapper';
 import { SignupWizard } from './SignupWizard';
@@ -468,7 +469,13 @@ export const AuthSystem: React.FC = () => {
     setSuccess(null);
     setLoading(true);
     try {
-      await resetPassword(identifier);
+      const trimmed = identifier.trim();
+      if (trimmed.includes('@')) {
+        await handleForgotPassword(trimmed);
+      } else {
+        await resetPassword(trimmed);
+        alert("পাসওয়ার্ড রিসেট লিংক আপনার ইমেলে পাঠানো হয়েছে। দয়া করে ইনবক্স চেক করুন।");
+      }
       setForgotStep(2);
       analytics.trackEvent({ action: 'password_reset_request', category: 'Auth' });
     } catch (err: any) {
@@ -619,18 +626,18 @@ export const AuthSystem: React.FC = () => {
           <div className="w-full max-w-[460px] flex flex-col items-center my-auto py-2">
             
             {/* Mobile Header Branding (Shown on small devices only) */}
-            <div className="lg:hidden flex flex-col items-center text-center mb-4 sm:mb-6">
-              <AeirmistLogo className="w-11 h-11 sm:w-14 sm:h-14 drop-shadow-[0_0_25px_rgba(0,242,255,0.55)] mb-2 sm:mb-3" variant="compact" />
-              <h1 className="font-display font-black text-xl sm:text-2xl tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-[var(--color-aeirmist-cyan)] to-[var(--color-aeirmist-magenta)]">
+            <div className="lg:hidden flex flex-col items-center text-center mb-5 sm:mb-6">
+              <AeirmistLogo className="w-12 h-12 sm:w-14 sm:h-14 drop-shadow-[0_0_30px_rgba(0,242,255,0.7)] mb-2.5 sm:mb-3" variant="compact" />
+              <h1 className="font-display font-black text-2xl sm:text-3xl tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-[var(--color-aeirmist-cyan)] to-[var(--color-aeirmist-magenta)]">
                 AEIRMIST
               </h1>
-              <span className="text-[9px] tracking-widest font-mono text-white/30 uppercase mt-0.5">Aeirmist User Entry</span>
+              <span className="text-[11px] tracking-widest font-mono text-slate-300 font-bold uppercase mt-1">Aeirmist User Entry</span>
             </div>
 
             {/* Offline Alert */}
             {!isOnline && (
-              <div className="w-full bg-amber-500/10 border border-amber-500/15 p-3 rounded-2xl flex items-center gap-2.5 text-amber-500 text-[11px] font-bold uppercase tracking-wider mb-3 sm:mb-4 animate-pulse">
-                <WifiOff size={15} className="shrink-0" />
+              <div className="w-full bg-amber-500/10 border border-amber-500/20 p-3 rounded-2xl flex items-center gap-2.5 text-amber-400 text-xs font-bold uppercase tracking-wider mb-3 sm:mb-4 animate-pulse">
+                <WifiOff size={16} className="shrink-0" />
                 <span>Connection interrupted. Running in offline mode.</span>
               </div>
             )}
@@ -642,18 +649,17 @@ export const AuthSystem: React.FC = () => {
                 idle: { x: 0 }
               }}
               animate={shakeActive ? "shake" : "idle"}
-              className={`w-full overflow-hidden rounded-[22px] sm:rounded-[28px] border ${
+              className={`w-full overflow-hidden rounded-[24px] sm:rounded-[28px] border ${
                 activeTheme.isLight 
-                  ? 'bg-white/80 border-slate-200/60 shadow-[0_20px_50px_rgba(15,23,42,0.08)]' 
-                  : 'bg-[#0b0d12]/85 border-white/10 shadow-[0_25px_60px_rgba(0,0,0,0.65)]'
-              } p-4 sm:p-7 backdrop-blur-2xl transition-all duration-300 relative`}
+                  ? 'bg-white border-slate-300 shadow-[0_20px_50px_rgba(15,23,42,0.15)]' 
+                  : 'bg-[#121520]/95 border-white/20 shadow-[0_25px_60px_rgba(0,0,0,0.85)]'
+              } p-5 sm:p-7 backdrop-blur-2xl transition-all duration-300 relative`}
             >
               
               {/* Card Title Header */}
               {view === 'login' && (
-                <div className="mb-4 sm:mb-6 flex flex-col items-start border-b border-white/5 pb-3 sm:pb-4">
-                  <h2 className="text-lg sm:text-xl font-black uppercase tracking-wider">Welcome Back</h2>
-                  <p className="text-[10px] font-mono uppercase tracking-widest text-[var(--color-aeirmist-cyan)]">Continue your Loop.</p>
+                <div className="mb-5 sm:mb-6 flex flex-col items-center justify-center text-center border-b border-white/10 pb-3 sm:pb-4">
+                  <h2 className="text-xl sm:text-2xl font-black uppercase tracking-wider text-center text-white">Welcome</h2>
                 </div>
               )}
 
@@ -796,7 +802,7 @@ export const AuthSystem: React.FC = () => {
 
                     <div className="space-y-1.5 relative">
                       <div className="flex justify-between items-center">
-                        <label htmlFor="saved-pass-key" className="text-[10px] font-bold uppercase text-white/40 tracking-wider">Pass Key</label>
+                        <label htmlFor="saved-pass-key" className="text-xs font-bold uppercase text-slate-200 tracking-wider">Pass Key</label>
                         <button
                           type="button"
                           onClick={() => {
@@ -806,14 +812,14 @@ export const AuthSystem: React.FC = () => {
                             setError(null);
                             setSuccess(null);
                           }}
-                          className="text-[10px] font-bold uppercase text-[var(--color-aeirmist-cyan)] hover:text-white transition-colors"
+                          className="text-xs font-bold uppercase text-[var(--color-aeirmist-cyan)] hover:text-white transition-colors cursor-pointer"
                         >
                           Forgot key?
                         </button>
                       </div>
                       
-                      <div className="relative rounded-2xl bg-white/[0.03] border border-white/10 focus-within:border-[var(--color-aeirmist-cyan)]/40 transition-colors">
-                        <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20" size={16} />
+                      <div className="relative rounded-2xl bg-[#161a26] border border-white/20 focus-within:border-[var(--color-aeirmist-cyan)] focus-within:ring-2 focus-within:ring-[var(--color-aeirmist-cyan)]/25 transition-all shadow-inner">
+                        <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-white/60" size={17} />
                         <input
                           id="saved-pass-key"
                           type={showPassword ? "text" : "password"}
@@ -821,20 +827,20 @@ export const AuthSystem: React.FC = () => {
                           value={password}
                           onChange={(e) => setPassword(e.target.value)}
                           onKeyDown={handlePasswordKeyDown}
-                          className="w-full py-3.5 pl-12 pr-12 bg-transparent outline-none text-sm text-white placeholder-white/25"
+                          className="w-full py-3.5 pl-12 pr-12 bg-transparent outline-none text-sm text-white placeholder:text-slate-400 font-medium"
                           autoFocus
                           required
                         />
                         <button
                           type="button"
                           onClick={() => setShowPassword(!showPassword)}
-                          className="absolute right-4 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/60 transition-colors p-1"
+                          className="absolute right-4 top-1/2 -translate-y-1/2 text-white/60 hover:text-white transition-colors p-1"
                         >
-                          {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                          {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
                         </button>
 
                         {capsLockActive && (
-                          <div className="absolute right-12 top-1/2 -translate-y-1/2 flex items-center gap-1.5 text-amber-500 font-bold uppercase text-[9px] tracking-widest px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/25">
+                          <div className="absolute right-12 top-1/2 -translate-y-1/2 flex items-center gap-1.5 text-amber-400 font-bold uppercase text-[9px] tracking-widest px-2 py-0.5 rounded-full bg-amber-500/20 border border-amber-500/40">
                             <span>Caps Lock On</span>
                           </div>
                         )}
@@ -844,9 +850,9 @@ export const AuthSystem: React.FC = () => {
                     <button
                       type="submit"
                       disabled={loading || !password}
-                      className="w-full h-11 bg-white text-black font-black rounded-2xl text-xs uppercase tracking-widest transition-opacity hover:opacity-95 disabled:opacity-40 flex items-center justify-center gap-2 cursor-pointer mt-2"
+                      className="w-full h-12 rounded-2xl text-xs uppercase tracking-widest font-black transition-all flex items-center justify-center gap-2 cursor-pointer mt-2 shadow-lg bg-gradient-to-r from-[var(--color-aeirmist-cyan)] to-cyan-300 text-black hover:brightness-105 active:scale-[0.98] disabled:bg-[#252a38] disabled:from-transparent disabled:to-transparent disabled:text-slate-400 disabled:border disabled:border-white/10 disabled:shadow-none disabled:cursor-not-allowed"
                     >
-                      {loading ? <Loader2 size={16} className="animate-spin text-black" /> : `Log In`}
+                      {loading ? <Loader2 size={16} className="animate-spin text-current" /> : `Log In`}
                     </button>
 
                     <button
@@ -856,9 +862,9 @@ export const AuthSystem: React.FC = () => {
                         setError(null);
                         setSuccess(null);
                       }}
-                      className="mt-1 flex items-center justify-center gap-2 text-[10px] font-bold uppercase tracking-wider text-white/50 hover:text-white transition-colors w-full py-3 bg-white/5 border border-white/5 hover:bg-white/10 rounded-2xl cursor-pointer"
+                      className="mt-1 flex items-center justify-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-200 hover:text-white transition-colors w-full py-3 bg-white/10 border border-white/20 hover:bg-white/15 rounded-2xl cursor-pointer"
                     >
-                      <ArrowLeft size={14} />
+                      <ArrowLeft size={15} />
                       Back to Saved Accounts
                     </button>
                   </motion.form>
@@ -875,9 +881,9 @@ export const AuthSystem: React.FC = () => {
                     className="flex flex-col gap-4"
                   >
                     <div className="space-y-1.5">
-                      <label htmlFor="login-identity" className="text-[10px] font-bold uppercase text-white/40 tracking-wider">Username or Email</label>
-                      <div className="relative rounded-2xl bg-white/[0.03] border border-white/10 focus-within:border-[var(--color-aeirmist-cyan)]/40 transition-colors">
-                        <User className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20" size={16} />
+                      <label htmlFor="login-identity" className="text-xs font-bold uppercase text-slate-200 tracking-wider">Username or Email</label>
+                      <div className="relative rounded-2xl bg-[#161a26] border border-white/20 focus-within:border-[var(--color-aeirmist-cyan)] focus-within:ring-2 focus-within:ring-[var(--color-aeirmist-cyan)]/25 transition-all shadow-inner">
+                        <User className="absolute left-4 top-1/2 -translate-y-1/2 text-white/60" size={17} />
                         <input
                           id="login-identity"
                           type="text"
@@ -887,7 +893,7 @@ export const AuthSystem: React.FC = () => {
                           placeholder="Phone number, username, or email"
                           value={identifier}
                           onChange={(e) => setIdentifier(e.target.value)}
-                          className="w-full py-3.5 pl-12 pr-4 bg-transparent outline-none text-sm text-white placeholder-white/25"
+                          className="w-full py-3.5 pl-12 pr-4 bg-transparent outline-none text-sm text-white placeholder:text-slate-400 font-medium"
                           required
                         />
                       </div>
@@ -895,7 +901,7 @@ export const AuthSystem: React.FC = () => {
                     
                     <div className="space-y-1.5 relative">
                       <div className="flex justify-between items-center">
-                        <label htmlFor="login-password" className="text-[10px] font-bold uppercase text-white/40 tracking-wider">Pass Key</label>
+                        <label htmlFor="login-password" className="text-xs font-bold uppercase text-slate-200 tracking-wider">Pass Key</label>
                         <button
                           type="button"
                           onClick={() => {
@@ -904,14 +910,14 @@ export const AuthSystem: React.FC = () => {
                             setError(null);
                             setSuccess(null);
                           }}
-                          className="text-[10px] font-bold uppercase text-[var(--color-aeirmist-cyan)] hover:text-white transition-colors"
+                          className="text-xs font-bold uppercase text-[var(--color-aeirmist-cyan)] hover:text-white transition-colors cursor-pointer"
                         >
                           Forgot key?
                         </button>
                       </div>
                       
-                      <div className="relative rounded-2xl bg-white/[0.03] border border-white/10 focus-within:border-[var(--color-aeirmist-cyan)]/40 transition-colors">
-                        <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20" size={16} />
+                      <div className="relative rounded-2xl bg-[#161a26] border border-white/20 focus-within:border-[var(--color-aeirmist-cyan)] focus-within:ring-2 focus-within:ring-[var(--color-aeirmist-cyan)]/25 transition-all shadow-inner">
+                        <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-white/60" size={17} />
                         <input
                           id="login-password"
                           type={showPassword ? "text" : "password"}
@@ -921,20 +927,20 @@ export const AuthSystem: React.FC = () => {
                           value={password}
                           onChange={(e) => setPassword(e.target.value)}
                           onKeyDown={handlePasswordKeyDown}
-                          className="w-full py-3.5 pl-12 pr-12 bg-transparent outline-none text-sm text-white placeholder-white/25"
+                          className="w-full py-3.5 pl-12 pr-12 bg-transparent outline-none text-sm text-white placeholder:text-slate-400 font-medium"
                           required
                         />
                         <button
                           type="button"
                           onClick={() => setShowPassword(!showPassword)}
-                          className="absolute right-4 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/60 transition-colors p-1"
+                          className="absolute right-4 top-1/2 -translate-y-1/2 text-white/60 hover:text-white transition-colors p-1"
                         >
-                          {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                          {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
                         </button>
 
                         {/* Caps Lock Alert */}
                         {capsLockActive && (
-                          <div className="absolute right-12 top-1/2 -translate-y-1/2 flex items-center gap-1.5 text-amber-500 font-bold uppercase text-[9px] tracking-widest px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/25">
+                          <div className="absolute right-12 top-1/2 -translate-y-1/2 flex items-center gap-1.5 text-amber-400 font-bold uppercase text-[9px] tracking-widest px-2 py-0.5 rounded-full bg-amber-500/20 border border-amber-500/40">
                             <span>Caps Lock On</span>
                           </div>
                         )}
@@ -950,10 +956,10 @@ export const AuthSystem: React.FC = () => {
                           onChange={(e) => setRememberMe(e.target.checked)}
                           className="sr-only"
                         />
-                        <div className={`w-4 h-4 rounded bg-white/5 border border-white/10 flex items-center justify-center transition-all group-hover:border-white/25 ${rememberMe ? 'border-[var(--color-aeirmist-cyan)] bg-[var(--color-aeirmist-cyan)]/10 text-[var(--color-aeirmist-cyan)]' : ''}`}>
-                          {rememberMe && <Check size={10} className="stroke-[3]" />}
+                        <div className={`w-4 h-4 rounded bg-white/10 border border-white/30 flex items-center justify-center transition-all group-hover:border-white/50 ${rememberMe ? 'border-[var(--color-aeirmist-cyan)] bg-[var(--color-aeirmist-cyan)] text-black' : ''}`}>
+                          {rememberMe && <Check size={11} className="stroke-[3]" />}
                         </div>
-                        <span className="text-[10px] font-bold uppercase text-white/40 tracking-wider select-none">Remember Me</span>
+                        <span className="text-xs font-bold uppercase text-slate-200 tracking-wider select-none">Remember Me</span>
                       </label>
 
                       <button
@@ -963,9 +969,9 @@ export const AuthSystem: React.FC = () => {
                           setError(null);
                           setSuccess(null);
                         }}
-                        className="text-[10px] font-bold uppercase text-white/40 hover:text-white flex items-center gap-1.5 transition-colors"
+                        className="text-xs font-bold uppercase text-cyan-300 hover:text-white flex items-center gap-1.5 transition-colors cursor-pointer"
                       >
-                        <QrCode size={13} />
+                        <QrCode size={14} className="text-[var(--color-aeirmist-cyan)]" />
                         <span>Pair Device</span>
                       </button>
                     </div>
@@ -973,15 +979,15 @@ export const AuthSystem: React.FC = () => {
                     <button
                       type="submit"
                       disabled={loading || !identifier || !password}
-                      className="w-full h-11 bg-white text-black font-black rounded-2xl text-xs uppercase tracking-widest transition-opacity hover:opacity-95 disabled:opacity-40 flex items-center justify-center gap-2 cursor-pointer mt-2"
+                      className="w-full h-12 rounded-2xl text-xs uppercase tracking-widest font-black transition-all flex items-center justify-center gap-2 cursor-pointer mt-2 shadow-lg bg-gradient-to-r from-[var(--color-aeirmist-cyan)] to-cyan-300 text-black hover:brightness-105 active:scale-[0.98] disabled:bg-[#252a38] disabled:from-transparent disabled:to-transparent disabled:text-slate-400 disabled:border disabled:border-white/10 disabled:shadow-none disabled:cursor-not-allowed"
                     >
-                      {loading ? <Loader2 size={16} className="animate-spin text-black" /> : "Verify Identity"}
+                      {loading ? <Loader2 size={16} className="animate-spin text-current" /> : "Verify Identity"}
                     </button>
 
                     <div className="flex items-center my-3">
-                      <div className="flex-1 h-px bg-white/5"></div>
-                      <span className="px-4 text-[10px] font-bold text-white/20 uppercase tracking-widest">or</span>
-                      <div className="flex-1 h-px bg-white/5"></div>
+                      <div className="flex-1 h-px bg-white/20"></div>
+                      <span className="px-4 text-xs font-bold text-slate-300 uppercase tracking-widest">or</span>
+                      <div className="flex-1 h-px bg-white/20"></div>
                     </div>
 
                     {/* Google Sign In Only */}
@@ -989,9 +995,9 @@ export const AuthSystem: React.FC = () => {
                       type="button"
                       onClick={() => handleSocialLogin('google')}
                       disabled={loading}
-                      className="w-full h-11 bg-white/[0.03] hover:bg-white/[0.06] border border-white/10 text-white font-black rounded-2xl text-xs uppercase tracking-widest transition-colors disabled:opacity-40 flex items-center justify-center gap-2.5 cursor-pointer"
+                      className="w-full h-11 bg-white/10 hover:bg-white/15 border border-white/25 text-white font-bold rounded-2xl text-xs uppercase tracking-widest transition-all disabled:opacity-40 flex items-center justify-center gap-2.5 cursor-pointer shadow-sm"
                     >
-                      <Chrome size={15} />
+                      <Chrome size={16} className="text-white" />
                       Continue with Google
                     </button>
                   </motion.form>
@@ -1109,15 +1115,15 @@ export const AuthSystem: React.FC = () => {
                             Enter the registered email, phone, or username. We will send you a link to reset your password.
                           </p>
                           <div className="space-y-1.5">
-                            <label className="text-[10px] font-bold uppercase text-white/40 tracking-wider">Node ID / Email</label>
-                            <div className="relative rounded-2xl bg-white/[0.03] border border-white/10 focus-within:border-[var(--color-aeirmist-cyan)]/40 transition-colors">
-                              <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20" size={16} />
+                            <label className="text-xs font-bold uppercase text-slate-200 tracking-wider">Node ID / Email</label>
+                            <div className="relative rounded-2xl bg-[#161a26] border border-white/20 focus-within:border-[var(--color-aeirmist-cyan)] focus-within:ring-2 focus-within:ring-[var(--color-aeirmist-cyan)]/25 transition-all shadow-inner">
+                              <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-white/60" size={17} />
                               <input
                                 type="text"
                                 placeholder="Enter registered details"
                                 value={identifier}
                                 onChange={(e) => setIdentifier(e.target.value)}
-                                className="w-full py-3.5 pl-12 pr-4 bg-transparent outline-none text-sm text-white placeholder-white/25"
+                                className="w-full py-3.5 pl-12 pr-4 bg-transparent outline-none text-sm text-white placeholder:text-slate-400 font-medium"
                                 required
                               />
                             </div>
@@ -1126,9 +1132,9 @@ export const AuthSystem: React.FC = () => {
                           <button
                             type="submit"
                             disabled={loading || !identifier}
-                            className="w-full h-11 bg-white text-black font-black rounded-2xl text-xs uppercase tracking-widest hover:opacity-95 disabled:opacity-40 flex items-center justify-center gap-2 cursor-pointer mt-2"
+                            className="w-full h-12 rounded-2xl text-xs uppercase tracking-widest font-black transition-all flex items-center justify-center gap-2 cursor-pointer mt-2 shadow-lg bg-gradient-to-r from-[var(--color-aeirmist-cyan)] to-cyan-300 text-black hover:brightness-105 active:scale-[0.98] disabled:bg-[#252a38] disabled:from-transparent disabled:to-transparent disabled:text-slate-400 disabled:border disabled:border-white/10 disabled:shadow-none disabled:cursor-not-allowed"
                           >
-                            {loading ? <Loader2 size={16} className="animate-spin text-black" /> : "Dispatch Reset Key"}
+                            {loading ? <Loader2 size={16} className="animate-spin text-current" /> : "Dispatch Reset Key"}
                           </button>
                         </motion.div>
                       ) : (
@@ -1137,7 +1143,7 @@ export const AuthSystem: React.FC = () => {
                             <Mail size={24} />
                           </div>
                           <h3 className="text-sm font-black uppercase tracking-wider text-white">Reset Handshake Dispatched</h3>
-                          <p className="text-xs text-white/50 leading-relaxed max-w-[320px] mx-auto">
+                          <p className="text-xs text-white/70 leading-relaxed max-w-[320px] mx-auto">
                             A secure, system-signed validation link was sent to your inbox. Click the link inside to Configure a new credentials settings.
                           </p>
                         </motion.div>
@@ -1151,9 +1157,9 @@ export const AuthSystem: React.FC = () => {
                         setError(null);
                         setSuccess(null);
                       }}
-                      className="mt-4 flex items-center justify-center gap-2 text-[10px] font-bold uppercase tracking-wider text-white/50 hover:text-white transition-colors w-full py-3.5 border border-white/5 hover:bg-white/5 rounded-2xl cursor-pointer"
+                      className="mt-4 flex items-center justify-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-200 hover:text-white transition-colors w-full py-3.5 border border-white/20 hover:bg-white/10 rounded-2xl cursor-pointer"
                     >
-                      <ArrowLeft size={14} />
+                      <ArrowLeft size={15} />
                       Back to Login
                     </button>
                   </motion.form>
@@ -1374,10 +1380,10 @@ export const AuthSystem: React.FC = () => {
             {!isSuccess && view !== 'pairing' && view !== 'forgot' && view !== 'reset' && view !== 'saved_accounts' && view !== 'saved_accounts_login' && (
               <div className={`w-full mt-3 sm:mt-4 border ${
                 activeTheme.isLight 
-                  ? 'bg-white/70 border-slate-200/50 shadow-md' 
-                  : 'bg-[#0b0d12]/75 border-white/5 shadow-md'
-              } rounded-2xl p-3 sm:p-4 flex items-center justify-center`}>
-                <p className="text-xs text-white/50 font-semibold uppercase tracking-wider text-center">
+                  ? 'bg-white border-slate-300 shadow-md' 
+                  : 'bg-[#121520]/95 border-white/20 shadow-lg'
+              } rounded-2xl p-3.5 sm:p-4 flex items-center justify-center`}>
+                <p className="text-xs text-slate-200 font-semibold uppercase tracking-wider text-center">
                   {view === 'login' ? "New to Aeirmist? " : "Already have an account? "}
                   <button
                     type="button"
@@ -1387,7 +1393,7 @@ export const AuthSystem: React.FC = () => {
                       setError(null);
                       setSuccess(null);
                     }}
-                    className="font-black text-[var(--color-aeirmist-cyan)] hover:text-white transition-colors ml-1 uppercase"
+                    className="font-black text-[var(--color-aeirmist-cyan)] hover:text-cyan-300 transition-colors ml-1 uppercase underline decoration-[var(--color-aeirmist-cyan)]/40 cursor-pointer"
                   >
                     {view === 'login' ? "Create Account" : "Log In"}
                   </button>
@@ -1402,7 +1408,7 @@ export const AuthSystem: React.FC = () => {
                   type="button"
                   onClick={loginAsGuestSandbox}
                   disabled={loading}
-                  className="text-[10px] font-bold uppercase tracking-widest text-white/30 hover:text-white/60 transition-colors py-1 cursor-pointer"
+                  className="text-xs font-bold uppercase tracking-widest text-slate-300 hover:text-white transition-colors py-1.5 cursor-pointer underline decoration-white/20"
                 >
                   Enter Local Sandbox Mode
                 </button>

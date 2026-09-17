@@ -22,6 +22,16 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { Sparkles, Zap, Lock, AlertCircle, Clock } from 'lucide-react';
 import { AeirmistLogo } from './components/ui/AeirmistLogo';
 import { ReportProvider } from './components/reporting/ReportContext';
+import { logger } from '@/src/utils/logger';
+import { PostDetailView } from './components/feed/PostDetailView';
+import { PermissionManager } from './components/ui/PermissionManager';
+import { ResonanceTracker } from './components/ResonanceTracker';
+import { SEO } from './components/ui/SEO';
+import { analytics } from './services/AnalyticsService';
+import { followRecommService } from './services/FollowRecommendationService';
+import { NetworkStatusProvider } from './context/NetworkStatusContext';
+import { NetworkBanner } from './components/ui/NetworkBanner';
+import { ToastNotification } from './components/notifications/ToastNotification';
 
 // Aeirmist Core Component Architecture
 function toMathBoldScript(text: string): string {
@@ -105,7 +115,7 @@ const PairingFailedScreen = lazyWithRetry(() => import('./components/auth/SetupS
 const PurgeScreen = lazyWithRetry(() => import('./components/auth/SetupScreens').then((m: any) => ({ default: m.PurgeScreen || m.default })));
 const DeactivatedScreen = lazyWithRetry(() => import('./components/auth/SetupScreens').then((m: any) => ({ default: m.DeactivatedScreen || m.default })));
 const BannedScreen = lazyWithRetry(() => import('./components/auth/BannedScreen').then((m: any) => ({ default: m.BannedScreen || m.default })));
-import { ToastNotification } from './components/notifications/ToastNotification';
+
 
 type PreloadComponent = 'feed' | 'messenger' | 'discover' | 'profile' | 'settings' | 'videos' | 'dashboard' | 'notifications' | 'admin';
 
@@ -154,13 +164,6 @@ const AlertsTabRedirect = ({ onComplete }: { onComplete: () => void }) => {
   return null;
 };
 
-import { PermissionManager } from './components/ui/PermissionManager';
-import { ResonanceTracker } from './components/ResonanceTracker';
-import { SEO } from './components/ui/SEO';
-import { analytics } from './services/AnalyticsService';
-import { followRecommService } from './services/FollowRecommendationService';
-import { NetworkStatusProvider } from './context/NetworkStatusContext';
-
 const ComingSoonScreen = ({ sectorName, onHomeClick }: { sectorName: string; onHomeClick: () => void }) => {
   return (
     <div className="flex-1 h-full flex flex-col items-center justify-center p-6 text-center bg-gradient-to-b from-[#09090d] to-[#040406]">
@@ -200,10 +203,6 @@ const ComingSoonScreen = ({ sectorName, onHomeClick }: { sectorName: string; onH
     </div>
   );
 };
-
-import { PostDetailView } from './components/feed/PostDetailView';
-import { logger } from '@/src/utils/logger';
-
 
 function AppContent() {
   const { settings, updateAppearanceSettings } = useAppearance();
@@ -1382,6 +1381,7 @@ function AppContent() {
           </Suspense>
 
           <ToastNotification />
+          <NetworkBanner />
           
           <AnimatePresence>
             {cameraConfig?.isOpen && (

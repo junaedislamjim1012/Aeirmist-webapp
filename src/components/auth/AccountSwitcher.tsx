@@ -1,8 +1,8 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { useAeirmist } from '../../context/AeirmistContext';
+import { useAeirmist, deduplicateProfiles } from '../../context/AeirmistContext';
 import { getAvatarUrl } from '../../lib/avatar';
-import { X, Check, Loader2, LogOut } from 'lucide-react';
+import { X, Check, Loader2, LogOut, RefreshCw } from 'lucide-react';
 
 interface AccountSwitcherProps {
   isOpen: boolean;
@@ -11,8 +11,13 @@ interface AccountSwitcherProps {
 }
 
 export const AccountSwitcher: React.FC<AccountSwitcherProps> = ({ isOpen, onClose, onAddAccount }) => {
-  const { allProfiles, activeProfileId, switchProfile, logout } = useAeirmist();
+  const { allProfiles, activeProfileId, switchProfile, syncDatabaseProfile, logout } = useAeirmist();
   const [switchingId, setSwitchingId] = React.useState<string | null>(null);
+  const [isSyncing, setIsSyncing] = React.useState<boolean>(false);
+
+  const cleanProfiles = React.useMemo(() => {
+    return deduplicateProfiles(allProfiles || []);
+  }, [allProfiles]);
 
   const handleSwitch = async (profileId: string) => {
     if (profileId === activeProfileId) return;
@@ -25,6 +30,15 @@ export const AccountSwitcher: React.FC<AccountSwitcherProps> = ({ isOpen, onClos
       }, 300);
     } catch (e) {
       setSwitchingId(null);
+    }
+  };
+
+  const handleSyncDatabase = async () => {
+    setIsSyncing(true);
+    try {
+      await syncDatabaseProfile();
+    } finally {
+      setIsSyncing(false);
     }
   };
 
@@ -55,7 +69,14 @@ export const AccountSwitcher: React.FC<AccountSwitcherProps> = ({ isOpen, onClos
           >
             {/* Header */}
             <div className="flex items-center justify-between pb-4 border-b border-white/10">
-              <div className="w-8" /> {/* Spacer for centering title */}
+              <button
+                onClick={handleSyncDatabase}
+                disabled={isSyncing}
+                title="Sync database and consolidate IDs"
+                className="w-8 h-8 rounded-full flex items-center justify-center text-white/60 hover:text-aeirmist-cyan hover:bg-white/10 transition-colors cursor-pointer disabled:opacity-50"
+              >
+                <RefreshCw size={16} className={isSyncing ? "animate-spin text-aeirmist-cyan" : ""} />
+              </button>
               <h3 className="text-base font-bold text-white text-center">Switch accounts</h3>
               <button 
                 onClick={onClose}
@@ -67,7 +88,7 @@ export const AccountSwitcher: React.FC<AccountSwitcherProps> = ({ isOpen, onClos
 
             {/* Account List */}
             <div className="py-3 space-y-1 max-h-[320px] overflow-y-auto custom-scrollbar">
-              {allProfiles.map((p) => {
+              {cleanProfiles.map((p) => {
                 const isActive = activeProfileId === p.id;
                 return (
                   <div
@@ -111,14 +132,26 @@ export const AccountSwitcher: React.FC<AccountSwitcherProps> = ({ isOpen, onClos
               })}
             </div>
 
+            {/* Sync button bar */}
+            <div className="pt-2 pb-1">
+              <button
+                onClick={handleSyncDatabase}
+                disabled={isSyncing}
+                className="w-full py-2 px-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-medium text-white/80 hover:text-white flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-50"
+              >
+                <RefreshCw size={14} className={isSyncing ? "animate-spin text-aeirmist-cyan" : "text-white/60"} />
+                {isSyncing ? "Syncing Database..." : "Sync & Fix Database IDs"}
+              </button>
+            </div>
+
             {/* Footer Options */}
-            <div className="pt-4 border-t border-white/10 flex flex-col items-center gap-3">
+            <div className="pt-3 border-t border-white/10 flex flex-col items-center gap-3">
               <button
                 onClick={() => {
                   onAddAccount();
                   onClose();
                 }}
-                className="w-full text-center py-2.5 text-sm font-semibold text-aeirmist-cyan hover:text-aeirmist-cyan/80 transition-colors cursor-pointer"
+                className="w-full text-center py-2 text-sm font-semibold text-aeirmist-cyan hover:text-aeirmist-cyan/80 transition-colors cursor-pointer"
               >
                 Log into an Existing Account
               </button>

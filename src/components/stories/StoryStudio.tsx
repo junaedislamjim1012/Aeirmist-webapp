@@ -1380,15 +1380,22 @@ export const StoryStudio = ({ onClose }: { onClose: () => void }) => {
     }
   };
 
+  const GIPHY_KEY = import.meta.env.VITE_GIPHY_API_KEY || 'CbArMsjxxOdoz9wdPmY5hh8BBc0Oiwmt';
+
   const fetchGiphyTrending = async () => {
     setIsSearchingGiphy(true);
     try {
-      const response = await fetch('/api/giphy/trending');
+      let response;
+      try {
+        response = await fetch(`https://api.giphy.com/v1/gifs/trending?api_key=${GIPHY_KEY}&limit=24&rating=g`);
+      } catch {
+        response = await fetch('/api/giphy/trending');
+      }
       const data = await response.json();
-      const results = data.data.map((gif: any) => ({
+      const results = (data.data || []).map((gif: any) => ({
         id: gif.id,
-        url: gif.images.fixed_height.url,
-        title: gif.title
+        url: gif.images?.fixed_height?.url || gif.images?.original?.url || '',
+        title: gif.title || 'GIF'
       }));
       setGiphyResults(results);
     } catch (e) {
@@ -1405,12 +1412,17 @@ export const StoryStudio = ({ onClose }: { onClose: () => void }) => {
     }
     setIsSearchingGiphy(true);
     try {
-      const response = await fetch(`/api/giphy/search?q=${encodeURIComponent(query)}`);
+      let response;
+      try {
+        response = await fetch(`https://api.giphy.com/v1/gifs/search?api_key=${GIPHY_KEY}&q=${encodeURIComponent(query)}&limit=24&rating=g`);
+      } catch {
+        response = await fetch(`/api/giphy/search?q=${encodeURIComponent(query)}`);
+      }
       const data = await response.json();
-      const results = data.data.map((gif: any) => ({
+      const results = (data.data || []).map((gif: any) => ({
         id: gif.id,
-        url: gif.images.fixed_height.url,
-        title: gif.title
+        url: gif.images?.fixed_height?.url || gif.images?.original?.url || '',
+        title: gif.title || 'GIF'
       }));
       setGiphyResults(results);
     } catch (e) {

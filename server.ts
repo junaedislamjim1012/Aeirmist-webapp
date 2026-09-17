@@ -243,7 +243,7 @@ async function startServer() {
     if (req.path === '/api/payments/webhook' || req.method === 'GET') {
       // Still initialize token for future POSTs
       if (!(req as any).session.csrfToken) {
-        (req as any).session.csrfToken = Math.random().toString(36).substring(2);
+        (req as any).session.csrfToken = crypto.randomBytes(16).toString('hex');
       }
       // Send cookie on every GET so the client always has a fresh one
       res.cookie('XSRF-TOKEN', (req as any).session.csrfToken, { 
@@ -515,7 +515,7 @@ async function startServer() {
       }
 
       const result = await ai.models.generateContent({
-        model: "gemini-3.6-flash", 
+        model: "gemini-2.0-flash",
         contents: contents as any
       });
 
@@ -606,7 +606,7 @@ async function startServer() {
       }
 
       const response = await ai.models.generateContent({
-        model: "gemini-3.6-flash",
+        model: "gemini-2.0-flash",
         contents: promptStr,
         config
       });
@@ -660,7 +660,7 @@ async function startServer() {
       });
 
       const response = await ai.models.generateContent({
-        model: "gemini-3.6-flash",
+        model: "gemini-2.0-flash",
         contents: `Text: "${text}"`,
         config: {
           systemInstruction: `Analyze the provided comment/text for social platform safety.
@@ -708,7 +708,7 @@ Return JSON object:
       });
 
       const response = await ai.models.generateContent({
-        model: "gemini-3.6-flash",
+        model: "gemini-2.0-flash",
         contents: `Search query: "${query}"`,
         config: {
           systemInstruction: `Analyze this search query for obvious spelling typos or wrong character keys. If there is a clear typo or misspelled word, return the corrected query string. If the query is already correctly spelled or looks like a proper name/handle, return null.

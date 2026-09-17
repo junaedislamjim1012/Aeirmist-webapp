@@ -1,7 +1,22 @@
+// ============================================================
+// All imports MUST be at the top of the file (ESM standard)
+// ============================================================
+import { StrictMode } from 'react';
+import { createRoot } from 'react-dom/client';
+import { HelmetProvider } from 'react-helmet-async';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import { logger } from './utils/logger';
+import { OfflineBanner } from './components/ui/OfflineBanner.tsx';
+import { logger } from '@/src/utils/logger';
+import { PermissionManager } from './components/ui/PermissionManager';
+import { ResonanceTracker } from './components/ResonanceTracker';
+import { SEO } from './components/ui/SEO';
+import App from './App.tsx';
+import './services/authHelpers';
+import './index.css';
 
+// ============================================================
 // Register Service Worker for PWA/TWA support
+// ============================================================
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     try {
@@ -18,7 +33,9 @@ if ('serviceWorker' in navigator) {
   });
 }
 
+// ============================================================
 // Safe Storage Polyfill for iFrame / Sandbox Environments
+// ============================================================
 (function() {
   if (typeof window === 'undefined') return;
 
@@ -119,16 +136,9 @@ if ('serviceWorker' in navigator) {
   }
 })();
 
-import {StrictMode} from 'react';
-import {createRoot} from 'react-dom/client';
-import {HelmetProvider} from 'react-helmet-async';
-import App from './App.tsx';
-import { OfflineBanner } from './components/ui/OfflineBanner.tsx';
-import { logger } from '@/src/utils/logger';
-
-import './index.css';
-
+// ============================================================
 // Centralized Error Handling & Vite HMR Noise Silence
+// ============================================================
 if (typeof window !== 'undefined') {
   // Silence typical Vite HMR connection errors in the console which are expected in this env
   const originalError = console.error;
@@ -182,6 +192,9 @@ if (typeof window !== 'undefined') {
   });
 }
 
+// ============================================================
+// React App Mount
+// ============================================================
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <HelmetProvider>

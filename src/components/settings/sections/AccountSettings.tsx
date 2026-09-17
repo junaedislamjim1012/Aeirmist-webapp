@@ -20,6 +20,7 @@ import {
   linkWithPhoneNumber 
 } from 'firebase/auth';
 import { useTheme } from '../../../context/ThemeContext';
+import { useAeirmist } from '../../../context/AeirmistContext';
 import { mapAuthError } from '../../../utils/authErrorMapper';
 import { logger } from '@/src/utils/logger';
 
@@ -79,6 +80,8 @@ const AccountSettings: React.FC<AccountSettingsProps> = ({
 }) => {
   const { activeTheme } = useTheme();
   const isLight = activeTheme?.isLight;
+  const { syncDatabaseProfile } = useAeirmist();
+  const [isSyncingDb, setIsSyncingDb] = useState(false);
 
   // Username Checker States
   const [usernameInput, setUsernameInput] = useState('');
@@ -1037,6 +1040,22 @@ const AccountSettings: React.FC<AccountSettingsProps> = ({
               >
                 <Eye size={12} />
                 Preview Profile
+              </button>
+              <button
+                type="button"
+                disabled={isSyncingDb}
+                onClick={async () => {
+                  setIsSyncingDb(true);
+                  try {
+                    await syncDatabaseProfile?.();
+                  } finally {
+                    setIsSyncingDb(false);
+                  }
+                }}
+                className="w-full py-2.5 rounded-xl text-[10px] font-bold uppercase tracking-widest bg-white/5 hover:bg-white/10 border border-white/10 text-white/80 hover:text-white transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm disabled:opacity-50"
+              >
+                <RefreshCw size={12} className={isSyncingDb ? "animate-spin text-aeirmist-cyan" : ""} />
+                {isSyncingDb ? 'Syncing Database...' : 'Sync & Fix Database IDs'}
               </button>
             </div>
 

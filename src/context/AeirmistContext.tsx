@@ -3987,6 +3987,28 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         });
       } catch (e) {}
 
+      // Clean up following/followers references in other users' profiles
+      try {
+        for (const pid of profileIds) {
+          const qFollowing = await getDocs(query(collection(db, 'profiles'), where('social.following', 'array-contains', pid)));
+          for (const fDoc of qFollowing.docs) {
+            try {
+              await updateDoc(doc(db, 'profiles', fDoc.id), {
+                'social.following': arrayRemove(pid)
+              });
+            } catch (err) {}
+          }
+          const qFollowers = await getDocs(query(collection(db, 'profiles'), where('social.followers', 'array-contains', pid)));
+          for (const fDoc of qFollowers.docs) {
+            try {
+              await updateDoc(doc(db, 'profiles', fDoc.id), {
+                'social.followers': arrayRemove(pid)
+              });
+            } catch (err) {}
+          }
+        }
+      } catch (e) {}
+
       // Perform Batched Deletions
       let batch = writeBatch(db);
       let opCount = 0;
@@ -4001,6 +4023,18 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
       for (const [collName, docIdsSet] of deleteDocsMap.entries()) {
         for (const docId of Array.from(docIdsSet)) {
+          if (collName === 'posts' || collName === 'feed_comments') {
+            // Anonymize completely to wipe existence: 'Aeirmist User' & BLANK_DP
+            batch.update(doc(db, collName, docId), {
+              userName: 'Aeirmist User',
+              authorName: 'Aeirmist User',
+              userAvatar: BLANK_DP,
+              authorAvatar: BLANK_DP,
+              isDeletedAuthor: true
+            });
+            opCount++;
+            await commitBatchIfNeeded();
+          }
           batch.delete(doc(db, collName, docId));
           opCount++;
           await commitBatchIfNeeded();

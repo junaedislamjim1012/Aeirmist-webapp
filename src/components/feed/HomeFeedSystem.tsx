@@ -15,7 +15,7 @@ import {
 import { useAeirmist } from '../../context/AeirmistContext';
 import { collection, query, orderBy, onSnapshot, limit, where } from 'firebase/firestore';
 import { AeirmistLogo } from '../ui/AeirmistLogo';
-import { getAvatarUrl } from '../../lib/avatar';
+import { getAvatarUrl, BLANK_DP } from '../../lib/avatar';
 import { Skeleton } from '../ui/Skeleton';
 import { logger } from '@/src/utils/logger';
 
@@ -210,13 +210,14 @@ export const HomeFeedSystem: React.FC<{ onUserClick?: (user: any) => void, onPos
       const processSnapshot = (snapshot: any, key: string) => {
         const dbPosts = snapshot.docs.map((doc: any) => {
           const data = doc.data() as any;
+          const isDeleted = Boolean(data.isDeletedAuthor || data.authorName === 'Aeirmist User' || data.userName === 'Aeirmist User');
           return {
             id: doc.id,
             ...data,
             author: {
-              name: data.author?.displayName || data.author?.username || 'Anonymous User',
-              avatar: getAvatarUrl(data.author?.photoURL || data.userAvatar || data.authorAvatar),
-              isVerified: data.author?.isVerified || false
+              name: isDeleted ? 'Aeirmist User' : (data.author?.displayName || data.author?.username || data.authorName || data.userName || 'Aeirmist User'),
+              avatar: isDeleted ? BLANK_DP : getAvatarUrl(data.author?.photoURL || data.userAvatar || data.authorAvatar),
+              isVerified: isDeleted ? false : (data.author?.isVerified || false)
             },
             likesCount: data.likesCount || 0,
             commentsCount: data.commentsCount || 0,

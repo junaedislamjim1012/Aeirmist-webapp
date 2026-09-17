@@ -32,7 +32,8 @@ import {
   Trash2,
   Users,
   ShieldCheck,
-  Settings
+  Settings,
+  UserX
 } from 'lucide-react';
 const EmojiPicker = React.lazy(() => import('emoji-picker-react'));
 import { CallModal } from './CallModal';
@@ -41,7 +42,7 @@ import { ChatContextMenu } from './messenger/ChatContextMenu';
 import { AccountSwitcher } from './messenger/AccountSwitcher';
 import { SettingsModal } from './messenger/SettingsModal';
 import ProfileSystem from './profile/ProfileSystem';
-import { getAvatarUrl } from '../lib/avatar';
+import { getAvatarUrl, BLANK_DP } from '../lib/avatar';
 import { Avatar } from './ui/Avatar';
 import { RequestsSection } from './messenger/RequestsSection';
 import { ChatInfoPanel } from './messenger/ChatInfoPanel';
@@ -106,16 +107,28 @@ const LiveParticipantAvatar = ({
   innerRoundedClassName?: string
 }) => {
   const { db } = useAeirmist();
-  const [livePhoto, setLivePhoto] = useState<string>(fallbackPhoto);
+  const [livePhoto, setLivePhoto] = useState<string>(fallbackPhoto || BLANK_DP);
+  const [isDeleted, setIsDeleted] = useState(false);
 
   useEffect(() => {
     if (!db || !participantId) return;
     const unsub = onSnapshot(doc(db, 'profiles', participantId), (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
-        if (data.photoURL) {
+        if (data.isDeleted === true || data.status === 'deleted') {
+          setLivePhoto(BLANK_DP);
+          setIsDeleted(true);
+        } else if (data.photoURL) {
           setLivePhoto(getAvatarUrl(data.photoURL));
+          setIsDeleted(false);
+        } else {
+          setLivePhoto(fallbackPhoto || BLANK_DP);
+          setIsDeleted(false);
         }
+      } else {
+        // Document does not exist in Firestore (account deleted/purged)
+        setLivePhoto(BLANK_DP);
+        setIsDeleted(true);
       }
     }, (err) => {
       logger.warn("Error syncing participant live avatar:", err);
@@ -125,9 +138,9 @@ const LiveParticipantAvatar = ({
 
   return (
     <Avatar 
-      src={livePhoto} 
-      userId={participantId} 
-      showStoryRing={showStoryRing} 
+      src={isDeleted ? BLANK_DP : livePhoto} 
+      userId={isDeleted ? undefined : participantId} 
+      showStoryRing={!isDeleted && showStoryRing} 
       sizeClassName={sizeClassName}
       roundedClassName={roundedClassName}
       innerRoundedClassName={innerRoundedClassName}
@@ -138,8 +151,9 @@ const LiveParticipantAvatar = ({
 
 export const LiveParticipantName = ({ participantId, fallbackName, className = "", chatId }: { participantId: string, fallbackName: string, className?: string, chatId?: string }) => {
   const { db, profile } = useAeirmist();
-  const [profileName, setProfileName] = useState<string>(fallbackName);
+  const [profileName, setProfileName] = useState<string>(fallbackName || 'Aeirmist User');
   const [nickname, setNickname] = useState<string>('');
+  const [isDeleted, setIsDeleted] = useState(false);
 
   useEffect(() => {
     if (!db || !participantId) return;
@@ -148,9 +162,17 @@ export const LiveParticipantName = ({ participantId, fallbackName, className = "
     const unsubProfile = onSnapshot(doc(db, 'profiles', participantId), (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
-        setProfileName(data.displayName || data.username || fallbackName);
+        if (data.isDeleted === true || data.status === 'deleted') {
+          setProfileName('Aeirmist User');
+          setIsDeleted(true);
+        } else {
+          setProfileName(data.displayName || data.username || fallbackName || 'Aeirmist User');
+          setIsDeleted(false);
+        }
       } else {
-        setProfileName(fallbackName);
+        // Document does not exist (account deleted/purged)
+        setProfileName('Aeirmist User');
+        setIsDeleted(true);
       }
     });
 
@@ -175,7 +197,7 @@ export const LiveParticipantName = ({ participantId, fallbackName, className = "
     };
   }, [db, participantId, fallbackName, chatId]);
 
-  return <span className={className}>{nickname || profileName}</span>;
+  return <span className={className}>{isDeleted ? 'Aeirmist User' : (nickname || profileName)}</span>;
 };
 
 const LiveParticipantPresenceDot = ({ participantId }: { participantId: string }) => {
@@ -188,6 +210,10 @@ const LiveParticipantPresenceDot = ({ participantId }: { participantId: string }
     const unsub = onSnapshot(doc(db, 'profiles', participantId), (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
+        if (data.isDeleted === true || data.status === 'deleted') {
+          setShowPresence(false);
+          return;
+        }
         const isOnline = onlineUsers.has(participantId);
         const hasShowActivity = data.privacySettings?.showActivity !== false;
         const isOnlineStatusOn = data.messagingSettings?.onlineStatus !== false;
@@ -2085,6 +2111,7 @@ const ChatWindow = ({
   const scrollRef = useRef<HTMLDivElement>(null);
   const [failedMessages, setFailedMessages] = useState<Set<string>>(new Set());
   const [otherProfile, setOtherProfile] = useState<any>(null);
+  const [otherProfileLoaded, setOtherProfileLoaded] = useState(false);
 
   const { 
     db, 
@@ -2121,22 +2148,40 @@ const ChatWindow = ({
   const isSelfChat = chat.otherParticipantId === profile?.id;
   const isPrivateSpace = isMySpace || isSelfChat;
 
+  const isGroupChat = Boolean(chat.isGroup || (chat as any).type === 'group' || (chat.participants && chat.participants.length > 2));
+  const isOtherUnavailable = useMemo(() => {
+    if (isPrivateSpace || isGroupChat || !chat.otherParticipantId) return false;
+    if (!otherProfileLoaded) return false;
+    if (otherProfile === null) return true;
+    if (otherProfile.isDeleted === true || otherProfile.status === 'deleted') return true;
+    return false;
+  }, [isPrivateSpace, isGroupChat, chat.otherParticipantId, otherProfileLoaded, otherProfile]);
+
   useEffect(() => {
     const otherId = chat.otherParticipantId || chat.profileIds?.find((id: string) => id !== profile?.id);
     if (!db || !otherId) {
       setOtherProfile(null);
+      setOtherProfileLoaded(true);
       return;
     }
     
-    // Subscribe to other user's profile to check if they are private
+    // Subscribe to other user's profile to check if they are private or deleted
     const unsub = onSnapshot(doc(db, 'profiles', otherId), (snap) => {
+      setOtherProfileLoaded(true);
       if (snap.exists()) {
-        setOtherProfile({ id: snap.id, ...snap.data() });
+        const pData = snap.data();
+        if (pData.isDeleted === true || pData.status === 'deleted') {
+          setOtherProfile({ id: snap.id, ...pData, isDeleted: true });
+        } else {
+          setOtherProfile({ id: snap.id, ...pData });
+        }
       } else {
         setOtherProfile(null);
       }
     }, (err) => {
       logger.warn("Could not listen to other profile:", err);
+      setOtherProfileLoaded(true);
+      setOtherProfile(null);
     });
     
     return () => unsub();
@@ -2175,6 +2220,14 @@ const ChatWindow = ({
   };
 
   const handleVisitProfile = () => {
+    if (isOtherUnavailable) {
+      addToast?.({
+        title: 'Unavailable',
+        message: 'This person is unavailable on Aeirmist.',
+        type: 'info'
+      });
+      return;
+    }
     onUserClick?.({
       id: chat.otherParticipantId || chat.profileIds?.find(id => id !== profile?.id),
       displayName: chat.name,
@@ -2183,6 +2236,14 @@ const ChatWindow = ({
   };
 
   const handleCallClick = async (type: 'audio' | 'video') => {
+    if (isOtherUnavailable) {
+      addToast?.({
+        title: 'Call Unavailable',
+        message: 'This person is unavailable on Aeirmist.',
+        type: 'warning'
+      });
+      return;
+    }
     const micGranted = await requestPermission('microphone');
     if (!micGranted) return;
     
@@ -2619,25 +2680,25 @@ const ChatWindow = ({
           <button onClick={onBack} className="md:hidden p-1 -ml-1 text-white/60 hover:text-white transition-colors shrink-0">
             <ChevronLeft size={22} />
           </button>
-          <div className={`relative group flex-shrink-0 ${!isPrivateSpace ? 'cursor-pointer' : ''}`} onClick={!isPrivateSpace ? (chat?.isGroup ? toggleInfo : handleVisitProfile) : undefined}>
+          <div className={`relative group flex-shrink-0 ${!isPrivateSpace && !isOtherUnavailable ? 'cursor-pointer' : ''}`} onClick={!isPrivateSpace && !isOtherUnavailable ? (chat?.isGroup ? toggleInfo : handleVisitProfile) : undefined}>
             <Avatar
-              src={isPrivateSpace ? profile?.photoURL : (chat?.isGroup ? chat.photo : (otherProfile?.photoURL || chat.photo))}
-              alt={isPrivateSpace ? "My Space" : (chat?.isGroup ? chat.name : (otherProfile?.displayName || chat.name))}
+              src={isPrivateSpace ? profile?.photoURL : (chat?.isGroup ? chat.photo : (isOtherUnavailable ? BLANK_DP : (otherProfile?.photoURL || chat.photo)))}
+              alt={isPrivateSpace ? "My Space" : (chat?.isGroup ? chat.name : (isOtherUnavailable ? "Aeirmist User" : (otherProfile?.displayName || chat.name)))}
               sizeClassName="w-10 h-10 md:w-12 md:h-12"
               roundedClassName="rounded-[14px] md:rounded-2xl"
               innerRoundedClassName="rounded-[12px] md:rounded-[14px]"
-              showStoryRing={!isPrivateSpace && !chat?.isGroup}
-              userId={!isPrivateSpace && !chat?.isGroup ? chat.otherParticipantId : undefined}
+              showStoryRing={!isPrivateSpace && !chat?.isGroup && !isOtherUnavailable}
+              userId={!isPrivateSpace && !chat?.isGroup && !isOtherUnavailable ? chat.otherParticipantId : undefined}
               className="group-hover:border-aeirmist-cyan transition-colors"
             />
-            {!isPrivateSpace && !chat?.isGroup && onlineUsers.has(chat.otherParticipantId || '') && showTheirPresence && (
+            {!isPrivateSpace && !chat?.isGroup && !isOtherUnavailable && onlineUsers.has(chat.otherParticipantId || '') && showTheirPresence && (
               <div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-aeirmist-lime rounded-full border-2 border-aeirmist-bg z-10" />
             )}
           </div>
-          <div className={`group min-w-0 flex-1 ${!isPrivateSpace ? 'cursor-pointer' : ''}`} onClick={!isPrivateSpace ? (chat?.isGroup ? toggleInfo : handleVisitProfile) : undefined}>
+          <div className={`group min-w-0 flex-1 ${!isPrivateSpace && !isOtherUnavailable ? 'cursor-pointer' : ''}`} onClick={!isPrivateSpace && !isOtherUnavailable ? (chat?.isGroup ? toggleInfo : handleVisitProfile) : undefined}>
             <div className="flex items-center gap-1.5 min-w-0">
               <h3 className={`font-semibold text-base md:text-lg tracking-tight group-hover:text-aeirmist-cyan transition-colors truncate ${isVaultMode ? 'text-[#e2afff]' : ''}`}>
-                {isMySpace ? 'My Space' : (isSelfChat ? 'Note to self' : (chat?.isGroup ? chat.name : <LiveParticipantName participantId={chat.otherParticipantId || ''} fallbackName={chat.name || ''} chatId={chat.id} />))}
+                {isMySpace ? 'My Space' : (isSelfChat ? 'Note to self' : (chat?.isGroup ? chat.name : (isOtherUnavailable ? 'Aeirmist User' : <LiveParticipantName participantId={chat.otherParticipantId || ''} fallbackName={chat.name || ''} chatId={chat.id} />)))}
               </h3>
               {isPrivateSpace && <Lock size={12} className="text-white/40 shrink-0" />}
               {isVaultMode && (
@@ -2649,7 +2710,10 @@ const ChatWindow = ({
             {isPrivateSpace && (
               <p className="text-[9px] text-white/40 leading-none mt-0.5 truncate">{isMySpace ? '🔒 Private Workspace' : 'Private Workspace'}</p>
             )}
-            {!isPrivateSpace && showTheirPresence && (
+            {isOtherUnavailable && (
+              <p className="text-[10px] text-white/40 leading-none mt-0.5 truncate font-medium">Unavailable on Aeirmist</p>
+            )}
+            {!isPrivateSpace && !isOtherUnavailable && showTheirPresence && (
               remoteTyping ? (
                 <div className="flex items-center gap-1 mt-0.5">
                   <span className={`text-[8px] uppercase tracking-widest font-black italic ${isVaultMode ? 'text-[#c77dff]' : 'text-aeirmist-cyan'}`}>Typing...</span>
@@ -2669,7 +2733,7 @@ const ChatWindow = ({
           </div>
         </div>
         <div className="flex items-center gap-1 md:gap-4 shrink-0">
-          {!isPrivateSpace && (
+          {!isPrivateSpace && !isOtherUnavailable && (
             <>
               <button 
                 onClick={() => handleCallClick('audio')}
@@ -2747,6 +2811,18 @@ const ChatWindow = ({
           <p className="text-[10px] text-white/20 uppercase tracking-[0.3em] font-bold">Signal Encrypted via Aeirmist Core</p>
           <p className="text-[8px] text-white/10 mt-2 px-12">Messages are cryptographically signed and stored in your local identity vault.</p>
         </div>
+
+        {isOtherUnavailable && (
+          <div className="mx-auto my-6 max-w-sm px-6 py-5 bg-white/[0.03] border border-white/10 rounded-2xl text-center backdrop-blur-xl shadow-lg animate-fade-in">
+            <div className="w-10 h-10 rounded-full bg-white/5 mx-auto flex items-center justify-center mb-2.5 text-white/40">
+              <UserX size={20} />
+            </div>
+            <h4 className="text-sm font-semibold text-white/90">This person is unavailable on Aeirmist</h4>
+            <p className="text-[11px] text-white/40 mt-1 leading-relaxed">
+              This account has been deleted or is unavailable. You can still review your existing message history.
+            </p>
+          </div>
+        )}
 
       <div className="flex flex-col gap-1.5 px-4 md:px-6 lg:px-8 w-full min-w-0 overflow-x-hidden">
           {displayedMessages.filter(msg => {
@@ -2937,6 +3013,16 @@ const ChatWindow = ({
                       Block
                     </button>
                   </div>
+                </div>
+              );
+            }
+
+            if (isOtherUnavailable) {
+              return (
+                <div className="w-full py-4 px-6 bg-white/[0.02] border border-white/10 rounded-2xl md:rounded-[2rem] text-center backdrop-blur-xl select-none">
+                  <span className="text-white/40 text-xs font-medium tracking-wide">
+                    This person is unavailable on Aeirmist.
+                  </span>
                 </div>
               );
             }

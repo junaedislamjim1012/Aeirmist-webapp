@@ -19,7 +19,7 @@ import {
 import { formatAeirmistTimestamp } from '../../lib/date';
 import { useAeirmist } from '../../context/AeirmistContext';
 import { useReport } from '../reporting/ReportContext';
-import { getAvatarUrl } from '../../lib/avatar';
+import { getAvatarUrl, BLANK_DP } from '../../lib/avatar';
 import { doc, updateDoc, increment, getDoc, collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, deleteDoc, getDocs, where } from 'firebase/firestore';
 import { Collage, MediaItem } from './Collage';
 import { PostMenu } from '../PostMenu';
@@ -128,13 +128,54 @@ export const PremiumPostCard = React.memo<PostCardProps>(({ post, onUserClick, o
   const type = (post.mediaItems?.length || 0) > 1 ? 'collage' : (post.mediaItems?.length === 1 ? (post.mediaType || 'photo') : 'text') as any;
   usePostAnalytics({ postId: post.id, type });
 
+  const isDeletedAuthor = Boolean(
+    (post as any).isDeletedAuthor || 
+    post.userName === 'Aeirmist User' || 
+    post.authorName === 'Aeirmist User' || 
+    (post as any).author?.displayName === 'Aeirmist User' || 
+    !postAuthorId
+  );
+
   const initialAuthor = {
-    name: post.userName || post.authorName || (post as any).author?.displayName || 'Loading...',
-    avatar: getAvatarUrl(isOwnPost ? (localAvatarURL || profile?.photoURL || post.userAvatar || post.authorAvatar || (post as any).author?.photoURL) : (post.userAvatar || post.authorAvatar || (post as any).author?.photoURL)),
-    isVerified: (post as any).author?.isVerified || false
+    name: isDeletedAuthor ? 'Aeirmist User' : (post.userName || post.authorName || (post as any).author?.displayName || 'Aeirmist User'),
+    avatar: isDeletedAuthor ? BLANK_DP : getAvatarUrl(isOwnPost ? (localAvatarURL || profile?.photoURL || post.userAvatar || post.authorAvatar || (post as any).author?.photoURL) : (post.userAvatar || post.authorAvatar || (post as any).author?.photoURL)),
+    isVerified: isDeletedAuthor ? false : ((post as any).author?.isVerified || false)
   };
 
   const [author, setAuthor] = useState<any>(initialAuthor);
+
+  // Live profile status check for post author
+  useEffect(() => {
+    if (!db || !postAuthorId || isDeletedAuthor) return;
+    const unsub = onSnapshot(doc(db, 'profiles', postAuthorId), (snap) => {
+      if (snap.exists()) {
+        const pData = snap.data();
+        if (pData.isDeleted === true || pData.status === 'deleted') {
+          setAuthor({
+            name: 'Aeirmist User',
+            avatar: BLANK_DP,
+            isVerified: false
+          });
+        } else {
+          setAuthor({
+            name: pData.displayName || pData.username || 'Aeirmist User',
+            avatar: getAvatarUrl(pData.photoURL),
+            isVerified: pData.isVerified || false
+          });
+        }
+      } else {
+        setAuthor({
+          name: 'Aeirmist User',
+          avatar: BLANK_DP,
+          isVerified: false
+        });
+      }
+    }, (err) => {
+      // Ignored
+    });
+    return () => unsub();
+  }, [db, postAuthorId, isDeletedAuthor]);
+
   const [liveComments, setLiveComments] = useState<any[]>([]);
   const [commentText, setCommentText] = useState('');
   const [submittingComment, setSubmittingComment] = useState(false);
@@ -1341,24 +1382,34 @@ export const PremiumPostCard = React.memo<PostCardProps>(({ post, onUserClick, o
             type="button"
             role="link"
             aria-label={`View profile of ${author.name}`}
-            className="relative group/avatar cursor-pointer shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-aeirmist-cyan rounded-xl"
+            className={`relative group/avatar ${isDeletedAuthor || author.name === 'Aeirmist User' ? 'cursor-default' : 'cursor-pointer'} shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-aeirmist-cyan rounded-xl`}
             onClick={() => {
+              if (isDeletedAuthor || author.name === 'Aeirmist User') {
+                addToast?.({ title: 'Unavailable', message: 'This account is unavailable on Aeirmist.', type: 'info' });
+                return;
+              }
               postAnalytics.trackProfileClick(post.id);
               onUserClick?.({ id: postAuthorId, displayName: author.name, photoURL: author.avatar });
             }}
           >
             <img 
-              src={author.avatar} 
+              src={author.avatar || BLANK_DP} 
               alt={author.name} 
               loading="lazy" 
               referrerPolicy="no-referrer" 
               className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl object-cover bg-neutral-900 border border-white/10 shadow-sm transition-transform duration-200 group-hover/avatar:scale-105" 
             />
             
-            <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-aeirmist-cyan rounded-full border-2 border-[#000d1c] shadow-[0_0_8px_#00f2ff]" />
+            {!(isDeletedAuthor || author.name === 'Aeirmist User') && (
+              <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-aeirmist-cyan rounded-full border-2 border-[#000d1c] shadow-[0_0_8px_#00f2ff]" />
+            )}
           </button>
           
-          <div className="cursor-pointer text-left min-w-0" onClick={() => {
+          <div className={`${isDeletedAuthor || author.name === 'Aeirmist User' ? 'cursor-default' : 'cursor-pointer'} text-left min-w-0`} onClick={() => {
+            if (isDeletedAuthor || author.name === 'Aeirmist User') {
+              addToast?.({ title: 'Unavailable', message: 'This account is unavailable on Aeirmist.', type: 'info' });
+              return;
+            }
             postAnalytics.trackProfileClick(post.id);
             onUserClick?.({ id: postAuthorId, displayName: author.name, photoURL: author.avatar });
           }}>

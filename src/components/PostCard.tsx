@@ -43,8 +43,15 @@ export const PostCard: React.FC<PostProps> = React.memo(({ post, onUserClick }) 
   const [currentIdx, setCurrentIdx] = useState(0);
 
   const postAuthorId = post.authorId || (post as any).userId || post.authorUid;
+  const isDeletedAuthor = Boolean(
+    (post as any).isDeletedAuthor || 
+    post.authorName === 'Aeirmist User' || 
+    (post as any).userName === 'Aeirmist User' || 
+    !postAuthorId
+  );
+  const displayAuthorName = isDeletedAuthor ? 'Aeirmist User' : (post.authorName || 'Aeirmist User');
   const isOwnPost = Boolean(profile?.id && postAuthorId && (postAuthorId === profile.id || postAuthorId === profile.uid));
-  const authorPhoto = isOwnPost ? (localAvatarURL || profile.photoURL || post.authorPhoto) : post.authorPhoto;
+  const authorPhoto = isDeletedAuthor ? BLANK_DP : (isOwnPost ? (localAvatarURL || profile.photoURL || post.authorPhoto) : post.authorPhoto);
 
   const images = post.mediaUrls && post.mediaUrls.length > 0 
     ? post.mediaUrls 
@@ -57,12 +64,16 @@ export const PostCard: React.FC<PostProps> = React.memo(({ post, onUserClick }) 
   usePostAnalytics({ postId: post.id, type });
 
   const handleAuthorClick = () => {
+    if (isDeletedAuthor) {
+      addToast?.({ title: 'Unavailable', message: 'This account is unavailable on Aeirmist.', type: 'info' });
+      return;
+    }
     postAnalytics.trackProfileClick(post.id);
     onUserClick?.({
       id: post.authorId,
-      displayName: post.authorName,
-      photoURL: post.authorPhoto,
-      username: post.authorName.toLowerCase().replace(' ', '_')
+      displayName: displayAuthorName,
+      photoURL: authorPhoto,
+      username: displayAuthorName.toLowerCase().replace(' ', '_')
     });
   };
 
@@ -115,8 +126,8 @@ export const PostCard: React.FC<PostProps> = React.memo(({ post, onUserClick }) 
               onClick={handleAuthorClick}
             >
               <img 
-                src={getAvatarUrl(authorPhoto, post.authorName)} 
-                alt={post.authorName} 
+                src={getAvatarUrl(authorPhoto, displayAuthorName)} 
+                alt={displayAuthorName} 
                 className="w-full h-full object-cover bg-neutral-900" 
                 referrerPolicy="no-referrer" 
                 onError={(e) => {
@@ -125,7 +136,7 @@ export const PostCard: React.FC<PostProps> = React.memo(({ post, onUserClick }) 
               />
             </div>
             <div className="cursor-pointer" onClick={handleAuthorClick}>
-              <h3 className="font-bold text-sm tracking-tight">{post.authorName}</h3>
+              <h3 className="font-bold text-sm tracking-tight">{displayAuthorName}</h3>
               {post.location ? (
                 <p className="text-[9px] text-aeirmist-cyan flex items-center gap-1 font-black uppercase tracking-widest">
                    <MapPin size={8} className="fill-current" /> {post.location}

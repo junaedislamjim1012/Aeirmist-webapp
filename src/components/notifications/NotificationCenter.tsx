@@ -268,15 +268,24 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
           
           if (isMessage) return null;
 
+          const isSecurityAlert = String(d.type || '').toLowerCase().includes('security') || 
+                                  String(d.type || '').toLowerCase().includes('device') ||
+                                  String(d.type || '').toLowerCase().includes('login');
+
           return {
             id: doc.id,
             ...d,
             isRead: d.read,
             timestampMs: d.createdAt?.toMillis() || Date.now(),
-            user: {
-              name: d.user?.name || d.fromUser?.displayName || 'Aeirmist Citizen',
-              avatar: getAvatarUrl(d.user?.avatar || d.fromUser?.photoURL, doc.id),
-              username: d.user?.username || (d.fromUser?.displayName ? d.fromUser.displayName.toLowerCase().replace(/\s+/g, '') : 'aeirmist_network'),
+            user: isSecurityAlert ? {
+              name: 'Security Alert',
+              avatar: null,
+              username: 'security',
+              isVerified: true
+            } : {
+              name: d.user?.name || d.fromUser?.displayName || d.metadata?.senderName || 'Aeirmist User',
+              avatar: d.user?.avatar || d.fromUser?.photoURL || d.metadata?.senderPhoto || null,
+              username: d.user?.username || (d.fromUser?.displayName ? d.fromUser.displayName.toLowerCase().replace(/\s+/g, '') : (d.metadata?.senderUsername || 'user')),
               isVerified: d.user?.isVerified || false
             }
           };

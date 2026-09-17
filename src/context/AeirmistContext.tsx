@@ -696,7 +696,17 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [stories, setStories] = useState<any[]>([]);
   const [searchCache, setSearchCache] = useState<Record<string, { results: any, timestamp: number }>>({});
 
-  const addToast = useCallback((toast: { title: string, message: string, type: 'info' | 'success' | 'warning', icon?: any }) => {
+  const addToast = useCallback((toast: { 
+    title: string; 
+    message: string; 
+    type: 'info' | 'success' | 'warning'; 
+    icon?: any;
+    avatar?: string | null;
+    image?: string | null;
+    actionType?: string;
+    timeAgo?: string;
+    onClick?: () => void;
+  }) => {
     const id = Math.random().toString(36).substr(2, 9);
     setToasts(prev => [...prev, { id, ...toast }]);
     setTimeout(() => {
@@ -728,27 +738,33 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   }, [isSafeMode]);
 
   const createNotification = useCallback(async (targetId: string, type: any, message: string, metadata: any = {}) => {
-    if (!db || !profile || !canWrite(`notify_${targetId}_${type}`, 5000)) return; 
+    if (!db || !profile) return; 
     try {
       await addDoc(collection(db, 'notifications'), {
         userId: targetId,
         fromUserId: profile.id,
+        fromUserUid: user?.uid || profile.id,
         user: {
-          name: profile.displayName,
-          avatar: profile.photoURL,
-          username: profile.username,
+          name: profile.displayName || profile.username || 'User',
+          avatar: profile.photoURL || '',
+          username: profile.username || 'user',
           isVerified: profile.isVerified || false
         },
         type,
         message,
-        metadata,
+        metadata: {
+          ...metadata,
+          senderPhoto: profile.photoURL || '',
+          senderName: profile.displayName || profile.username || 'User',
+          senderUsername: profile.username || ''
+        },
         read: false,
         createdAt: serverTimestamp()
       });
     } catch (e) {
       logger.warn("Notification creation failed", e);
     }
-  }, [db, profile, canWrite]);
+  }, [db, profile, user?.uid]);
 
   // Set up global Safe Mode / Sandbox trigger for Quota Exceeded errors
   useEffect(() => {

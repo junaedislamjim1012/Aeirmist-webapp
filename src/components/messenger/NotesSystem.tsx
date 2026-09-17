@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   Plus, Music, Users, Shield, X, Globe, Camera, Loader2, Trash2, Heart, Eye, 
   MessageCircle, Volume2, Search, CheckCircle2, MoreHorizontal, UserPlus, UserMinus,
-  EyeOff, ShieldCheck, Check, Sparkles, Disc, Play, Pause, Send, ExternalLink, Sliders, Radio
+  EyeOff, ShieldCheck, Check, Sparkles, Disc, Play, Pause, Send, ExternalLink, Sliders, Radio, Share2
 } from 'lucide-react';
 import { doc, deleteDoc, updateDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
 import { formatAeirmistTimestamp, formatActiveStatus } from '../../lib/date';
@@ -776,20 +776,20 @@ export const NotesSystem = ({ chats, onChatSelect, onReplyNote }: { chats: any[]
               initial={{ scale: 0.95, y: 30, opacity: 0 }}
               animate={{ scale: 1, y: 0, opacity: 1 }}
               exit={{ scale: 0.95, y: 30, opacity: 0 }}
-              className="relative w-full max-w-sm bg-[#0a0a0e] border border-white/10 p-8 rounded-[2.5rem] shadow-[0_32px_80px_rgba(0,0,0,0.8)] overflow-hidden"
+              className="relative w-full max-w-sm bg-[#18181b] border border-white/10 p-6 rounded-3xl shadow-2xl overflow-hidden"
             >
               {/* Header */}
-              <div className="flex items-center justify-between mb-8">
-                <button onClick={() => setIsCreating(false)} className="w-10 h-10 rounded-2xl bg-white/5 flex items-center justify-center text-white/40 hover:text-white transition-all">
-                  <X size={18} />
+              <div className="flex items-center justify-between mb-6">
+                <button onClick={() => setIsCreating(false)} className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center text-white/50 hover:text-white transition-all">
+                  <X size={16} />
                 </button>
-                <h3 className="text-[11px] font-black uppercase tracking-[0.4em] text-white/20">New Note</h3>
-                <div className="w-10 h-10" /> {/* Spacer */}
+                <h3 className="text-sm font-semibold text-white">New note</h3>
+                <div className="w-8 h-8" />
               </div>
 
               {/* Profile & Input Area */}
-              <div className="flex flex-col items-center mb-6">
-                <div className="relative mb-6">
+              <div className="flex flex-col items-center mb-5">
+                <div className="relative mb-4">
                   {/* Live Avatar Bubble Preview */}
                   <AnimatePresence>
                     {(noteContent.trim() || selectedMusic) && (
@@ -797,57 +797,54 @@ export const NotesSystem = ({ chats, onChatSelect, onReplyNote }: { chats: any[]
                         initial={{ scale: 0.8, opacity: 0, y: 10 }}
                         animate={{ scale: 1, opacity: 1, y: 0 }}
                         exit={{ scale: 0.8, opacity: 0, y: 10 }}
-                        className="absolute -top-10 left-1/2 -translate-x-1/2 bg-[#121217] border border-aeirmist-cyan/50 px-3 py-1.5 rounded-2xl text-center shadow-[0_8px_25px_rgba(0,242,255,0.25)] z-20 flex items-center justify-center gap-1.5 whitespace-nowrap max-w-[160px]"
+                        className="absolute -top-9 left-1/2 -translate-x-1/2 bg-neutral-800 border border-white/15 px-3 py-1.5 rounded-2xl text-center shadow-lg z-20 flex items-center justify-center gap-1.5 whitespace-nowrap max-w-[170px]"
                       >
                         {selectedMusic && musicStyle === 'disc' && (selectedMusic.coverArtURL || selectedMusic.albumArtUrl) ? (
-                          <div className={`w-4 h-4 rounded-full overflow-hidden shrink-0 border border-aeirmist-cyan ${isAuditioning ? 'animate-spin [animation-duration:3s]' : ''}`}>
+                          <div className={`w-4 h-4 rounded-full overflow-hidden shrink-0 border border-white/20 ${isAuditioning ? 'animate-spin [animation-duration:3s]' : ''}`}>
                             <img src={selectedMusic.coverArtURL || selectedMusic.albumArtUrl} alt="" className="w-full h-full object-cover" />
                           </div>
                         ) : selectedMusic ? (
-                          <Disc size={12} className={`text-aeirmist-cyan shrink-0 ${isAuditioning ? 'animate-spin [animation-duration:3s]' : ''}`} />
+                          <Disc size={12} className={`text-neutral-300 shrink-0 ${isAuditioning ? 'animate-spin [animation-duration:3s]' : ''}`} />
                         ) : null}
 
                         {selectedMusic && musicStyle === 'lyrics' && musicLyrics.trim() ? (
-                          <span className="text-[10px] text-aeirmist-cyan font-bold italic truncate max-w-[110px]">
+                          <span className="text-xs text-cyan-400 font-medium italic truncate max-w-[120px]">
                             "{musicLyrics}"
                           </span>
                         ) : (
-                          <span className="text-[10px] text-white font-bold truncate max-w-[110px]">
-                            {noteContent || selectedMusic?.title || 'Frequency'}
+                          <span className="text-xs text-white font-medium truncate max-w-[120px]">
+                            {noteContent || selectedMusic?.title || 'Note'}
                           </span>
                         )}
-                        <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-[#121217] border-r border-b border-aeirmist-cyan/50 rotate-45" />
+                        <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-neutral-800 border-r border-b border-white/15 rotate-45" />
                       </motion.div>
                     )}
                   </AnimatePresence>
 
-                  <div className="w-20 h-20 rounded-[2rem] border-2 border-white/5 p-1 relative z-10 bg-black">
-                     <img src={getAvatarUrl(profile?.photoURL)} alt="" className="w-full h-full rounded-[1.8rem] object-cover" />
+                  <div className="w-16 h-16 rounded-full ring-2 ring-white/10 overflow-hidden bg-neutral-900 mx-auto shadow-md">
+                     <img src={getAvatarUrl(profile?.photoURL)} alt="" className="w-full h-full object-cover" />
                   </div>
-                  {/* Floating Bubbles */}
-                  <div className="absolute -top-3 -right-2 w-8 h-8 rounded-full bg-aeirmist-cyan/20 blur-md animate-pulse" />
-                  <div className="absolute -bottom-2 -left-3 w-6 h-6 rounded-full bg-aeirmist-magenta/20 blur-md animate-pulse [animation-delay:1s]" />
                 </div>
                 
-                <div className="w-full relative group">
+                <div className="w-full relative group mt-2">
                   <textarea 
                     ref={noteTextareaRef}
                     rows={1}
                     value={noteContent}
                     onChange={(e) => setNoteContent(e.target.value)}
-                    placeholder="Share a frequency..."
+                    placeholder="Share a thought..."
                     maxLength={60}
-                    className="w-full bg-white/[0.03] border-2 border-white/[0.08] focus:border-aeirmist-cyan/50 rounded-2xl px-5 py-3 pr-14 text-sm text-white placeholder:text-white/20 outline-none focus:bg-white/[0.06] transition-all resize-none min-h-[48px] max-h-[120px] text-center font-bold tracking-tight leading-normal overflow-hidden"
+                    className="w-full bg-neutral-800/60 border border-white/10 focus:border-white/30 rounded-2xl px-4 py-3 pr-12 text-sm text-white placeholder:text-neutral-500 outline-none transition-all resize-none min-h-[46px] max-h-[120px] text-center font-medium leading-normal overflow-hidden"
                   />
-                  <div className="absolute bottom-3 right-4 text-[8px] font-black tracking-widest text-white/30 uppercase pointer-events-none">
-                    {noteContent.length} / 60
+                  <div className="absolute bottom-2.5 right-3 text-[10px] font-normal text-neutral-500 pointer-events-none">
+                    {noteContent.length}/60
                   </div>
                 </div>
               </div>
 
               {/* Instagram-Style Music Controller Card */}
               {selectedMusic && (
-                <div className="mb-6 p-4 rounded-3xl bg-white/[0.03] border border-aeirmist-cyan/30 shadow-[0_8px_30px_rgba(0,242,255,0.08)] space-y-3.5">
+                <div className="mb-5 p-3.5 rounded-2xl bg-neutral-800/70 border border-white/10 space-y-3">
                   {/* Music Track Header */}
                   <div className="flex items-center gap-3">
                     <div className="relative w-12 h-12 rounded-2xl overflow-hidden shrink-0 bg-white/5 border border-white/10 shadow-md">
@@ -998,87 +995,85 @@ export const NotesSystem = ({ chats, onChatSelect, onReplyNote }: { chats: any[]
               )}
 
               {/* Quick Actions (Music, Camera) */}
-              <div className="grid grid-cols-2 gap-3 mb-8">
+              <div className="grid grid-cols-2 gap-2.5 mb-5">
                 <button 
                   onClick={() => setIsMusicModalOpen(true)}
-                  className={`flex items-center justify-center gap-2 py-3 rounded-2xl transition-all border ${
+                  className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl transition-all border text-xs font-medium ${
                     selectedMusic 
-                      ? 'bg-aeirmist-cyan/10 border-aeirmist-cyan text-aeirmist-cyan' 
-                      : 'bg-white/5 border-white/5 text-white/40 hover:bg-white/10 hover:border-white/10'
+                      ? 'bg-white/10 border-white/30 text-white' 
+                      : 'bg-neutral-800/60 border-white/5 text-neutral-400 hover:text-white hover:bg-neutral-800'
                   }`}
                 >
                   <Music size={14} className={selectedMusic ? 'animate-spin-slow' : ''} />
-                  <span className="text-[9px] font-black uppercase tracking-wider truncate max-w-[100px]">
+                  <span className="truncate max-w-[100px]">
                     {selectedMusic ? selectedMusic.title : 'Add Music'}
                   </span>
                 </button>
                 <button 
                   onClick={openCamera}
-                  className={`flex items-center justify-center gap-2 py-3 rounded-2xl transition-all border ${
+                  className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl transition-all border text-xs font-medium ${
                     media 
-                      ? 'bg-aeirmist-magenta/10 border-aeirmist-magenta text-aeirmist-magenta' 
-                      : 'bg-white/5 border-white/5 text-white/40 hover:bg-white/10 hover:border-white/10'
+                      ? 'bg-pink-500/15 border-pink-500/30 text-pink-400' 
+                      : 'bg-neutral-800/60 border-white/5 text-neutral-400 hover:text-white hover:bg-neutral-800'
                   }`}
                 >
                   <Camera size={14} />
-                  <span className="text-[9px] font-black uppercase tracking-wider">
-                    {media ? 'Media Added' : 'Capture'}
+                  <span>
+                    {media ? 'Photo Added' : 'Camera'}
                   </span>
                 </button>
               </div>
 
-              {/* Audience Selector & Privacy Options */}
-              <div className="space-y-3 mb-8">
-                <div className="flex items-center justify-between px-1">
-                  <span className="text-[8px] font-black uppercase tracking-[0.3em] text-white/20">Who can see this?</span>
+              {/* Audience Selector */}
+              <div className="space-y-2.5 mb-6">
+                <div className="flex items-center justify-between px-0.5">
+                  <span className="text-xs font-medium text-neutral-400">Audience</span>
                   {audience === 'closeFriends' && (
                     <button 
                       onClick={() => setIsCloseFriendsModalOpen(true)}
-                      className="text-[9px] font-bold text-aeirmist-cyan hover:underline flex items-center gap-1 transition-all"
+                      className="text-xs font-medium text-cyan-400 hover:underline flex items-center gap-1"
                     >
-                      <UserPlus size={10} />
-                      <span>Edit List ({closeFriendsList.length})</span>
+                      <UserPlus size={11} />
+                      <span>Edit list ({closeFriendsList.length})</span>
                     </button>
                   )}
                 </div>
 
-                <div className="flex gap-2 p-1.5 bg-white/5 rounded-2xl border border-white/5">
+                <div className="flex gap-1.5 p-1 bg-neutral-800/60 rounded-xl border border-white/5">
                   {(['public', 'followers', 'closeFriends'] as const).map(aud => (
                     <button 
                       key={aud}
-                      onClick={() => {
-                        setAudience(aud);
-                      }}
-                      className={`flex-1 py-2 rounded-xl text-[8px] font-black uppercase tracking-widest transition-all flex flex-col items-center gap-1 border ${
+                      onClick={() => setAudience(aud)}
+                      className={`flex-1 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center justify-center gap-1.5 ${
                         audience === aud 
-                          ? 'bg-white text-black border-white shadow-[0_8px_20px_rgba(255,255,255,0.1)]' 
-                          : 'text-white/30 border-transparent hover:text-white'
+                          ? 'bg-white text-black font-semibold shadow-sm' 
+                          : 'text-neutral-400 hover:text-white'
                       }`}
                     >
-                      {aud === 'public' && <Globe size={10} />}
-                      {aud === 'followers' && <Users size={10} />}
-                      {aud === 'closeFriends' && <Shield size={10} />}
-                      {aud === 'public' ? 'Public' : aud === 'followers' ? 'Network' : 'Close'}
+                      {aud === 'public' && <Globe size={12} />}
+                      {aud === 'followers' && <Users size={12} />}
+                      {aud === 'closeFriends' && <Shield size={12} />}
+                      <span>{aud === 'public' ? 'Public' : aud === 'followers' ? 'Followers' : 'Close Friends'}</span>
                     </button>
                   ))}
                 </div>
 
-                {/* Sub-actions for Close List & Hide Note */}
-                <div className="grid grid-cols-2 gap-2 pt-1">
+                {/* Sub-actions */}
+                <div className="grid grid-cols-2 gap-2 pt-0.5">
                   <button 
                     onClick={() => setIsCloseFriendsModalOpen(true)}
-                    className="flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-white/[0.04] border border-white/10 hover:bg-white/[0.08] transition-all text-[9px] font-bold text-white/70 hover:text-white"
+                    className="flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl bg-neutral-800/40 border border-white/5 hover:bg-neutral-800 transition-all text-xs font-medium text-neutral-300 hover:text-white"
                   >
-                    <Shield className="text-aeirmist-cyan" size={12} />
-                    <span>Close List ({closeFriendsList.length})</span>
+                    <Shield className="text-cyan-400" size={12} />
+                    <span>Close Friends ({closeFriendsList.length})</span>
                   </button>
 
                   <button 
                     onClick={() => setIsHideNotesModalOpen(true)}
-                    className={`flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl border transition-all text-[9px] font-bold ${
+                    className={`flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl border transition-all text-xs font-medium ${
                       hiddenFromUserIds.length > 0
-                        ? 'bg-aeirmist-magenta/15 border-aeirmist-magenta/40 text-aeirmist-magenta'
-                        : 'bg-white/[0.04] border-white/10 text-white/70 hover:text-white hover:bg-white/[0.08]'
+                        ? 'bg-pink-500/15 border-pink-500/30 text-pink-400'
+                        : 'bg-neutral-800/40 border-white/5 text-neutral-300 hover:text-white hover:bg-neutral-800'
                     }`}
                   >
                     <EyeOff size={12} />
@@ -1090,7 +1085,7 @@ export const NotesSystem = ({ chats, onChatSelect, onReplyNote }: { chats: any[]
               <button 
                 onClick={handleCreate}
                 disabled={(!noteContent.trim() && !selectedMusic && !media) || isUploading}
-                className="w-full py-5 rounded-[1.8rem] bg-gradient-to-tr from-aeirmist-cyan to-aeirmist-magenta text-white font-black uppercase tracking-[0.3em] text-[10px] shadow-2xl hover:scale-[1.02] active:scale-95 disabled:opacity-30 disabled:grayscale transition-all flex items-center justify-center gap-2"
+                className="w-full py-3 rounded-xl bg-white hover:bg-neutral-200 text-black font-semibold text-sm shadow-md active:scale-98 disabled:opacity-30 disabled:grayscale transition-all flex items-center justify-center gap-2"
               >
                 {isUploading ? <Loader2 size={16} className="animate-spin" /> : 'Share Note'}
               </button>
@@ -1099,7 +1094,7 @@ export const NotesSystem = ({ chats, onChatSelect, onReplyNote }: { chats: any[]
         )}
       </AnimatePresence>
 
-      {/* Selected Friend Note Modal */}
+      {/* Friend Note View Modal */}
       <AnimatePresence>
         {selectedFriendNote && (
           <div className="fixed inset-0 z-[400] flex items-center justify-center p-4">
@@ -1107,132 +1102,130 @@ export const NotesSystem = ({ chats, onChatSelect, onReplyNote }: { chats: any[]
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="absolute inset-0 bg-black/80 backdrop-blur-xl"
+              className="absolute inset-0 bg-black/75 backdrop-blur-md"
               onClick={() => setSelectedFriendNote(null)}
             />
             <motion.div 
-              initial={{ scale: 0.9, opacity: 0, y: 20 }}
-              animate={{ scale: 1, opacity: 1, y: 0, transition: { type: 'spring', stiffness: 300, damping: 25 } }}
-              exit={{ scale: 0.9, opacity: 0, y: 20 }}
-              className="relative w-full max-w-sm bg-[#0c0c0f] border border-white/10 rounded-[2.5rem] shadow-[0_40px_100px_rgba(0,0,0,0.9)] p-8 flex flex-col items-center overflow-hidden"
+              initial={{ scale: 0.95, opacity: 0, y: 15 }}
+              animate={{ scale: 1, opacity: 1, y: 0, transition: { duration: 0.2 } }}
+              exit={{ scale: 0.95, opacity: 0, y: 15 }}
+              className="relative w-full max-w-[360px] bg-[#18181b] border border-white/10 rounded-3xl shadow-2xl p-6 flex flex-col items-center"
             >
               {/* Close Button */}
-              <button onClick={() => setSelectedFriendNote(null)} className="absolute top-6 right-6 text-white/30 hover:text-white transition-colors p-2">
-                <X size={20} />
+              <button 
+                onClick={() => setSelectedFriendNote(null)} 
+                className="absolute top-4 right-4 text-white/40 hover:text-white transition-colors p-1.5 rounded-full hover:bg-white/10"
+              >
+                <X size={18} />
               </button>
 
               {/* Profile & Name */}
-              <div className="flex flex-col items-center mb-8">
-                <div className="w-24 h-24 rounded-[2.5rem] border-2 border-aeirmist-magenta p-1.5 mb-4 group cursor-pointer relative">
-                  <div className="w-full h-full rounded-[2.2rem] overflow-hidden bg-black">
-                    <img src={getAvatarUrl(selectedFriendNote.chat.photo)} alt="" className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
-                  </div>
-                  {onlineUsers.has(selectedFriendNote.note.authorId) && (
-                    <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-aeirmist-lime rounded-xl border-[4px] border-[#0c0c0f] shadow-lg" />
-                  )}
-                </div>
-                <h2 className="text-xl font-display font-black text-white tracking-tight">{selectedFriendNote.chat.name || 'User'}</h2>
-                <div className="flex items-center gap-2 mt-1">
-                   <span className="text-[9px] text-white/30 font-black uppercase tracking-widest">{formatAeirmistTimestamp(selectedFriendNote.note.createdAt)}</span>
-                   <span className="w-1 h-1 rounded-full bg-white/10" />
-                   <span className={`text-[9px] font-black uppercase tracking-widest ${onlineUsers.has(selectedFriendNote.note.authorId) && selectedFriendNote.chat?.messagingSettings?.onlineStatus !== false ? 'text-aeirmist-lime' : 'text-white/20'}`}>
-                    {formatActiveStatus(
-                      onlineUsers.has(selectedFriendNote.note.authorId), 
-                      selectedFriendNote.chat?.lastSeen,
-                      selectedFriendNote.chat?.messagingSettings?.onlineStatus === false
-                    )}
-                   </span>
-                </div>
-              </div>
-              
-              {/* Note Content Bubble */}
-              <div className="bg-white/[0.03] rounded-[2rem] p-8 w-full text-center border border-white/5 mb-6 relative">
-                <div className="absolute -top-3 left-10 text-aeirmist-magenta opacity-50"><MessageCircle size={24} fill="currentColor" /></div>
-                <p className="text-2xl font-bold text-white leading-snug tracking-tight">{selectedFriendNote.note.content}</p>
-                
-                {selectedFriendNote.note.music && (
-                  <div className="mt-5 p-4 bg-white/[0.04] rounded-3xl border border-white/10 w-full space-y-3">
-                    <div className="flex items-center gap-3">
-                      {/* Vinyl / Cover Artwork */}
-                      <div className="relative w-12 h-12 rounded-2xl overflow-hidden shadow-md shrink-0 bg-white/5 border border-white/10">
-                        {selectedFriendNote.note.musicCover ? (
-                          <img 
-                            src={selectedFriendNote.note.musicCover} 
-                            alt="" 
-                            className={`w-full h-full object-cover ${isPlayingMusic ? 'animate-spin [animation-duration:6s]' : ''}`} 
-                          />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center bg-aeirmist-cyan/10 text-aeirmist-cyan">
-                            <Disc size={20} className={isPlayingMusic ? 'animate-spin [animation-duration:4s]' : ''} />
-                          </div>
-                        )}
-                        {selectedFriendNote.note.musicUrl && (
-                          <button
-                            type="button"
-                            onClick={() => togglePlayMusic(
-                              selectedFriendNote.note.musicUrl,
-                              selectedFriendNote.note.musicClipStart || 0,
-                              selectedFriendNote.note.musicClipDuration || 30
-                            )}
-                            className="absolute inset-0 bg-black/40 flex items-center justify-center text-white"
-                          >
-                            {isPlayingMusic ? <Pause size={14} /> : <Play size={14} className="ml-0.5" />}
-                          </button>
-                        )}
-                      </div>
-
-                      {/* Song Details */}
-                      <div className="flex-1 min-w-0 text-left">
-                        <div className="text-xs font-bold text-white truncate">{selectedFriendNote.note.music}</div>
-                        <div className="text-[9px] text-white/40 uppercase font-mono tracking-wider mt-0.5">
-                          {selectedFriendNote.note.musicClipDuration || 30}s Clip • Spotify Music
-                        </div>
-                      </div>
-
-                      {/* Spotify Link */}
-                      {selectedFriendNote.note.spotifyUrl && (
-                        <a
-                          href={selectedFriendNote.note.spotifyUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="px-3 py-1.5 rounded-xl bg-[#1DB954]/15 hover:bg-[#1DB954] text-[#1DB954] hover:text-black text-[9px] font-black uppercase tracking-wider flex items-center gap-1.5 transition-all"
-                        >
-                          <svg viewBox="0 0 24 24" fill="currentColor" className="w-3 h-3">
-                            <path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm4.586 14.424c-.18.295-.563.387-.857.207-2.377-1.454-5.37-1.783-8.893-.982-.336.075-.668-.135-.744-.47-.077-.337.135-.669.47-.745 3.856-.88 7.15-.51 9.817 1.123.294.18.386.563.207.857zm1.224-2.724c-.226.367-.707.487-1.074.26-2.72-1.672-6.87-2.157-10.078-1.182-.413.125-.85-.107-.975-.52-.125-.413.107-.85.52-.975 3.67-1.114 8.24-.57 11.347 1.342.368.227.488.708.26 1.075zm.105-2.81c-3.262-1.937-8.644-2.115-11.758-1.17-.5.152-1.025-.133-1.177-.633-.153-.5.132-1.025.633-1.177 3.616-1.098 9.544-.89 13.3 1.34.45.267.6.845.333 1.295-.267.45-.845.6-1.295.334z"/>
-                          </svg>
-                          <span>Spotify</span>
-                        </a>
-                      )}
-                    </div>
-
-                    {/* Lyrics Quote if present */}
-                    {selectedFriendNote.note.musicLyrics && (
-                      <div className="w-full bg-white/[0.03] border border-white/5 rounded-xl p-2 text-center">
-                        <p className="text-[11px] font-bold text-aeirmist-cyan italic">
-                          "{selectedFriendNote.note.musicLyrics}"
-                        </p>
-                      </div>
-                    )}
-                  </div>
+              <div className="relative w-16 h-16 rounded-full ring-2 ring-white/10 mb-2.5 bg-neutral-900 shadow-md">
+                <img 
+                  src={getAvatarUrl(selectedFriendNote.chat.photo)} 
+                  alt="" 
+                  className="w-full h-full rounded-full object-cover" 
+                />
+                {onlineUsers.has(selectedFriendNote.note.authorId) && (
+                  <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-emerald-500 rounded-full ring-2 ring-[#18181b]" />
                 )}
               </div>
 
-              {/* Reactions Bar */}
-              <div className="flex w-full gap-2 mb-6 bg-white/5 p-2 rounded-[1.8rem] border border-white/5">
+              <h3 className="text-base font-semibold text-white truncate max-w-[240px]">
+                {selectedFriendNote.chat.name || 'User'}
+              </h3>
+              
+              <p className="text-xs text-neutral-400 mt-0.5">
+                {getRelativeTime(selectedFriendNote.note.createdAt)} ago
+              </p>
+              
+              {/* Note Content Bubble */}
+              {selectedFriendNote.note.content && (
+                <div className="w-full bg-neutral-800/60 rounded-2xl px-5 py-4 my-3 text-center border border-white/5">
+                  <p className="text-base font-medium text-white break-words leading-relaxed">
+                    {selectedFriendNote.note.content}
+                  </p>
+                </div>
+              )}
+
+              {/* Music Player Card */}
+              {selectedFriendNote.note.music && (
+                <div className="w-full bg-neutral-800/80 border border-white/10 rounded-2xl p-3 my-2 flex flex-col gap-2">
+                  <div className="flex items-center gap-3">
+                    {/* Cover Art */}
+                    <div className="relative w-11 h-11 rounded-xl overflow-hidden shadow shrink-0 bg-neutral-900 border border-white/10">
+                      {selectedFriendNote.note.musicCover ? (
+                        <img 
+                          src={selectedFriendNote.note.musicCover} 
+                          alt="" 
+                          className={`w-full h-full object-cover ${isPlayingMusic ? 'animate-spin [animation-duration:6s]' : ''}`} 
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-white/40">
+                          <Disc size={20} />
+                        </div>
+                      )}
+                      {selectedFriendNote.note.musicUrl && (
+                        <button
+                          type="button"
+                          onClick={() => togglePlayMusic(
+                            selectedFriendNote.note.musicUrl,
+                            selectedFriendNote.note.musicClipStart || 0,
+                            selectedFriendNote.note.musicClipDuration || 30
+                          )}
+                          className="absolute inset-0 bg-black/40 hover:bg-black/30 flex items-center justify-center text-white transition-colors"
+                        >
+                          {isPlayingMusic ? <Pause size={15} /> : <Play size={15} className="ml-0.5" />}
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Details */}
+                    <div className="flex-1 min-w-0 text-left">
+                      <div className="text-sm font-semibold text-white truncate">{selectedFriendNote.note.music}</div>
+                      <div className="text-xs text-neutral-400 truncate mt-0.5">
+                        {selectedFriendNote.note.musicClipDuration || 30}s preview • Spotify
+                      </div>
+                    </div>
+
+                    {/* Spotify Link */}
+                    {selectedFriendNote.note.spotifyUrl && (
+                      <a
+                        href={selectedFriendNote.note.spotifyUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="p-2 rounded-full hover:bg-white/10 text-[#1DB954] transition-colors"
+                        title="Open on Spotify"
+                      >
+                        <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
+                          <path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm4.586 14.424c-.18.295-.563.387-.857.207-2.377-1.454-5.37-1.783-8.893-.982-.336.075-.668-.135-.744-.47-.077-.337.135-.669.47-.745 3.856-.88 7.15-.51 9.817 1.123.294.18.386.563.207.857zm1.224-2.724c-.226.367-.707.487-1.074.26-2.72-1.672-6.87-2.157-10.078-1.182-.413.125-.85-.107-.975-.52-.125-.413.107-.85.52-.975 3.67-1.114 8.24-.57 11.347 1.342.368.227.488.708.26 1.075zm.105-2.81c-3.262-1.937-8.644-2.115-11.758-1.17-.5.152-1.025-.133-1.177-.633-.153-.5.132-1.025.633-1.177 3.616-1.098 9.544-.89 13.3 1.34.45.267.6.845.333 1.295-.267.45-.845.6-1.295.334z"/>
+                        </svg>
+                      </a>
+                    )}
+                  </div>
+
+                  {selectedFriendNote.note.musicLyrics && (
+                    <p className="text-xs text-cyan-400 italic text-center pt-1.5 border-t border-white/5">
+                      "{selectedFriendNote.note.musicLyrics}"
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* Quick Reactions Bar */}
+              <div className="flex w-full items-center justify-around bg-neutral-800/50 py-1.5 px-2 rounded-2xl border border-white/5 my-2">
                 {REACTIONS.map(emoji => (
-                  <motion.button
+                  <button
                     key={emoji}
-                    whileHover={{ scale: 1.2, y: -5 }}
-                    whileTap={{ scale: 0.9 }}
                     onClick={() => handleReact(selectedFriendNote.note.id, emoji)}
-                    className="flex-1 h-12 rounded-2xl hover:bg-white/10 flex items-center justify-center text-2xl transition-all"
+                    className="w-9 h-9 rounded-xl hover:bg-white/10 flex items-center justify-center text-xl transition-transform active:scale-125"
                   >
                     {emoji}
-                  </motion.button>
+                  </button>
                 ))}
               </div>
 
-              {/* Instagram-style Direct Reply Input */}
+              {/* Direct Reply Bar */}
               <form 
                 onSubmit={async (e) => {
                   e.preventDefault();
@@ -1258,65 +1251,68 @@ export const NotesSystem = ({ chats, onChatSelect, onReplyNote }: { chats: any[]
                     logger.error("Failed to send reply to note:", err);
                   }
                 }}
-                className="w-full flex items-center gap-2 mb-3 bg-white/5 border border-white/10 rounded-2xl p-1.5 pl-4 focus-within:border-aeirmist-cyan/50 transition-all"
+                className="w-full flex items-center gap-2 mt-1 bg-neutral-800/80 border border-white/10 rounded-full py-1 px-1.5 pl-4 focus-within:border-white/30 transition-all"
               >
                 <input 
                   type="text"
                   value={replyText}
                   onChange={(e) => setReplyText(e.target.value)}
                   placeholder={`Reply to ${selectedFriendNote.chat.name || 'User'}...`}
-                  className="flex-1 bg-transparent text-xs text-white placeholder:text-white/30 outline-none font-medium"
+                  className="flex-1 bg-transparent text-xs text-white placeholder:text-neutral-500 outline-none font-normal"
                 />
                 <button
                   type="submit"
                   disabled={!replyText.trim()}
-                  className="px-4 py-2.5 rounded-xl bg-white text-black font-black uppercase text-[10px] tracking-wider hover:bg-aeirmist-cyan active:scale-95 disabled:opacity-30 disabled:grayscale transition-all flex items-center gap-1.5"
+                  className="px-3.5 py-1.5 rounded-full bg-white text-black font-semibold text-xs hover:bg-neutral-200 active:scale-95 disabled:opacity-30 disabled:grayscale transition-all flex items-center gap-1"
                 >
                   <Send size={12} />
                   <span>Send</span>
                 </button>
               </form>
 
-              {/* Open in Chat button */}
-              <button 
-                onClick={() => {
-                  onReplyNote?.(selectedFriendNote.chat.id, selectedFriendNote.note.content, selectedFriendNote.chat.name || 'User');
-                  setSelectedFriendNote(null);
-                }}
-                className="w-full py-3.5 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-white/70 hover:text-white font-black uppercase tracking-[0.2em] text-[9px] transition-all flex items-center justify-center gap-2 active:scale-95 mb-2"
-              >
-                <MessageCircle size={14} />
-                Open Full Chat
-              </button>
+              {/* Secondary Actions */}
+              <div className="flex w-full gap-2 mt-2.5">
+                <button 
+                  onClick={() => {
+                    onReplyNote?.(selectedFriendNote.chat.id, selectedFriendNote.note.content, selectedFriendNote.chat.name || 'User');
+                    setSelectedFriendNote(null);
+                  }}
+                  className="flex-1 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-xs font-medium text-neutral-300 hover:text-white transition-all flex items-center justify-center gap-1.5"
+                >
+                  <MessageCircle size={14} />
+                  <span>Open chat</span>
+                </button>
 
-              <button 
-                onClick={async () => {
-                  if (!profile || !selectedFriendNote) return;
-                  const shareText = `Check out @${selectedFriendNote.chat.username || 'user'}'s note on Aeirmist: "${selectedFriendNote.note.content}"`;
-                  if (navigator.share) {
-                    try {
-                      await navigator.share({
-                        title: 'Aeirmist Note',
-                        text: shareText,
-                        url: window.location.origin
-                      });
-                    } catch (err) {}
-                  } else {
-                    await navigator.clipboard.writeText(shareText);
-                    addToast({ title: 'Link Copied', message: 'Note content copied to clipboard.', type: 'success' });
-                  }
-                  setSelectedFriendNote(null);
-                }}
-                className="w-full py-3.5 rounded-2xl bg-white/[0.02] border border-white/5 text-white/30 font-black uppercase tracking-[0.2em] text-[9px] hover:text-white hover:bg-white/5 transition-all flex items-center justify-center gap-2 active:scale-95"
-              >
-                Share
-              </button>
+                <button 
+                  onClick={async () => {
+                    if (!profile || !selectedFriendNote) return;
+                    const shareText = `Check out @${selectedFriendNote.chat.username || 'user'}'s note on Aeirmist: "${selectedFriendNote.note.content}"`;
+                    if (navigator.share) {
+                      try {
+                        await navigator.share({
+                          title: 'Aeirmist Note',
+                          text: shareText,
+                          url: window.location.origin
+                        });
+                      } catch (err) {}
+                    } else {
+                      await navigator.clipboard.writeText(shareText);
+                      addToast({ title: 'Link Copied', message: 'Note content copied to clipboard.', type: 'success' });
+                    }
+                    setSelectedFriendNote(null);
+                  }}
+                  className="py-2 px-3 rounded-xl bg-white/5 hover:bg-white/10 text-xs font-medium text-neutral-400 hover:text-white transition-all flex items-center justify-center"
+                  title="Share"
+                >
+                  <Share2 size={14} />
+                </button>
+              </div>
             </motion.div>
           </div>
         )}
       </AnimatePresence>
 
-      {/* My Note Analytics Modal */}
+      {/* My Note Modal */}
       <AnimatePresence>
         {viewingMyNote && myNote && (
           <div className="fixed inset-0 z-[400] flex items-center justify-center p-4">
@@ -1324,131 +1320,131 @@ export const NotesSystem = ({ chats, onChatSelect, onReplyNote }: { chats: any[]
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="absolute inset-0 bg-black/90 backdrop-blur-xl"
+              className="absolute inset-0 bg-black/75 backdrop-blur-md"
               onClick={() => setViewingMyNote(false)}
             />
             <motion.div 
-              initial={{ scale: 0.9, opacity: 0, y: 20 }}
-              animate={{ scale: 1, opacity: 1, y: 0, transition: { type: 'spring', stiffness: 300, damping: 25 } }}
-              exit={{ scale: 0.9, opacity: 0, y: 20 }}
-              className="relative w-full max-w-[440px] bg-[#0c0c0f] border border-white/10 rounded-[3rem] shadow-[0_40px_120px_rgba(0,0,0,0.9)] p-10 flex flex-col items-center"
+              initial={{ scale: 0.95, opacity: 0, y: 15 }}
+              animate={{ scale: 1, opacity: 1, y: 0, transition: { duration: 0.2 } }}
+              exit={{ scale: 0.95, opacity: 0, y: 15 }}
+              className="relative w-full max-w-[360px] bg-[#18181b] border border-white/10 rounded-3xl shadow-2xl p-6 flex flex-col items-center"
             >
-              <button onClick={() => setViewingMyNote(false)} className="absolute top-8 right-8 text-white/30 hover:text-white transition-colors p-2">
-                <X size={20} />
+              <button 
+                onClick={() => setViewingMyNote(false)} 
+                className="absolute top-4 right-4 text-white/40 hover:text-white transition-colors p-1.5 rounded-full hover:bg-white/10"
+              >
+                <X size={18} />
               </button>
               
-              <div className="w-20 h-20 rounded-[2rem] border-2 border-aeirmist-cyan p-1.5 mb-6 relative">
-                <img src={getAvatarUrl(profile?.photoURL)} alt="" className="w-full h-full rounded-[1.7rem] object-cover" />
-                <div className="absolute -top-2 -right-2 bg-aeirmist-cyan text-black p-1 rounded-lg border-2 border-[#0c0c0f] shadow-lg">
-                   <Globe size={10} />
-                </div>
+              {/* Avatar & Header */}
+              <div className="w-16 h-16 rounded-full overflow-hidden ring-2 ring-white/15 mb-3 bg-neutral-900 shadow-md">
+                <img src={getAvatarUrl(profile?.photoURL)} alt="" className="w-full h-full object-cover" />
               </div>
               
-              <h2 className="text-xl font-display font-black text-white tracking-widest uppercase mb-1">Live Activity</h2>
-              <p className="text-[10px] font-bold text-white/20 uppercase tracking-[0.2em] mb-8">Visible for 24h • Posted {getRelativeTime(myNote.createdAt)} ago</p>
+              <h3 className="text-base font-semibold text-white">Your Note</h3>
+              <p className="text-xs text-neutral-400 mt-0.5">Visible for 24h • Posted {getRelativeTime(myNote.createdAt)} ago</p>
               
-              <div className="bg-white/[0.03] rounded-[2.2rem] p-8 w-full text-center border border-white/5 mb-6">
-                <p className="text-2xl font-bold text-white leading-tight tracking-tight">{myNote.content}</p>
-                {myNote.music && (
-                  <div className="mt-5 p-4 bg-white/[0.04] rounded-3xl border border-white/10 w-full space-y-3">
-                    <div className="flex items-center gap-3">
-                      {/* Vinyl / Cover Artwork */}
-                      <div className="relative w-12 h-12 rounded-2xl overflow-hidden shadow-md shrink-0 bg-white/5 border border-white/10">
-                        {myNote.musicCover ? (
-                          <img 
-                            src={myNote.musicCover} 
-                            alt="" 
-                            className={`w-full h-full object-cover ${isPlayingMusic ? 'animate-spin [animation-duration:6s]' : ''}`} 
-                          />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center bg-aeirmist-cyan/10 text-aeirmist-cyan">
-                            <Disc size={20} className={isPlayingMusic ? 'animate-spin [animation-duration:4s]' : ''} />
-                          </div>
-                        )}
-                        {myNote.musicUrl && (
-                          <button
-                            type="button"
-                            onClick={() => togglePlayMusic(
-                              myNote.musicUrl,
-                              myNote.musicClipStart || 0,
-                              myNote.musicClipDuration || 30
-                            )}
-                            className="absolute inset-0 bg-black/40 flex items-center justify-center text-white"
-                          >
-                            {isPlayingMusic ? <Pause size={14} /> : <Play size={14} className="ml-0.5" />}
-                          </button>
-                        )}
-                      </div>
+              {/* Note Content Bubble */}
+              {myNote.content && (
+                <div className="w-full bg-neutral-800/60 rounded-2xl px-5 py-4 my-3 text-center border border-white/5">
+                  <p className="text-base font-medium text-white break-words leading-relaxed">{myNote.content}</p>
+                </div>
+              )}
 
-                      {/* Song Details */}
-                      <div className="flex-1 min-w-0 text-left">
-                        <div className="text-xs font-bold text-white truncate">{myNote.music}</div>
-                        <div className="text-[9px] text-white/40 uppercase font-mono tracking-wider mt-0.5">
-                          {myNote.musicClipDuration || 30}s Clip • Spotify Music
+              {/* Music Player Card */}
+              {myNote.music && (
+                <div className="w-full bg-neutral-800/80 border border-white/10 rounded-2xl p-3 my-2 flex flex-col gap-2">
+                  <div className="flex items-center gap-3">
+                    <div className="relative w-11 h-11 rounded-xl overflow-hidden shadow shrink-0 bg-neutral-900 border border-white/10">
+                      {myNote.musicCover ? (
+                        <img 
+                          src={myNote.musicCover} 
+                          alt="" 
+                          className={`w-full h-full object-cover ${isPlayingMusic ? 'animate-spin [animation-duration:6s]' : ''}`} 
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-white/40">
+                          <Disc size={20} />
                         </div>
-                      </div>
-
-                      {/* Spotify Link */}
-                      {myNote.spotifyUrl && (
-                        <a
-                          href={myNote.spotifyUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="px-3 py-1.5 rounded-xl bg-[#1DB954]/15 hover:bg-[#1DB954] text-[#1DB954] hover:text-black text-[9px] font-black uppercase tracking-wider flex items-center gap-1.5 transition-all"
+                      )}
+                      {myNote.musicUrl && (
+                        <button
+                          type="button"
+                          onClick={() => togglePlayMusic(
+                            myNote.musicUrl,
+                            myNote.musicClipStart || 0,
+                            myNote.musicClipDuration || 30
+                          )}
+                          className="absolute inset-0 bg-black/40 hover:bg-black/30 flex items-center justify-center text-white transition-colors"
                         >
-                          <svg viewBox="0 0 24 24" fill="currentColor" className="w-3 h-3">
-                            <path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm4.586 14.424c-.18.295-.563.387-.857.207-2.377-1.454-5.37-1.783-8.893-.982-.336.075-.668-.135-.744-.47-.077-.337.135-.669.47-.745 3.856-.88 7.15-.51 9.817 1.123.294.18.386.563.207.857zm1.224-2.724c-.226.367-.707.487-1.074.26-2.72-1.672-6.87-2.157-10.078-1.182-.413.125-.85-.107-.975-.52-.125-.413.107-.85.52-.975 3.67-1.114 8.24-.57 11.347 1.342.368.227.488.708.26 1.075zm.105-2.81c-3.262-1.937-8.644-2.115-11.758-1.17-.5.152-1.025-.133-1.177-.633-.153-.5.132-1.025.633-1.177 3.616-1.098 9.544-.89 13.3 1.34.45.267.6.845.333 1.295-.267.45-.845.6-1.295.334z"/>
-                          </svg>
-                          <span>Spotify</span>
-                        </a>
+                          {isPlayingMusic ? <Pause size={15} /> : <Play size={15} className="ml-0.5" />}
+                        </button>
                       )}
                     </div>
 
-                    {/* Lyrics Quote if present */}
-                    {myNote.musicLyrics && (
-                      <div className="w-full bg-white/[0.03] border border-white/5 rounded-xl p-2 text-center">
-                        <p className="text-[11px] font-bold text-aeirmist-cyan italic">
-                          "{myNote.musicLyrics}"
-                        </p>
+                    <div className="flex-1 min-w-0 text-left">
+                      <div className="text-sm font-semibold text-white truncate">{myNote.music}</div>
+                      <div className="text-xs text-neutral-400 truncate mt-0.5">
+                        {myNote.musicClipDuration || 30}s preview • Spotify
                       </div>
+                    </div>
+
+                    {myNote.spotifyUrl && (
+                      <a
+                        href={myNote.spotifyUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="p-2 rounded-full hover:bg-white/10 text-[#1DB954] transition-colors"
+                        title="Open on Spotify"
+                      >
+                        <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
+                          <path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm4.586 14.424c-.18.295-.563.387-.857.207-2.377-1.454-5.37-1.783-8.893-.982-.336.075-.668-.135-.744-.47-.077-.337.135-.669.47-.745 3.856-.88 7.15-.51 9.817 1.123.294.18.386.563.207.857zm1.224-2.724c-.226.367-.707.487-1.074.26-2.72-1.672-6.87-2.157-10.078-1.182-.413.125-.85-.107-.975-.52-.125-.413.107-.85.52-.975 3.67-1.114 8.24-.57 11.347 1.342.368.227.488.708.26 1.075zm.105-2.81c-3.262-1.937-8.644-2.115-11.758-1.17-.5.152-1.025-.133-1.177-.633-.153-.5.132-1.025.633-1.177 3.616-1.098 9.544-.89 13.3 1.34.45.267.6.845.333 1.295-.267.45-.845.6-1.295.334z"/>
+                        </svg>
+                      </a>
                     )}
                   </div>
-                )}
-              </div>
 
-              <div className="grid grid-cols-2 gap-4 w-full mb-10">
+                  {myNote.musicLyrics && (
+                    <p className="text-xs text-cyan-400 italic text-center pt-1.5 border-t border-white/5">
+                      "{myNote.musicLyrics}"
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* Insights: Views & Reactions */}
+              <div className="grid grid-cols-2 gap-2.5 w-full my-3">
                 <button 
                   onClick={() => setActiveSheet('seen')}
-                  className="flex flex-col items-center justify-center p-6 rounded-[2rem] bg-white/5 border border-white/5 hover:bg-white/10 hover:border-aeirmist-cyan/20 transition-all group"
+                  className="flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-neutral-800/60 hover:bg-neutral-800 border border-white/5 transition-all text-xs font-medium text-neutral-300 hover:text-white"
                 >
-                  <Eye size={22} className="text-aeirmist-cyan mb-3 group-hover:scale-110 transition-transform" />
-                  <span className="text-[9px] font-black uppercase tracking-[0.2em] text-white/40 mb-1">Views</span>
-                  <span className="text-2xl font-display font-black text-white">{myNote.seenBy?.length || 0}</span>
+                  <Eye size={15} className="text-neutral-400" />
+                  <span>{myNote.seenBy?.length || 0} views</span>
                 </button>
                 <button 
                   onClick={() => setActiveSheet('reactions')}
-                  className="flex flex-col items-center justify-center p-6 rounded-[2rem] bg-white/5 border border-white/5 hover:bg-white/10 hover:border-aeirmist-magenta/20 transition-all group"
+                  className="flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-neutral-800/60 hover:bg-neutral-800 border border-white/5 transition-all text-xs font-medium text-neutral-300 hover:text-white"
                 >
-                  <Heart size={22} className="text-aeirmist-magenta mb-3 group-hover:scale-110 transition-transform" />
-                  <span className="text-[9px] font-black uppercase tracking-[0.2em] text-white/40 mb-1">Reactions</span>
-                  <span className="text-2xl font-display font-black text-white">{myNote.reactions?.length || 0}</span>
+                  <Heart size={15} className="text-pink-400" />
+                  <span>{myNote.reactions?.length || 0} reactions</span>
                 </button>
               </div>
               
-              <div className="flex w-full gap-4">
-                <button 
-                  onClick={handleDeleteNote}
-                  className="flex-1 py-4.5 rounded-[1.8rem] bg-rose-500/10 border border-rose-500/20 text-rose-500 font-black uppercase tracking-widest text-[9px] hover:bg-rose-500 hover:text-white transition-all active:scale-95 flex items-center justify-center gap-2"
-                >
-                  <Trash2 size={14} />
-                  Delete
-                </button>
+              {/* Action Buttons */}
+              <div className="flex flex-col w-full gap-2 mt-2">
                 <button 
                   onClick={() => { setViewingMyNote(false); setIsCreating(true); }}
-                  className="flex-[2] py-4.5 rounded-[1.8rem] bg-white text-black font-black uppercase tracking-widest text-[9px] hover:bg-aeirmist-cyan transition-all shadow-xl active:scale-95 flex items-center justify-center gap-2"
+                  className="w-full py-2.5 rounded-xl bg-white hover:bg-neutral-200 text-black font-semibold text-xs transition-all shadow-sm active:scale-98 flex items-center justify-center gap-2"
                 >
-                  <Plus size={14} />
-                  New Note
+                  <Plus size={15} />
+                  Share a new note
+                </button>
+                <button 
+                  onClick={handleDeleteNote}
+                  className="w-full py-2 rounded-xl text-red-400 hover:text-red-300 hover:bg-red-500/10 font-medium text-xs transition-all active:scale-98 flex items-center justify-center gap-1.5"
+                >
+                  <Trash2 size={13} />
+                  Delete note
                 </button>
               </div>
             </motion.div>
@@ -1471,85 +1467,73 @@ export const NotesSystem = ({ chats, onChatSelect, onReplyNote }: { chats: any[]
               initial={{ y: '100%' }}
               animate={{ y: 0, transition: { type: 'spring', stiffness: 350, damping: 30 } }}
               exit={{ y: '100%', transition: { duration: 0.2, ease: "easeInOut" } }}
-              className="relative w-full max-w-md h-[80vh] sm:h-[600px] bg-[#0c0c10] sm:rounded-[3rem] rounded-t-[3rem] shadow-[0_-20px_60px_rgba(0,0,0,0.5)] flex flex-col overflow-hidden border-t sm:border border-white/10"
+              className="relative w-full max-w-md h-[75vh] sm:h-[500px] bg-[#18181b] sm:rounded-3xl rounded-t-3xl shadow-2xl flex flex-col overflow-hidden border-t sm:border border-white/10"
             >
               {/* Sheet Header */}
-              <div className="flex items-center justify-between px-8 py-6 border-b border-white/5 bg-[#0a0a0d]">
-                <div className="flex items-center gap-3">
-                   <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${activeSheet === 'seen' ? 'bg-aeirmist-cyan/10 text-aeirmist-cyan' : 'bg-aeirmist-magenta/10 text-aeirmist-magenta'}`}>
-                      {activeSheet === 'seen' ? <Eye size={16} /> : <Heart size={16} />}
+              <div className="flex items-center justify-between px-6 py-4 border-b border-white/10 bg-[#141417]">
+                <div className="flex items-center gap-2.5">
+                   <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${activeSheet === 'seen' ? 'bg-cyan-500/15 text-cyan-400' : 'bg-pink-500/15 text-pink-400'}`}>
+                      {activeSheet === 'seen' ? <Eye size={15} /> : <Heart size={15} />}
                    </div>
-                   <h3 className="text-xs font-black uppercase tracking-[0.3em] text-white">
-                     {activeSheet === 'seen' ? 'Seen By' : 'Reactions'}
+                   <h3 className="text-sm font-semibold text-white">
+                     {activeSheet === 'seen' ? `Seen by (${myNote.seenBy?.length || 0})` : `Reactions (${myNote.reactions?.length || 0})`}
                    </h3>
                 </div>
-                <button onClick={() => setActiveSheet(null)} className="text-white/20 hover:text-white transition-colors bg-white/5 p-2 rounded-xl">
-                  <X size={18} />
+                <button onClick={() => setActiveSheet(null)} className="text-white/40 hover:text-white transition-colors bg-white/5 p-1.5 rounded-full">
+                  <X size={16} />
                 </button>
               </div>
               
               <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
                 {activeSheet === 'seen' ? (
                   myNote.seenBy && myNote.seenBy.length > 0 ? (
-                    <div className="space-y-2">
+                    <div className="space-y-1.5">
                       {myNote.seenBy.map((s: any, idx: number) => (
-                        <div key={idx} className="flex items-center gap-4 p-4 hover:bg-white/5 rounded-[1.8rem] transition-all group border border-transparent hover:border-white/5">
-                          <div className="relative">
-                            <img src={getAvatarUrl(s.userAvatar)} className="w-12 h-12 rounded-[1.1rem] object-cover group-hover:scale-105 transition-transform" />
-                            <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-aeirmist-cyan rounded-lg border-2 border-[#0c0c10] flex items-center justify-center">
-                               <CheckCircle2 size={8} className="text-black" strokeWidth={4} />
-                            </div>
+                        <div key={idx} className="flex items-center gap-3 p-3 hover:bg-white/5 rounded-2xl transition-all">
+                          <img src={getAvatarUrl(s.userAvatar)} className="w-10 h-10 rounded-full object-cover" />
+                          <div className="flex-1 flex flex-col min-w-0">
+                            <span className="text-sm font-medium text-white truncate">{s.userName}</span>
+                            <span className="text-xs text-neutral-400">{getRelativeTime(s.timestamp)} ago</span>
                           </div>
-                          <div className="flex-1 flex flex-col">
-                            <span className="text-sm font-bold text-white group-hover:text-aeirmist-cyan transition-colors">{s.userName}</span>
-                            <span className="text-[10px] text-white/30 font-black uppercase tracking-wider">{getRelativeTime(s.timestamp)} ago</span>
-                          </div>
-                          <button className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center text-white/20 opacity-0 group-hover:opacity-100 transition-all">
-                             <MoreHorizontal size={16} />
-                          </button>
                         </div>
                       ))}
                     </div>
                   ) : (
-                    <div className="flex flex-col items-center justify-center h-full text-white/20 py-20">
-                      <div className="w-20 h-20 rounded-[2rem] bg-white/5 border border-dashed border-white/10 flex items-center justify-center mb-6">
-                        <Eye size={32} className="opacity-20" />
-                      </div>
-                      <p className="text-[10px] font-black uppercase tracking-[0.3em] text-center max-w-[180px] leading-relaxed">No data detected on this frequency yet.</p>
+                    <div className="flex flex-col items-center justify-center h-full text-neutral-500 py-16">
+                      <Eye size={28} className="opacity-30 mb-2" />
+                      <p className="text-xs font-medium">No views yet.</p>
                     </div>
                   )
                 ) : (
                   myNote.reactions && myNote.reactions.length > 0 ? (
                     <div className="flex flex-col h-full">
-                      <div className="flex flex-wrap gap-2 px-4 pb-6 mb-4">
+                      <div className="flex flex-wrap gap-2 px-2 pb-4 mb-2 border-b border-white/5">
                         {Array.from(new Set(myNote.reactions.map((r: any) => r.emoji))).map((emoji: any) => (
-                           <button key={emoji} className="px-5 py-2 rounded-full bg-white/5 text-white text-xs font-bold border border-white/5 flex items-center gap-2 hover:bg-white/10 transition-all">
-                             <span className="text-lg">{emoji}</span>
-                             <span className="text-white/40 font-black tracking-widest">{myNote.reactions.filter((r: any) => r.emoji === emoji).length}</span>
-                           </button>
+                           <span key={emoji} className="px-3 py-1 rounded-full bg-white/5 text-white text-xs font-medium border border-white/5 flex items-center gap-1.5">
+                             <span>{emoji}</span>
+                             <span className="text-neutral-400">{myNote.reactions.filter((r: any) => r.emoji === emoji).length}</span>
+                           </span>
                         ))}
                       </div>
-                      <div className="flex-1 space-y-2">
+                      <div className="flex-1 space-y-1.5">
                         {myNote.reactions.map((r: any, idx: number) => (
-                          <div key={idx} className="flex items-center gap-4 p-4 hover:bg-white/5 rounded-[1.8rem] transition-all group border border-transparent hover:border-white/5">
+                          <div key={idx} className="flex items-center gap-3 p-3 hover:bg-white/5 rounded-2xl transition-all">
                             <div className="relative">
-                              <img src={getAvatarUrl(r.userAvatar)} className="w-12 h-12 rounded-[1.1rem] object-cover group-hover:scale-105 transition-transform" />
-                              <span className="absolute -bottom-2 -right-2 text-2xl drop-shadow-[0_4px_8px_rgba(0,0,0,0.5)] transform group-hover:scale-125 transition-transform">{r.emoji}</span>
+                              <img src={getAvatarUrl(r.userAvatar)} className="w-10 h-10 rounded-full object-cover" />
+                              <span className="absolute -bottom-1 -right-1 text-base">{r.emoji}</span>
                             </div>
-                            <div className="flex-1 flex flex-col">
-                              <span className="text-sm font-bold text-white group-hover:text-aeirmist-magenta transition-colors">{r.userName}</span>
-                              <span className="text-[10px] text-white/30 font-black uppercase tracking-wider">{getRelativeTime(r.timestamp)} ago</span>
+                            <div className="flex-1 flex flex-col min-w-0">
+                              <span className="text-sm font-medium text-white truncate">{r.userName}</span>
+                              <span className="text-xs text-neutral-400">{getRelativeTime(r.timestamp)} ago</span>
                             </div>
                           </div>
                         ))}
                       </div>
                     </div>
                   ) : (
-                    <div className="flex flex-col items-center justify-center h-full text-white/20 py-20">
-                      <div className="w-20 h-20 rounded-[2rem] bg-white/5 border border-dashed border-white/10 flex items-center justify-center mb-6">
-                        <Heart size={32} className="opacity-20" />
-                      </div>
-                      <p className="text-[10px] font-black uppercase tracking-[0.3em] text-center max-w-[180px] leading-relaxed">No reactions yet.</p>
+                    <div className="flex flex-col items-center justify-center h-full text-neutral-500 py-16">
+                      <Heart size={28} className="opacity-30 mb-2" />
+                      <p className="text-xs font-medium">No reactions yet.</p>
                     </div>
                   )
                 )}

@@ -5,7 +5,7 @@ import {
   MessageCircle, Volume2, Search, CheckCircle2, MoreHorizontal, UserPlus, UserMinus,
   EyeOff, ShieldCheck, Check, Sparkles, Disc, Play, Pause, Send, ExternalLink, Sliders, Radio, Share2
 } from 'lucide-react';
-import { doc, deleteDoc, updateDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
+import { doc, deleteDoc, updateDoc, serverTimestamp, Timestamp, onSnapshot, getDoc } from 'firebase/firestore';
 import { formatAeirmistTimestamp, formatActiveStatus } from '../../lib/date';
 import { useAeirmist } from '../../context/AeirmistContext';
 import { useInboxData } from '../../hooks/useInboxData';
@@ -25,6 +25,143 @@ const getRelativeTime = (timestamp: any) => {
   const hours = Math.floor(diff / 60);
   if (hours < 24) return `${hours}h`;
   return `${Math.floor(hours / 24)}d`;
+};
+
+// Global cache for live user profile photos & names to avoid refetching
+const profilePhotoCache: Record<string, string> = {};
+const profileNameCache: Record<string, string> = {};
+
+export const NoteUserAvatar = ({
+  userId,
+  authorUid,
+  fallbackPhoto,
+  alt = "",
+  className = "w-full h-full object-cover",
+  roundedClassName = "rounded-2xl"
+}: {
+  userId?: string;
+  authorUid?: string;
+  fallbackPhoto?: string;
+  alt?: string;
+  className?: string;
+  roundedClassName?: string;
+}) => {
+  const { db } = useAeirmist();
+  const [photo, setPhoto] = useState<string | undefined>(() => {
+    if (fallbackPhoto && !fallbackPhoto.includes('data:image/svg+xml') && fallbackPhoto !== 'null' && fallbackPhoto !== 'undefined') {
+      return fallbackPhoto;
+    }
+    if (userId && profilePhotoCache[userId]) {
+      return profilePhotoCache[userId];
+    }
+    if (authorUid && profilePhotoCache[authorUid]) {
+      return profilePhotoCache[authorUid];
+    }
+    return fallbackPhoto;
+  });
+
+  useEffect(() => {
+    if (fallbackPhoto && !fallbackPhoto.includes('data:image/svg+xml') && fallbackPhoto !== 'null' && fallbackPhoto !== 'undefined') {
+      setPhoto(fallbackPhoto);
+    }
+  }, [fallbackPhoto]);
+
+  useEffect(() => {
+    if (!db) return;
+    const targetIds = [userId, authorUid].filter(Boolean) as string[];
+    if (targetIds.length === 0) return;
+
+    for (const id of targetIds) {
+      if (profilePhotoCache[id]) {
+        setPhoto(profilePhotoCache[id]);
+        return;
+      }
+    }
+
+    const unsubs: (() => void)[] = [];
+
+    targetIds.forEach(id => {
+      // 1. Direct subscription
+      const unsub = onSnapshot(doc(db, 'profiles', id), (docSnap) => {
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          const pUrl = data?.photoURL || data?.photo || data?.avatar;
+          if (pUrl && !pUrl.includes('data:image/svg+xml')) {
+            profilePhotoCache[id] = pUrl;
+            if (userId) profilePhotoCache[userId] = pUrl;
+            if (authorUid) profilePhotoCache[authorUid] = pUrl;
+            setPhoto(pUrl);
+            return;
+          }
+        }
+
+        // 2. Prefix variations
+        if (!id.startsWith('profile_')) {
+          getDoc(doc(db, 'profiles', `profile_${id}`)).then(pSnap => {
+            if (pSnap.exists()) {
+              const pData = pSnap.data();
+              const pUrl2 = pData?.photoURL || pData?.photo || pData?.avatar;
+              if (pUrl2 && !pUrl2.includes('data:image/svg+xml')) {
+                profilePhotoCache[id] = pUrl2;
+                if (userId) profilePhotoCache[userId] = pUrl2;
+                if (authorUid) profilePhotoCache[authorUid] = pUrl2;
+                setPhoto(pUrl2);
+              }
+            }
+          }).catch(() => {});
+        } else {
+          const rawId = id.replace('profile_', '');
+          getDoc(doc(db, 'profiles', rawId)).then(pSnap => {
+            if (pSnap.exists()) {
+              const pData = pSnap.data();
+              const pUrl2 = pData?.photoURL || pData?.photo || pData?.avatar;
+              if (pUrl2 && !pUrl2.includes('data:image/svg+xml')) {
+                profilePhotoCache[id] = pUrl2;
+                if (userId) profilePhotoCache[userId] = pUrl2;
+                if (authorUid) profilePhotoCache[authorUid] = pUrl2;
+                setPhoto(pUrl2);
+              }
+            }
+          }).catch(() => {});
+        }
+
+        // 3. Check users collection
+        getDoc(doc(db, 'users', id)).then(uSnap => {
+          if (uSnap.exists()) {
+            const uData = uSnap.data();
+            const uUrl = uData?.photoURL || uData?.photo || uData?.avatar;
+            if (uUrl && !uUrl.includes('data:image/svg+xml')) {
+              profilePhotoCache[id] = uUrl;
+              if (userId) profilePhotoCache[userId] = uUrl;
+              if (authorUid) profilePhotoCache[authorUid] = uUrl;
+              setPhoto(uUrl);
+            }
+          }
+        }).catch(() => {});
+      }, (err) => {
+        logger.warn("Live note avatar subscription warning:", err);
+      });
+
+      unsubs.push(unsub);
+    });
+
+    return () => {
+      unsubs.forEach(u => u());
+    };
+  }, [db, userId, authorUid]);
+
+  return (
+    <img 
+      src={getAvatarUrl(photo)} 
+      alt={alt} 
+      className={`${className} ${roundedClassName}`}
+      onError={(e) => {
+        const target = e.target as HTMLImageElement;
+        target.src = getAvatarUrl(null);
+      }}
+      referrerPolicy="no-referrer"
+    />
+  );
 };
 
 export const NotesSystem = ({ chats, onChatSelect, onReplyNote }: { chats: any[], onChatSelect?: (chatId: string) => void, onReplyNote?: (chatId: string, noteText: string, authorName: string) => void }) => {
@@ -586,7 +723,14 @@ export const NotesSystem = ({ chats, onChatSelect, onReplyNote }: { chats: any[]
 
             <div className={`relative w-15 h-15 rounded-[22px] p-[2px] border-2 transition-all duration-300 ${myNote ? 'border-aeirmist-cyan shadow-[0_0_15px_rgba(0,242,255,0.2)]' : 'border-white/10 group-hover:border-white/30'}`}>
               <div className="w-full h-full rounded-[19px] overflow-hidden bg-[#0c0c0f]">
-                <img src={getAvatarUrl(profile?.photoURL || user?.photoURL)} alt="Me" className="w-full h-full object-cover grayscale-[0.2] group-hover:grayscale-0 transition-all duration-500" />
+                <NoteUserAvatar 
+                  userId={profile?.id}
+                  authorUid={user?.uid}
+                  fallbackPhoto={profile?.photoURL || user?.photoURL}
+                  alt="Me"
+                  className="w-full h-full object-cover grayscale-[0.2] group-hover:grayscale-0 transition-all duration-500"
+                  roundedClassName="rounded-[19px]"
+                />
               </div>
               <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-white text-black rounded-lg border-2 border-[#0a0a0d] flex items-center justify-center shadow-lg transform group-hover:scale-110 transition-transform">
                 <Plus size={11} strokeWidth={3} />
@@ -745,7 +889,13 @@ export const NotesSystem = ({ chats, onChatSelect, onReplyNote }: { chats: any[]
                         : 'border-aeirmist-magenta shadow-[0_0_15px_rgba(255,0,234,0.35)]'
                 }`}>
                   <div className="w-full h-full rounded-[19px] overflow-hidden bg-black">
-                    <img src={getAvatarUrl(chat.photo)} alt={chat.name || 'User'} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
+                    <NoteUserAvatar 
+                      userId={friendNote.authorId || chat.otherParticipantId}
+                      fallbackPhoto={friendNote.userAvatar || chat.photo}
+                      alt={chat.name || 'User'}
+                      className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
+                      roundedClassName="rounded-[19px]"
+                    />
                   </div>
                   {isOnline && chat.messagingSettings?.onlineStatus !== false && (
                     <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-aeirmist-lime rounded-lg border-[3px] border-[#0a0a0d] shadow-sm animate-pulse" />
@@ -821,8 +971,15 @@ export const NotesSystem = ({ chats, onChatSelect, onReplyNote }: { chats: any[]
                     )}
                   </AnimatePresence>
 
-                  <div className="w-16 h-16 rounded-full ring-2 ring-white/10 overflow-hidden bg-neutral-900 mx-auto shadow-md">
-                     <img src={getAvatarUrl(profile?.photoURL)} alt="" className="w-full h-full object-cover" />
+                  <div className="w-16 h-16 rounded-2xl ring-2 ring-white/10 overflow-hidden bg-neutral-900 mx-auto shadow-md">
+                    <NoteUserAvatar 
+                      userId={profile?.id}
+                      authorUid={user?.uid}
+                      fallbackPhoto={profile?.photoURL || user?.photoURL}
+                      alt={profile?.displayName || 'You'}
+                      className="w-full h-full object-cover"
+                      roundedClassName="rounded-2xl"
+                    />
                   </div>
                 </div>
                 
@@ -1102,14 +1259,14 @@ export const NotesSystem = ({ chats, onChatSelect, onReplyNote }: { chats: any[]
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="absolute inset-0 bg-black/75 backdrop-blur-md"
+              className="absolute inset-0 bg-black/80 backdrop-blur-md"
               onClick={() => setSelectedFriendNote(null)}
             />
             <motion.div 
               initial={{ scale: 0.95, opacity: 0, y: 15 }}
               animate={{ scale: 1, opacity: 1, y: 0, transition: { duration: 0.2 } }}
               exit={{ scale: 0.95, opacity: 0, y: 15 }}
-              className="relative w-full max-w-[360px] bg-[#18181b] border border-white/10 rounded-3xl shadow-2xl p-6 flex flex-col items-center"
+              className="relative w-full max-w-[340px] bg-[#16161a] border border-white/10 rounded-[28px] shadow-2xl p-6 flex flex-col items-center"
             >
               {/* Close Button */}
               <button 
@@ -1119,20 +1276,25 @@ export const NotesSystem = ({ chats, onChatSelect, onReplyNote }: { chats: any[]
                 <X size={18} />
               </button>
 
-              {/* Profile & Name */}
-              <div className="relative w-16 h-16 rounded-full ring-2 ring-white/10 mb-2.5 bg-neutral-900 shadow-md">
-                <img 
-                  src={getAvatarUrl(selectedFriendNote.chat.photo)} 
-                  alt="" 
-                  className="w-full h-full rounded-full object-cover" 
-                />
+              {/* Square Profile Picture & Name */}
+              <div className="relative w-20 h-20 mb-3 flex-shrink-0">
+                <div className="w-full h-full rounded-2xl ring-2 ring-white/15 overflow-hidden bg-neutral-900 shadow-md">
+                  <NoteUserAvatar 
+                    userId={selectedFriendNote.note.authorId || selectedFriendNote.chat.otherParticipantId}
+                    authorUid={selectedFriendNote.note.authorUid}
+                    fallbackPhoto={selectedFriendNote.note.userAvatar || selectedFriendNote.chat.photo}
+                    alt={selectedFriendNote.chat.name || 'User'}
+                    className="w-full h-full object-cover"
+                    roundedClassName="rounded-2xl"
+                  />
+                </div>
                 {onlineUsers.has(selectedFriendNote.note.authorId) && (
-                  <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-emerald-500 rounded-full ring-2 ring-[#18181b]" />
+                  <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-emerald-500 rounded-lg ring-2 ring-[#16161a]" />
                 )}
               </div>
 
               <h3 className="text-base font-semibold text-white truncate max-w-[240px]">
-                {selectedFriendNote.chat.name || 'User'}
+                {selectedFriendNote.chat.name || selectedFriendNote.note.userName || 'User'}
               </h3>
               
               <p className="text-xs text-neutral-400 mt-0.5">
@@ -1140,9 +1302,9 @@ export const NotesSystem = ({ chats, onChatSelect, onReplyNote }: { chats: any[]
               </p>
               
               {/* Note Content Bubble */}
-              {selectedFriendNote.note.content && (
-                <div className="w-full bg-neutral-800/60 rounded-2xl px-5 py-4 my-3 text-center border border-white/5">
-                  <p className="text-base font-medium text-white break-words leading-relaxed">
+              {selectedFriendNote.note.content && selectedFriendNote.note.content.trim() && selectedFriendNote.note.content !== selectedFriendNote.note.music && (
+                <div className="w-full bg-neutral-800/70 rounded-2xl px-4 py-3 my-2.5 text-center border border-white/5">
+                  <p className="text-sm font-medium text-white break-words leading-relaxed">
                     {selectedFriendNote.note.content}
                   </p>
                 </div>
@@ -1182,9 +1344,13 @@ export const NotesSystem = ({ chats, onChatSelect, onReplyNote }: { chats: any[]
 
                     {/* Details */}
                     <div className="flex-1 min-w-0 text-left">
-                      <div className="text-sm font-semibold text-white truncate">{selectedFriendNote.note.music}</div>
-                      <div className="text-xs text-neutral-400 truncate mt-0.5">
-                        {selectedFriendNote.note.musicClipDuration || 30}s preview • Spotify
+                      <div className="text-xs font-bold text-white truncate">
+                        {selectedFriendNote.note.music.split(' - ')[0] || selectedFriendNote.note.music}
+                      </div>
+                      <div className="text-[11px] text-neutral-400 truncate mt-0.5">
+                        {selectedFriendNote.note.music.split(' - ')[1] 
+                          ? `${selectedFriendNote.note.music.split(' - ')[1]} • Spotify` 
+                          : `${selectedFriendNote.note.musicClipDuration || 30}s preview • Spotify`}
                       </div>
                     </div>
 
@@ -1213,12 +1379,12 @@ export const NotesSystem = ({ chats, onChatSelect, onReplyNote }: { chats: any[]
               )}
 
               {/* Quick Reactions Bar */}
-              <div className="flex w-full items-center justify-around bg-neutral-800/50 py-1.5 px-2 rounded-2xl border border-white/5 my-2">
+              <div className="flex w-full items-center justify-around bg-neutral-800/60 py-2 px-2.5 rounded-2xl border border-white/5 my-2">
                 {REACTIONS.map(emoji => (
                   <button
                     key={emoji}
                     onClick={() => handleReact(selectedFriendNote.note.id, emoji)}
-                    className="w-9 h-9 rounded-xl hover:bg-white/10 flex items-center justify-center text-xl transition-transform active:scale-125"
+                    className="w-9 h-9 rounded-xl hover:bg-white/10 flex items-center justify-center text-xl transition-transform active:scale-125 hover:scale-110"
                   >
                     {emoji}
                   </button>
@@ -1230,8 +1396,8 @@ export const NotesSystem = ({ chats, onChatSelect, onReplyNote }: { chats: any[]
                 onSubmit={async (e) => {
                   e.preventDefault();
                   if (!replyText.trim() || !selectedFriendNote) return;
-                  const authorName = selectedFriendNote.chat.name || 'User';
-                  const noteQuote = selectedFriendNote.note.content;
+                  const authorName = selectedFriendNote.chat.name || selectedFriendNote.note.userName || 'User';
+                  const noteQuote = selectedFriendNote.note.content || selectedFriendNote.note.music || 'Note';
                   const messageBody = `Replying to note: "${noteQuote}"\n${replyText.trim()}`;
                   try {
                     if (sendMessage) {
@@ -1257,7 +1423,7 @@ export const NotesSystem = ({ chats, onChatSelect, onReplyNote }: { chats: any[]
                   type="text"
                   value={replyText}
                   onChange={(e) => setReplyText(e.target.value)}
-                  placeholder={`Reply to ${selectedFriendNote.chat.name || 'User'}...`}
+                  placeholder={`Reply to ${selectedFriendNote.chat.name || selectedFriendNote.note.userName || 'User'}...`}
                   className="flex-1 bg-transparent text-xs text-white placeholder:text-neutral-500 outline-none font-normal"
                 />
                 <button
@@ -1277,7 +1443,7 @@ export const NotesSystem = ({ chats, onChatSelect, onReplyNote }: { chats: any[]
                     onReplyNote?.(selectedFriendNote.chat.id, selectedFriendNote.note.content, selectedFriendNote.chat.name || 'User');
                     setSelectedFriendNote(null);
                   }}
-                  className="flex-1 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-xs font-medium text-neutral-300 hover:text-white transition-all flex items-center justify-center gap-1.5"
+                  className="flex-1 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-xs font-medium text-neutral-300 hover:text-white transition-all flex items-center justify-center gap-1.5 border border-white/5"
                 >
                   <MessageCircle size={14} />
                   <span>Open chat</span>
@@ -1286,7 +1452,7 @@ export const NotesSystem = ({ chats, onChatSelect, onReplyNote }: { chats: any[]
                 <button 
                   onClick={async () => {
                     if (!profile || !selectedFriendNote) return;
-                    const shareText = `Check out @${selectedFriendNote.chat.username || 'user'}'s note on Aeirmist: "${selectedFriendNote.note.content}"`;
+                    const shareText = `Check out @${selectedFriendNote.chat.username || selectedFriendNote.note.userName || 'user'}'s note on Aeirmist: "${selectedFriendNote.note.content || selectedFriendNote.note.music}"`;
                     if (navigator.share) {
                       try {
                         await navigator.share({
@@ -1301,8 +1467,8 @@ export const NotesSystem = ({ chats, onChatSelect, onReplyNote }: { chats: any[]
                     }
                     setSelectedFriendNote(null);
                   }}
-                  className="py-2 px-3 rounded-xl bg-white/5 hover:bg-white/10 text-xs font-medium text-neutral-400 hover:text-white transition-all flex items-center justify-center"
-                  title="Share"
+                  className="py-2.5 px-3.5 rounded-xl bg-white/5 hover:bg-white/10 text-xs font-medium text-neutral-400 hover:text-white transition-all flex items-center justify-center border border-white/5"
+                  title="Share note"
                 >
                   <Share2 size={14} />
                 </button>
@@ -1320,14 +1486,14 @@ export const NotesSystem = ({ chats, onChatSelect, onReplyNote }: { chats: any[]
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="absolute inset-0 bg-black/75 backdrop-blur-md"
+              className="absolute inset-0 bg-black/80 backdrop-blur-md"
               onClick={() => setViewingMyNote(false)}
             />
             <motion.div 
               initial={{ scale: 0.95, opacity: 0, y: 15 }}
               animate={{ scale: 1, opacity: 1, y: 0, transition: { duration: 0.2 } }}
               exit={{ scale: 0.95, opacity: 0, y: 15 }}
-              className="relative w-full max-w-[360px] bg-[#18181b] border border-white/10 rounded-3xl shadow-2xl p-6 flex flex-col items-center"
+              className="relative w-full max-w-[340px] bg-[#16161a] border border-white/10 rounded-[28px] shadow-2xl p-6 flex flex-col items-center"
             >
               <button 
                 onClick={() => setViewingMyNote(false)} 
@@ -1336,18 +1502,27 @@ export const NotesSystem = ({ chats, onChatSelect, onReplyNote }: { chats: any[]
                 <X size={18} />
               </button>
               
-              {/* Avatar & Header */}
-              <div className="w-16 h-16 rounded-full overflow-hidden ring-2 ring-white/15 mb-3 bg-neutral-900 shadow-md">
-                <img src={getAvatarUrl(profile?.photoURL)} alt="" className="w-full h-full object-cover" />
+              {/* Square Avatar & Header */}
+              <div className="relative w-20 h-20 mb-3 flex-shrink-0">
+                <div className="w-full h-full rounded-2xl overflow-hidden ring-2 ring-white/15 bg-neutral-900 shadow-md">
+                  <NoteUserAvatar 
+                    userId={profile?.id} 
+                    authorUid={user?.uid}
+                    fallbackPhoto={profile?.photoURL || user?.photoURL}
+                    alt={profile?.displayName || 'You'} 
+                    className="w-full h-full object-cover" 
+                    roundedClassName="rounded-2xl"
+                  />
+                </div>
               </div>
               
               <h3 className="text-base font-semibold text-white">Your Note</h3>
               <p className="text-xs text-neutral-400 mt-0.5">Visible for 24h • Posted {getRelativeTime(myNote.createdAt)} ago</p>
               
               {/* Note Content Bubble */}
-              {myNote.content && (
-                <div className="w-full bg-neutral-800/60 rounded-2xl px-5 py-4 my-3 text-center border border-white/5">
-                  <p className="text-base font-medium text-white break-words leading-relaxed">{myNote.content}</p>
+              {myNote.content && myNote.content.trim() && myNote.content !== myNote.music && (
+                <div className="w-full bg-neutral-800/70 rounded-2xl px-4 py-3 my-2.5 text-center border border-white/5">
+                  <p className="text-sm font-medium text-white break-words leading-relaxed">{myNote.content}</p>
                 </div>
               )}
 
@@ -1383,9 +1558,13 @@ export const NotesSystem = ({ chats, onChatSelect, onReplyNote }: { chats: any[]
                     </div>
 
                     <div className="flex-1 min-w-0 text-left">
-                      <div className="text-sm font-semibold text-white truncate">{myNote.music}</div>
-                      <div className="text-xs text-neutral-400 truncate mt-0.5">
-                        {myNote.musicClipDuration || 30}s preview • Spotify
+                      <div className="text-xs font-bold text-white truncate">
+                        {myNote.music.split(' - ')[0] || myNote.music}
+                      </div>
+                      <div className="text-[11px] text-neutral-400 truncate mt-0.5">
+                        {myNote.music.split(' - ')[1] 
+                          ? `${myNote.music.split(' - ')[1]} • Spotify` 
+                          : `${myNote.musicClipDuration || 30}s preview • Spotify`}
                       </div>
                     </div>
 
@@ -1413,7 +1592,7 @@ export const NotesSystem = ({ chats, onChatSelect, onReplyNote }: { chats: any[]
               )}
 
               {/* Insights: Views & Reactions */}
-              <div className="grid grid-cols-2 gap-2.5 w-full my-3">
+              <div className="grid grid-cols-2 gap-2 w-full my-2.5">
                 <button 
                   onClick={() => setActiveSheet('seen')}
                   className="flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-neutral-800/60 hover:bg-neutral-800 border border-white/5 transition-all text-xs font-medium text-neutral-300 hover:text-white"

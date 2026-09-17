@@ -540,59 +540,38 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
         animate={{ opacity: 1, x: 0 }}
         exit={{ opacity: 0, x: '100%' }}
         transition={{ type: 'spring', damping: 25, stiffness: 220 }}
-        className="fixed inset-y-0 right-0 w-full md:w-[465px] z-[1000] bg-neutral-950/98 backdrop-blur-3xl border-l border-white/15 shadow-[-25px_0_75px_rgba(0,0,0,0.9)] overflow-hidden flex flex-col"
+        className="fixed inset-y-0 right-0 w-full md:w-[465px] z-[1000] bg-[#0B0C10]/95 backdrop-blur-3xl border-l border-white/10 shadow-[-25px_0_75px_rgba(0,0,0,0.9)] overflow-hidden flex flex-col"
       >
       {/* Header Panel */}
-      <header className="p-3.5 sm:p-5 pt-[calc(0.875rem+env(safe-area-inset-top,0px))] md:pt-5 border-b border-white/15 bg-black/60 backdrop-blur-3xl relative z-10">
+      <header className="p-3.5 sm:p-4 pt-[calc(0.875rem+env(safe-area-inset-top,0px))] md:pt-4 border-b border-white/10 bg-black/40 backdrop-blur-2xl relative z-10">
         <div className="flex items-center justify-between gap-2 min-w-0">
-          <div className="flex items-center gap-2 sm:gap-3 min-w-0 shrink">
-            <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl sm:rounded-2xl bg-aeirmist-cyan/20 flex items-center justify-center text-aeirmist-cyan border border-aeirmist-cyan/40 shadow-[0_0_15px_rgba(0,242,255,0.3)] shrink-0">
-              <Bell size={17} className="animate-pulse" />
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-8 h-8 rounded-xl bg-white/10 flex items-center justify-center text-white shrink-0">
+              <Bell size={16} />
             </div>
-            <div className="min-w-0">
-              <h2 className="text-xs sm:text-base font-black tracking-wider sm:tracking-widest text-white uppercase leading-none truncate">Notifications</h2>
-            </div>
+            <h2 className="text-sm sm:text-base font-bold tracking-tight text-white leading-none truncate">Notifications</h2>
           </div>
-          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+          <div className="flex items-center gap-2 shrink-0">
             <button 
               onClick={markAllRead} 
-              className="px-2 sm:px-3 py-1.5 rounded-xl bg-white/10 border border-white/15 text-[9px] sm:text-[10px] font-black uppercase tracking-wider text-white hover:text-aeirmist-cyan hover:bg-white/20 transition-all shrink-0 cursor-pointer whitespace-nowrap"
+              className="px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/15 text-[11px] font-semibold text-white/80 hover:text-white transition-all cursor-pointer whitespace-nowrap"
             >
-              Mark<span className="hidden sm:inline"> All</span> Read
-            </button>
-            <button 
-              onClick={onSettingsClick}
-              className="p-1.5 sm:p-2 rounded-xl bg-white/10 border border-white/15 text-white/70 hover:text-white hover:bg-white/20 transition-all cursor-pointer shrink-0"
-              title="System Configuration"
-            >
-              <Settings size={15} />
+              Mark all read
             </button>
             <button 
               onClick={onClose} 
-              className="p-1.5 sm:p-2 rounded-xl bg-white/10 border border-white/15 text-white/70 hover:text-aeirmist-magenta hover:border-aeirmist-magenta/40 transition-all cursor-pointer shrink-0"
+              className="p-1.5 rounded-full bg-white/10 hover:bg-white/20 text-white/70 hover:text-white transition-all cursor-pointer shrink-0"
               title="Close"
             >
-              <X size={15} />
+              <X size={16} />
             </button>
           </div>
         </div>
       </header>
 
       {/* Categories Horizontal Scrolling Pill Navigation Container */}
-      <div className="px-2 sm:px-3 border-b border-white/15 bg-black/40 overflow-x-auto no-scrollbar flex items-center shrink-0">
-        <div className="flex items-center gap-1 sm:gap-1.5 py-2.5 pr-2">
-          <button 
-            onClick={() => setPriorityFilter(!priorityFilter)}
-            className={`py-1 px-2 sm:px-2.5 rounded-full text-[9px] sm:text-[10px] font-black uppercase tracking-tight sm:tracking-wider relative transition-all duration-300 flex items-center gap-1 shrink-0 cursor-pointer ${
-              priorityFilter 
-                ? 'bg-aeirmist-cyan text-black border border-aeirmist-cyan shadow-[0_0_12px_rgba(0,242,255,0.4)] font-black' 
-                : 'bg-white/10 border border-white/15 text-white/80 hover:text-white hover:bg-white/20'
-            }`}
-          >
-            <Zap size={11} className={priorityFilter ? 'animate-pulse' : ''} />
-            Priority
-          </button>
-          <div className="w-px h-3.5 bg-white/20 mx-0.5 shrink-0" />
+      <div className="px-3.5 sm:px-4 border-b border-white/10 bg-black/25 overflow-x-auto no-scrollbar flex items-center shrink-0">
+        <div className="flex items-center gap-1.5 py-2.5 pr-2">
           {tabsConfig.map(tab => {
             const count = unreadCounts[tab.id];
             const isActive = activeTab === tab.id;
@@ -600,16 +579,18 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
               <button 
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`py-1 px-2 sm:px-2.5 rounded-full text-[9px] sm:text-[10px] font-black uppercase tracking-tight sm:tracking-wider relative transition-all duration-300 flex items-center gap-1 shrink-0 cursor-pointer ${
+                className={`py-1.5 px-3 rounded-full text-xs font-semibold relative transition-all duration-200 flex items-center gap-1.5 shrink-0 cursor-pointer ${
                   isActive 
-                    ? 'bg-blue-600/30 text-blue-300 border border-blue-500/50 shadow-[0_0_12px_rgba(59,130,246,0.3)]' 
-                    : 'bg-white/10 border border-white/15 text-white/80 hover:text-white hover:bg-white/20'
+                    ? 'bg-white text-black shadow-md font-bold' 
+                    : 'bg-white/[0.06] text-white/70 hover:text-white hover:bg-white/10'
                 }`}
               >
                 {tab.icon}
                 <span>{tab.label}</span>
                 {count > 0 && (
-                  <span className="w-3.5 h-3.5 ml-0.5 rounded-full bg-blue-500 text-white text-[8px] font-bold flex items-center justify-center shadow-[0_0_8px_rgba(59,130,246,0.6)] shrink-0">
+                  <span className={`w-4 h-4 ml-0.5 rounded-full text-[9px] font-bold flex items-center justify-center shrink-0 ${
+                    isActive ? 'bg-black text-white' : 'bg-white/20 text-white'
+                  }`}>
                     {count}
                   </span>
                 )}
@@ -620,27 +601,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
       </div>
 
       {/* Notification Logs List */}
-      <div className="flex-1 overflow-y-auto no-scrollbar p-5 space-y-3.5 bg-neutral-950/80">
-        <div className="mb-3 flex items-center justify-between">
-          <span className="text-[10px] font-black uppercase tracking-[0.2em] text-white/70">
-            {activeTab === 'all' ? 'Unified Feeds logs' : `${activeTab} category`}
-          </span>
-
-          <div className="flex items-center gap-2">
-            {(mutedUsernames.length > 0 || hiddenTypes.length > 0) && (
-              <button 
-                onClick={clearFilters}
-                className="text-[9px] font-black uppercase tracking-wider text-rose-400 hover:underline flex items-center gap-1"
-                title="Reset active filters"
-              >
-                <RotateCcw size={9} />
-                Reset Rules ({mutedUsernames.length + hiddenTypes.length})
-              </button>
-            )}
-            <div className="w-2 h-2 rounded-full bg-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.8)]" />
-          </div>
-        </div>
-        
+      <div className="flex-1 overflow-y-auto no-scrollbar p-3.5 sm:p-4 space-y-2.5 sm:space-y-3 bg-[#0A0B0E]/60">
         {filteredNotifications.length > 0 ? (
           filteredNotifications.map((notif) => (
             <NotificationItem 

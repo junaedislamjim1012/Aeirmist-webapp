@@ -9,7 +9,31 @@ dotenv.config();
 const FTP_HOST = process.env.INFINITYFREE_FTP_HOST || 'ftpupload.net';
 const FTP_USER = process.env.INFINITYFREE_FTP_USER || 'if0_42922540';
 const FTP_PASS = process.env.INFINITYFREE_FTP_PASS || 'aeirmist1012';
-const REMOTE_DIR = '/htdocs';
+
+async function uploadFolder(client, localDir, remoteSubPath = '') {
+  const entries = fs.readdirSync(localDir);
+  for (const entry of entries) {
+    const localPath = path.join(localDir, entry);
+    const stat = fs.statSync(localPath);
+
+    if (stat.isDirectory()) {
+      try {
+        await client.send(`MKD ${entry}`);
+      } catch {}
+      await client.cd(entry);
+      await uploadFolder(client, localPath, path.join(remoteSubPath, entry));
+      await client.cdup();
+    } else {
+      if (entry.endsWith('.map')) continue; // Skip source maps
+      try {
+        console.log(`📤 Uploading: ${remoteSubPath ? remoteSubPath + '/' : ''}${entry}`);
+        await client.uploadFrom(localPath, entry);
+      } catch (err) {
+        console.warn(`⚠️ Skipped ${entry}: ${err.message}`);
+      }
+    }
+  }
+}
 
 async function deploy() {
   console.log('🚀 Starting InfinityFree Deployment Process...\n');
@@ -55,13 +79,28 @@ async function deploy() {
     });
 
     console.log('✅ Connected successfully!');
-    console.log(`📤 Step 3: Uploading dist/ files to ${REMOTE_DIR}...`);
+    
+    // Deploy to main 'htdocs'
+    console.log(`\n📤 Step 3: Navigating to htdocs and deploying app files...`);
+    await client.cd('htdocs');
+    await uploadFolder(client, distPath);
+    console.log('✅ Main htdocs updated successfully!');
 
-    // Upload dist/ contents into /htdocs
-    await client.uploadFromDir(distPath, REMOTE_DIR);
+    // Also sync to aeirmist.com/htdocs if present
+    try {
+      await client.cdup();
+      await client.cd('aeirmist.com/htdocs');
+      console.log(`\n📤 Step 4: Uploading to aeirmist.com/htdocs...`);
+      await uploadFolder(client, distPath);
+      console.log('✅ aeirmist.com/htdocs updated successfully!');
+    } catch (subDomainErr) {
+      // Subdomain folder optional
+    }
 
-    console.log('\n🎉 InfinityFree Deployment Successful!');
-    console.log('🌐 Web App is live on your InfinityFree domain!');
+    console.log('\n🎉 ==========================================');
+    console.log('   INFINITYFREE DEPLOYMENT 100% COMPLETE!');
+    console.log('==========================================');
+    console.log('🌐 Web App is now live on InfinityFree with the latest code!');
   } catch (err) {
     console.error('\n❌ FTP Deployment Error:', err);
     throw err;

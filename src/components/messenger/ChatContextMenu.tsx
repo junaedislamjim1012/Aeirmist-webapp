@@ -234,7 +234,7 @@ export const ChatContextMenu: React.FC<ChatContextMenuProps> = ({ x, y, onClose,
           />
           <MenuItem icon={<Share2 size={15} />} label="Share Chat" onClick={() => {
             onClose();
-            navigator.clipboard.writeText(`${window.location.origin}/?chat=${chatId}`)
+            navigator.clipboard.writeText(`${window.location.origin}/messages/${chatId}`)
               .then(() => addToast({ title: 'Link copied', message: 'Chat link copied to clipboard.', type: 'success' }))
               .catch(() => addToast({ title: 'Copy failed', message: 'Could not copy the link. Please try again.', type: 'warning' }));
           }} />

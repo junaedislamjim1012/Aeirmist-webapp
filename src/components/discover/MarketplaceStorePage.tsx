@@ -187,7 +187,7 @@ export const MarketplaceStorePage: React.FC<StorePageProps> = ({
 
   const handleShareStore = () => {
     try {
-      navigator.clipboard.writeText(window.location.origin + `?store=${store.username}`);
+      navigator.clipboard.writeText(`${window.location.origin}/store/${store.username || store.id}`);
       addToast({
         title: 'SHOP LINK COPIED',
         message: `@${store.username} shop link is copied to clipboard!`,

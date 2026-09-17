@@ -246,6 +246,7 @@ function AppContent() {
   const [viewingProfile, setViewingProfile] = useState<any>(null);
   const [messageRecipient, setMessageRecipient] = useState<any>(null);
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(false);
+  const [settingsSection, setSettingsSection] = useState<string | null>(null);
 
   useEffect(() => {
     const isUserPinned = localStorage.getItem('aeirmist_sidebar_user_pinned') === 'true';
@@ -359,6 +360,9 @@ function AppContent() {
     if (tab !== 'messenger') {
       setMessageRecipient(null);
     }
+    if (tab !== 'settings') {
+      setSettingsSection(null);
+    }
     setActiveTab(tab);
   };
 
@@ -392,82 +396,170 @@ function AppContent() {
     vVideoId: string | null,
     vStoreId: string | null,
     vProductId: string | null,
-    vChatUid: string | null
+    vChatUid: string | null,
+    vStoryUserId: string | null = null,
+    vSettingsSection: string | null = null,
+    vIsPosting: boolean = false
   ): string => {
-    if (vPostId) return `/p/${vPostId}`;
-    if (vVideoId) return `/v/${vVideoId}`;
+    if (vPostId) return `/post/${vPostId}`;
+    if (vVideoId) return `/video/${vVideoId}`;
+    if (vStoryUserId) return `/story/${vStoryUserId}`;
     if (vStoreId) return `/store/${vStoreId}`;
     if (vProductId) return `/product/${vProductId}`;
     if (isNotifsOpen) return '/notifications';
+    if (vIsPosting) return '/create-post';
+
     if (tab === 'profile') {
       if (vProfile?.username) return `/@${vProfile.username}`;
       if (vProfile?.id) return `/u/${vProfile.id}`;
       return '/profile';
     }
+
+    if (tab === 'settings') {
+      if (vSettingsSection) return `/settings/${vSettingsSection}`;
+      return '/settings';
+    }
+
     switch (tab) {
       case 'feed': return '/';
       case 'discover': return '/explore';
-      case 'videos': return '/reels';
+      case 'videos': return '/videos';
       case 'messenger': 
         if (vChatUid) return `/messages/${vChatUid}`;
         return '/messages';
-      case 'settings': return '/settings';
-      case 'admin': return '/admin-panel';
+      case 'admin': return '/admin';
       case 'dashboard': return '/dashboard';
       default: return `/${tab}`;
     }
   };
 
   const getInitialStateFromPath = (path: string) => {
-    const cleanPath = path.trim().toLowerCase();
-    if (cleanPath.startsWith('/p/')) {
-      const postId = cleanPath.split('/p/')[1]?.split('?')[0];
+    const cleanPath = path.trim();
+    const lowerPath = cleanPath.toLowerCase();
+
+    // 1. Posts
+    if (lowerPath.startsWith('/post/') || lowerPath.startsWith('/p/')) {
+      const postId = (lowerPath.startsWith('/post/') 
+        ? cleanPath.substring('/post/'.length) 
+        : cleanPath.substring('/p/'.length)).split('?')[0];
       return { tab: 'feed' as Tab, notifs: false, postId: postId || null };
     }
-    if (cleanPath.startsWith('/v/')) {
-      const videoId = cleanPath.split('/v/')[1]?.split('?')[0];
+
+    // 2. Videos / Reels
+    if (
+      lowerPath.startsWith('/video/') || 
+      lowerPath.startsWith('/videos/') || 
+      lowerPath.startsWith('/v/') || 
+      lowerPath.startsWith('/reel/') || 
+      lowerPath.startsWith('/reels/')
+    ) {
+      let videoId = '';
+      if (lowerPath.startsWith('/video/')) videoId = cleanPath.substring('/video/'.length);
+      else if (lowerPath.startsWith('/videos/')) videoId = cleanPath.substring('/videos/'.length);
+      else if (lowerPath.startsWith('/v/')) videoId = cleanPath.substring('/v/'.length);
+      else if (lowerPath.startsWith('/reel/')) videoId = cleanPath.substring('/reel/'.length);
+      else if (lowerPath.startsWith('/reels/')) videoId = cleanPath.substring('/reels/'.length);
+      videoId = videoId.split('?')[0];
       return { tab: 'videos' as Tab, notifs: false, videoId: videoId || null };
     }
-    if (cleanPath.startsWith('/store/')) {
-      const storeId = cleanPath.split('/store/')[1]?.split('?')[0];
+
+    // 3. Stories
+    if (lowerPath.startsWith('/story/') || lowerPath.startsWith('/stories/')) {
+      const storyId = (lowerPath.startsWith('/story/') 
+        ? cleanPath.substring('/story/'.length) 
+        : cleanPath.substring('/stories/'.length)).split('?')[0];
+      return { tab: 'feed' as Tab, notifs: false, storyUserId: storyId || null };
+    }
+
+    // 4. Stores & Products
+    if (lowerPath.startsWith('/store/')) {
+      const storeId = cleanPath.substring('/store/'.length).split('?')[0];
       return { tab: 'discover' as Tab, notifs: false, storeId: storeId || null };
     }
-    if (cleanPath.startsWith('/product/')) {
-      const productId = cleanPath.split('/product/')[1]?.split('?')[0];
+    if (lowerPath.startsWith('/product/') || lowerPath.startsWith('/marketplace/item/')) {
+      const productId = (lowerPath.startsWith('/product/') 
+        ? cleanPath.substring('/product/'.length) 
+        : cleanPath.substring('/marketplace/item/'.length)).split('?')[0];
       return { tab: 'discover' as Tab, notifs: false, productId: productId || null };
     }
-    if (cleanPath === '/admin-panel' || cleanPath === '/admin') {
-      return { tab: 'admin' as Tab, notifs: false };
-    }
-    if (cleanPath === '/notifications') {
-      return { tab: 'feed' as Tab, notifs: true };
-    }
-    if (cleanPath === '/explore' || cleanPath === '/discover') {
+    if (lowerPath === '/marketplace' || lowerPath === '/shop') {
       return { tab: 'discover' as Tab, notifs: false };
     }
-    if (cleanPath === '/reels' || cleanPath === '/videos' || cleanPath === '/shorts') {
-      return { tab: 'videos' as Tab, notifs: false };
+
+    // 5. Messages / Chats
+    if (lowerPath.startsWith('/messages/') || lowerPath.startsWith('/chat/') || lowerPath.startsWith('/m/')) {
+      let chatId = '';
+      if (lowerPath.startsWith('/messages/')) chatId = cleanPath.substring('/messages/'.length);
+      else if (lowerPath.startsWith('/chat/')) chatId = cleanPath.substring('/chat/'.length);
+      else if (lowerPath.startsWith('/m/')) chatId = cleanPath.substring('/m/'.length);
+      chatId = chatId.split('?')[0];
+      return { tab: 'messenger' as Tab, notifs: false, chatUid: chatId || null };
     }
-    if (cleanPath.startsWith('/messages/')) {
-      const chatUid = cleanPath.split('/messages/')[1]?.split('?')[0];
-      return { tab: 'messenger' as Tab, notifs: false, chatUid };
-    }
-    if (cleanPath === '/messages' || cleanPath === '/messenger') {
+    if (lowerPath === '/messages' || lowerPath === '/messenger' || lowerPath === '/chat' || lowerPath === '/inbox') {
       return { tab: 'messenger' as Tab, notifs: false };
     }
-    if (cleanPath === '/settings') {
+
+    // 6. Settings & Sub-sections
+    if (lowerPath.startsWith('/settings/')) {
+      const section = cleanPath.substring('/settings/'.length).split('?')[0].toLowerCase();
+      return { tab: 'settings' as Tab, notifs: false, settingsSection: section || null };
+    }
+    if (lowerPath === '/settings') {
       return { tab: 'settings' as Tab, notifs: false };
     }
-    if (cleanPath === '/profile' || cleanPath.startsWith('/@') || cleanPath.startsWith('/u/')) {
-      let username = null;
-      let userId = null;
-      if (cleanPath.startsWith('/@')) username = cleanPath.split('/@')[1]?.split('?')[0];
-      if (cleanPath.startsWith('/u/')) userId = cleanPath.split('/u/')[1]?.split('?')[0];
+
+    // 7. Profiles
+    if (lowerPath.startsWith('/@') || lowerPath.startsWith('/u/') || lowerPath.startsWith('/profile/')) {
+      let username: string | null = null;
+      let userId: string | null = null;
+      if (lowerPath.startsWith('/@')) {
+        username = cleanPath.substring('/@'.length).split('?')[0];
+      } else if (lowerPath.startsWith('/u/')) {
+        userId = cleanPath.substring('/u/'.length).split('?')[0];
+      } else if (lowerPath.startsWith('/profile/')) {
+        const seg = cleanPath.substring('/profile/'.length).split('?')[0];
+        if (seg.startsWith('@')) username = seg.substring(1);
+        else userId = seg;
+      }
       return { tab: 'profile' as Tab, notifs: false, username, userId };
     }
-    if (cleanPath === '/dashboard' || cleanPath === '/stats') {
+    if (lowerPath === '/profile' || lowerPath === '/me') {
+      return { tab: 'profile' as Tab, notifs: false };
+    }
+
+    // 8. Notifications
+    if (lowerPath === '/notifications' || lowerPath === '/alerts') {
+      return { tab: 'feed' as Tab, notifs: true };
+    }
+
+    // 9. Discover / Explore
+    if (lowerPath === '/explore' || lowerPath === '/discover' || lowerPath === '/search') {
+      return { tab: 'discover' as Tab, notifs: false };
+    }
+
+    // 10. Videos / Reels main feed
+    if (lowerPath === '/reels' || lowerPath === '/videos' || lowerPath === '/shorts') {
+      return { tab: 'videos' as Tab, notifs: false };
+    }
+
+    // 11. Admin & Dashboard
+    if (lowerPath === '/admin-panel' || lowerPath === '/admin') {
+      return { tab: 'admin' as Tab, notifs: false };
+    }
+    if (lowerPath === '/dashboard' || lowerPath === '/stats' || lowerPath === '/analytics') {
       return { tab: 'dashboard' as Tab, notifs: false };
     }
+
+    // 12. Create Post
+    if (lowerPath === '/create-post' || lowerPath === '/new-post') {
+      return { tab: 'feed' as Tab, notifs: false, isPosting: true };
+    }
+
+    // 13. Offline Sanctuary
+    if (lowerPath === '/offline') {
+      return { tab: 'feed' as Tab, notifs: false, isOfflineView: true };
+    }
+
     return { tab: 'feed' as Tab, notifs: false };
   };
 
@@ -484,11 +576,12 @@ function AppContent() {
       viewingStoreId: (pathInit as any).storeId || null,
       viewingProductId: (pathInit as any).productId || null,
       messageRecipient: (pathInit as any).chatUid ? { id: (pathInit as any).chatUid } : null,
-      isPosting: false,
+      isPosting: !!(pathInit as any).isPosting,
       isNotificationsOpen: pathInit.notifs,
       isAccountSwitcherOpen: false,
+      settingsSection: (pathInit as any).settingsSection || null,
       storyState: {
-        activeStoryGroup: null,
+        activeStoryGroup: (pathInit as any).storyUserId ? { userId: (pathInit as any).storyUserId } : null,
         isStudioOpen: false,
         isCreatingNote: false,
       },
@@ -519,6 +612,28 @@ function AppContent() {
     }
     if (pathInit.notifs) {
       setIsNotificationsOpen(true);
+    }
+    if ((pathInit as any).settingsSection) {
+      setSettingsSection((pathInit as any).settingsSection);
+    }
+    if ((pathInit as any).isPosting) {
+      setIsPosting(true);
+    }
+    if ((pathInit as any).storyUserId) {
+      const sState = {
+        activeStoryGroup: { userId: (pathInit as any).storyUserId },
+        isStudioOpen: false,
+        isCreatingNote: false,
+      };
+      setStoryState(sState);
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('aeirmist-story-state-restore', { detail: sState }));
+      }, 150);
+    }
+    if ((pathInit as any).isOfflineView) {
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('open-offline-sanctuary'));
+      }, 100);
     }
 
     if (!window.history.state || !window.history.state._appNav) {
@@ -587,6 +702,7 @@ function AppContent() {
       isNotificationsOpen,
       isAccountSwitcherOpen,
       storyState,
+      settingsSection,
       _appNav: true
     };
 
@@ -598,7 +714,10 @@ function AppContent() {
       viewingVideoId,
       viewingStoreId, 
       viewingProductId,
-      messageRecipient?.id || null
+      messageRecipient?.id || null,
+      storyState.activeStoryGroup?.userId || null,
+      settingsSection,
+      isPosting
     );
 
     const hState = window.history.state;
@@ -618,6 +737,7 @@ function AppContent() {
       hState.isPosting !== isPosting ||
       hState.isNotificationsOpen !== isNotificationsOpen ||
       hState.isAccountSwitcherOpen !== isAccountSwitcherOpen ||
+      hState.settingsSection !== settingsSection ||
       JSON.stringify(hState.storyState) !== JSON.stringify(storyState);
 
     if (isDiff) {
@@ -625,7 +745,20 @@ function AppContent() {
     } else if (window.location.pathname !== targetUrl) {
       window.history.replaceState(stateToPush, '', targetUrl);
     }
-  }, [activeTab, viewingProfile, viewingPostId, messageRecipient, isPosting, isNotificationsOpen, isAccountSwitcherOpen, storyState]);
+  }, [
+    activeTab, 
+    viewingProfile, 
+    viewingPostId, 
+    viewingVideoId, 
+    viewingStoreId, 
+    viewingProductId, 
+    messageRecipient, 
+    isPosting, 
+    isNotificationsOpen, 
+    isAccountSwitcherOpen, 
+    storyState, 
+    settingsSection
+  ]);
 
   // Listen to popstate event (back/forward button)
   useEffect(() => {
@@ -1260,7 +1393,7 @@ function AppContent() {
                     <div className="w-full min-h-full">
                       <ErrorBoundary inline>
                         <Suspense fallback={<LazyFallback />}>
-                          <SettingsSystem />
+                          <SettingsSystem initialSection={settingsSection as any} onSectionChange={(sec) => setSettingsSection(sec)} />
                         </Suspense>
                       </ErrorBoundary>
                     </div>

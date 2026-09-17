@@ -132,8 +132,13 @@ type SettingsTab =
   | 'languages'
   | 'developer';
 
+interface SettingsSystemProps {
+  initialSection?: SettingsTab | null;
+  onSectionChange?: (section: SettingsTab | null) => void;
+}
+
 // Aeirmist Settings System - Settings Config
-const SettingsSystem = () => {
+const SettingsSystem: React.FC<SettingsSystemProps> = ({ initialSection, onSectionChange }) => {
   const { 
     user, 
     profile, 
@@ -175,11 +180,23 @@ const SettingsSystem = () => {
   };
 
   const [activeTab, setActiveTab] = useState<SettingsTab | null>(() => {
+    if (initialSection) return initialSection;
     if (typeof window !== 'undefined' && window.innerWidth >= 1024) {
       return 'account';
     }
     return null;
   });
+
+  useEffect(() => {
+    if (initialSection !== undefined && initialSection !== activeTab) {
+      setActiveTab(initialSection);
+    }
+  }, [initialSection]);
+
+  const handleSelectTab = (tab: SettingsTab | null) => {
+    setActiveTab(tab);
+    onSectionChange?.(tab);
+  };
   const sectionMap: Partial<Record<SettingsTab, React.FC<any>>> = {
     account: AccountSettings,
     privacy: PrivacySettings,
@@ -527,25 +544,25 @@ const SettingsSystem = () => {
             ) : (
               <div className="space-y-2">
                 <SettingsSection title="Personal Profile">
-                  <SettingsTabItem active={activeTab === 'account'} onClick={() => setActiveTab('account')} icon={<User />} label="Account" />
-                  <SettingsTabItem active={activeTab === 'privacy'} onClick={() => setActiveTab('privacy')} icon={<Lock />} label="Privacy" />
-                  <SettingsTabItem active={activeTab === 'security'} onClick={() => setActiveTab('security')} icon={<Shield />} label="Security" />
-                  <SettingsTabItem active={activeTab === 'verification'} onClick={() => setActiveTab('verification')} icon={<ShieldCheck />} label="Verification" />
+                  <SettingsTabItem active={activeTab === 'account'} onClick={() => handleSelectTab('account')} icon={<User />} label="Account" />
+                  <SettingsTabItem active={activeTab === 'privacy'} onClick={() => handleSelectTab('privacy')} icon={<Lock />} label="Privacy" />
+                  <SettingsTabItem active={activeTab === 'security'} onClick={() => handleSelectTab('security')} icon={<Shield />} label="Security" />
+                  <SettingsTabItem active={activeTab === 'verification'} onClick={() => handleSelectTab('verification')} icon={<ShieldCheck />} label="Verification" />
                 </SettingsSection>
 
                 <SettingsSection title="Preferences">
-                  <SettingsTabItem active={activeTab === 'notifications'} onClick={() => setActiveTab('notifications')} icon={<Bell />} label="Notifications" />
-                  <SettingsTabItem active={activeTab === 'messaging'} onClick={() => setActiveTab('messaging')} icon={<MessageSquare />} label="Messaging" />
-                  <SettingsTabItem active={activeTab === 'calls'} onClick={() => setActiveTab('calls')} icon={<Phone />} label="Calls" />
-                  <SettingsTabItem active={activeTab === 'appearance'} onClick={() => setActiveTab('appearance')} icon={<Palette />} label="Appearance" />
-                  <SettingsTabItem active={activeTab === 'languages'} onClick={() => setActiveTab('languages')} icon={<LanguagesIcon />} label="Languages" />
+                  <SettingsTabItem active={activeTab === 'notifications'} onClick={() => handleSelectTab('notifications')} icon={<Bell />} label="Notifications" />
+                  <SettingsTabItem active={activeTab === 'messaging'} onClick={() => handleSelectTab('messaging')} icon={<MessageSquare />} label="Messaging" />
+                  <SettingsTabItem active={activeTab === 'calls'} onClick={() => handleSelectTab('calls')} icon={<Phone />} label="Calls" />
+                  <SettingsTabItem active={activeTab === 'appearance'} onClick={() => handleSelectTab('appearance')} icon={<Palette />} label="Appearance" />
+                  <SettingsTabItem active={activeTab === 'languages'} onClick={() => handleSelectTab('languages')} icon={<LanguagesIcon />} label="Languages" />
                 </SettingsSection>
 
                 <SettingsSection title="Storage & Tools">
-                  <SettingsTabItem active={activeTab === 'storage'} onClick={() => setActiveTab('storage')} icon={<Database />} label="Storage & Data" />
-                  <SettingsTabItem active={activeTab === 'vault'} onClick={() => setActiveTab('vault')} icon={<Lock />} label="Neural Vault" />
-                  <SettingsTabItem active={activeTab === 'sound_library'} onClick={() => setActiveTab('sound_library')} icon={<Music />} label="Sound Library" />
-                  <SettingsTabItem active={activeTab === 'connected'} onClick={() => setActiveTab('connected')} icon={<LinkIcon />} label="Connected Accounts" />
+                  <SettingsTabItem active={activeTab === 'storage'} onClick={() => handleSelectTab('storage')} icon={<Database />} label="Storage & Data" />
+                  <SettingsTabItem active={activeTab === 'vault'} onClick={() => handleSelectTab('vault')} icon={<Lock />} label="Neural Vault" />
+                  <SettingsTabItem active={activeTab === 'sound_library'} onClick={() => handleSelectTab('sound_library')} icon={<Music />} label="Sound Library" />
+                  <SettingsTabItem active={activeTab === 'connected'} onClick={() => handleSelectTab('connected')} icon={<LinkIcon />} label="Connected Accounts" />
                 </SettingsSection>
 
                 <SettingsSection title="System & Support">
@@ -566,13 +583,13 @@ const SettingsSystem = () => {
                       label="Control Panel" 
                     />
                   )}
-                  <SettingsTabItem active={activeTab === 'marketplace'} onClick={() => setActiveTab('marketplace')} icon={<Gem />} label="Marketplace" />
-                  <SettingsTabItem active={activeTab === 'accessibility'} onClick={() => setActiveTab('accessibility')} icon={<Accessibility />} label="Accessibility" />
-                  <SettingsTabItem active={activeTab === 'help'} onClick={() => setActiveTab('help')} icon={<Info />} label="Guidelines & Legal" />
-                  <SettingsTabItem active={activeTab === 'support'} onClick={() => setActiveTab('support')} icon={<LifeBuoy />} label="Support" />
-                  <SettingsTabItem active={activeTab === 'feedback'} onClick={() => setActiveTab('feedback')} icon={<MessageSquare />} label="Feedback" />
-                  <SettingsTabItem active={activeTab === 'about'} onClick={() => setActiveTab('about')} icon={<Info />} label="About" />
-                  <SettingsTabItem active={activeTab === 'developer'} onClick={() => setActiveTab('developer')} icon={<Terminal />} label="Developer" />
+                  <SettingsTabItem active={activeTab === 'marketplace'} onClick={() => handleSelectTab('marketplace')} icon={<Gem />} label="Marketplace" />
+                  <SettingsTabItem active={activeTab === 'accessibility'} onClick={() => handleSelectTab('accessibility')} icon={<Accessibility />} label="Accessibility" />
+                  <SettingsTabItem active={activeTab === 'help'} onClick={() => handleSelectTab('help')} icon={<Info />} label="Guidelines & Legal" />
+                  <SettingsTabItem active={activeTab === 'support'} onClick={() => handleSelectTab('support')} icon={<LifeBuoy />} label="Support" />
+                  <SettingsTabItem active={activeTab === 'feedback'} onClick={() => handleSelectTab('feedback')} icon={<MessageSquare />} label="Feedback" />
+                  <SettingsTabItem active={activeTab === 'about'} onClick={() => handleSelectTab('about')} icon={<Info />} label="About" />
+                  <SettingsTabItem active={activeTab === 'developer'} onClick={() => handleSelectTab('developer')} icon={<Terminal />} label="Developer" />
                   <SettingsTabItem 
                     active={false} 
                     onClick={handleInstallClick} 
@@ -631,7 +648,7 @@ const SettingsSystem = () => {
               {/* Back button on phone and tablet views to go back to settings index */}
               <button 
                 type="button"
-                onClick={() => setActiveTab(null)}
+                onClick={() => handleSelectTab(null)}
                 className={`lg:hidden flex items-center justify-center p-2 rounded-xl border transition-all mr-1 ${
                   isLight 
                     ? 'bg-slate-100 border-slate-300 text-slate-800 hover:bg-slate-200' 

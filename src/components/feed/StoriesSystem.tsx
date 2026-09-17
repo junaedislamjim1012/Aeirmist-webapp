@@ -845,7 +845,7 @@ export const StoryViewer = ({
   };
 
   const handleShareStory = async () => {
-    const storyUrl = activeStory.mediaUrl || window.location.href;
+    const storyUrl = `${window.location.origin}/story/${group.userId || activeStory.id}`;
     const authorName = group.userName || 'Aeirmist User';
     const shareData = {
       title: `${authorName}'s Story on Aeirmist`,

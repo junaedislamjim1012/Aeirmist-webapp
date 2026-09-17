@@ -920,7 +920,9 @@ const ProfileSystem = ({ targetProfile, onMessageClick, onEditProfile, onUserCli
   };
 
   const handleShareProfile = async () => {
-    const shareUrl = window.location.href;
+    const shareUrl = displayUser?.username
+      ? `${window.location.origin}/@${displayUser.username}`
+      : (displayUser?.id ? `${window.location.origin}/u/${displayUser.id}` : `${window.location.origin}/profile`);
     const shareData = {
       title: `${displayUser.displayName} (@${displayUser.username}) on Aeirmist`,
       text: `Check out ${displayUser.displayName}'s profile on Aeirmist!`,

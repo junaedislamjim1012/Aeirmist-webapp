@@ -1,4 +1,5 @@
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { logger } from './utils/logger';
 
 // Register Service Worker for PWA/TWA support
 if ('serviceWorker' in navigator) {

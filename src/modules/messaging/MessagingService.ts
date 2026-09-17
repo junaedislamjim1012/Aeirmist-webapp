@@ -244,13 +244,13 @@ class MessagingService {
           participantDetails: {
             [profile.id]: { 
               displayName: profile.displayName || profile.username, 
-              photoURL: profile.photoURL, 
-              username: profile.username, 
+              photoURL: profile.photoURL || null, 
+              username: profile.username || '', 
               uid: user.uid 
             },
             [targetProfileId!]: metadata.targetProfile || { 
               displayName: 'Aeirmist User', 
-              photoURL: getAvatarUrl(null, targetProfileId), 
+              photoURL: getAvatarUrl(null, targetProfileId) || null, 
               username: targetProfileId, 
               uid: targetOwnerUid || targetProfileId
             }

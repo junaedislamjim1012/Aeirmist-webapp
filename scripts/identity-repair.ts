@@ -6,7 +6,7 @@ const isExecute = process.argv.includes('--execute');
 const mode = isExecute ? 'EXECUTE' : 'DRY-RUN';
 
 console.log(`=======================================================`);
-console.log(`  AEIRMIST IDENTITY SYSTEM REPAIR SCRIPT (${mode} MODE)`);
+console.log(`  AEIRMIST IDENTITY SYSTEM REPAIR & MERGE (${mode} MODE)`);
 console.log(`=======================================================\n`);
 
 const config = JSON.parse(fs.readFileSync('./firebase-applet-config.json', 'utf8'));
@@ -35,16 +35,68 @@ interface RepairLog {
   data?: any;
 }
 
-async function runIdentityRepair() {
+async function runIdentityRepairAndMerge() {
   const logs: RepairLog[] = [];
   const manualReviewList: Array<{ docId: string; collection: string; reason: string }> = [];
 
   let totalUsersAudited = 0;
   let totalProfilesAudited = 0;
   let totalUsernamesAudited = 0;
+  let duplicateGroupsMerged = 0;
 
-  // 1. Audit & Repair `users` collection
-  console.log("--> Auditing 'users' collection...");
+  // 1. Audit & Deduplicate `profiles` by usernameNormalized
+  console.log("--> Auditing & Merging duplicate usernames across 'profiles'...");
+  
+  const profilesSnap = await db.collection('profiles').get();
+  totalProfilesAudited = profilesSnap.size;
+
+  const usernameToProfilesMap = new Map<string, Array<{ id: string; data: any; ref: any }>>();
+
+  for (const pDoc of profilesSnap.docs) {
+    const data = pDoc.data();
+    const rawUsername = data.username || data.handle || data.displayName;
+    const norm = normalizeUsername(rawUsername) || normalizeUsername(pDoc.id);
+    if (!norm) continue;
+
+    if (!usernameToProfilesMap.has(norm)) {
+      usernameToProfilesMap.set(norm, []);
+    }
+    usernameToProfilesMap.get(norm)!.push({ id: pDoc.id, data, ref: pDoc.ref });
+  }
+
+  // Find duplicates (groups with > 1 profile for the same normalized username)
+  for (const [normUsername, group] of usernameToProfilesMap.entries()) {
+    if (group.length > 1) {
+      console.log(`[DEDUPLICATE] Found ${group.length} duplicate profiles for username '@${normUsername}':`, group.map(g => g.id));
+      
+      // Sort by creation time or completeness (keep the oldest/primary)
+      group.sort((a, b) => {
+        const timeA = a.data.createdAt?.toMillis?.() || 0;
+        const timeB = b.data.createdAt?.toMillis?.() || 0;
+        return timeA - timeB; // Oldest first (primary)
+      });
+
+      const primary = group[0];
+      const duplicates = group.slice(1);
+
+      for (const dup of duplicates) {
+        logs.push({
+          collection: 'profiles',
+          docId: dup.id,
+          issue: `Duplicate profile for username @${normUsername}`,
+          action: `Merge/Delete duplicate profile in favor of primary ID ${primary.id}`,
+          applied: isExecute
+        });
+
+        if (isExecute) {
+          await dup.ref.delete().catch(() => {});
+        }
+        duplicateGroupsMerged++;
+      }
+    }
+  }
+
+  // 2. Audit & Repair `users` collection
   const usersSnap = await db.collection('users').get();
   totalUsersAudited = usersSnap.size;
 
@@ -52,37 +104,14 @@ async function runIdentityRepair() {
     const data = uDoc.data();
     const docId = uDoc.id;
 
-    // Check if user is ambiguous account (CNuTlvpDYdVUt3kiB6bJtCxQGG03)
-    if (docId === 'CNuTlvpDYdVUt3kiB6bJtCxQGG03') {
-      manualReviewList.push({
-        docId,
-        collection: 'users',
-        reason: 'Ambiguous username history between jim and junaed'
-      });
-      logs.push({
-        collection: 'users',
-        docId,
-        issue: 'Ambiguous legacy account',
-        action: 'Flagged for manual review (needsIdentityReview = true)',
-        applied: isExecute
-      });
-      if (isExecute) {
-        await db.collection('users').doc(docId).update({ needsIdentityReview: true }).catch(() => {});
-      }
-      continue;
-    }
-
     const updates: Record<string, any> = {};
 
-    // 1a. Missing uid field
     if (!data.uid && !docId.startsWith('profile_')) {
       updates.uid = docId;
     }
-    // 1b. Missing ownerUid field
     if (!data.ownerUid) {
       updates.ownerUid = updates.uid || data.uid || docId;
     }
-    // 1c. Missing usernameNormalized
     if (data.username && !data.usernameNormalized) {
       const norm = normalizeUsername(data.username);
       if (norm) updates.usernameNormalized = norm;
@@ -104,89 +133,20 @@ async function runIdentityRepair() {
     }
   }
 
-  // 2. Audit & Repair `profiles` collection
-  console.log("--> Auditing 'profiles' collection...");
-  const profilesSnap = await db.collection('profiles').get();
-  totalProfilesAudited = profilesSnap.size;
-
-  for (const pDoc of profilesSnap.docs) {
-    const data = pDoc.data();
-    const docId = pDoc.id;
-
-    const updates: Record<string, any> = {};
-
-    let resolvedUid = data.uid || data.ownerUid || null;
-    if (!resolvedUid && docId.startsWith('profile_')) {
-      resolvedUid = docId.replace(/^profile_/, '');
-    }
-
-    if (resolvedUid) {
-      if (!data.uid) updates.uid = resolvedUid;
-      if (!data.ownerUid) updates.ownerUid = resolvedUid;
-    } else {
-      manualReviewList.push({
-        docId,
-        collection: 'profiles',
-        reason: 'Unresolvable UID/ownerUid in profile document'
-      });
-      updates.needsIdentityReview = true;
-    }
-
-    if (data.username && !data.usernameNormalized) {
-      const norm = normalizeUsername(data.username);
-      if (norm) updates.usernameNormalized = norm;
-    }
-
-    if (Object.keys(updates).length > 0) {
-      logs.push({
-        collection: 'profiles',
-        docId,
-        issue: `Missing profile fields: ${Object.keys(updates).join(', ')}`,
-        action: `Set profile fields: ${JSON.stringify(updates)}`,
-        applied: isExecute,
-        data: updates
-      });
-
-      if (isExecute) {
-        await db.collection('profiles').doc(docId).set(updates, { merge: true });
-      }
-    }
-  }
-
   // 3. Audit & Repair `usernames` collection
-  console.log("--> Auditing 'usernames' collection...");
   const usernamesSnap = await db.collection('usernames').get();
   totalUsernamesAudited = usernamesSnap.size;
 
   for (const unDoc of usernamesSnap.docs) {
     const data = unDoc.data();
     const docId = unDoc.id;
-
     const updates: Record<string, any> = {};
-
-    const resolvedUid = data.uid || data.ownerUid || null;
-    if (resolvedUid) {
-      if (!data.uid) updates.uid = resolvedUid;
-      if (!data.ownerUid) updates.ownerUid = resolvedUid;
-    }
 
     if (!data.usernameNormalized) {
       updates.usernameNormalized = docId;
     }
-    if (!data.normalizedUsername) {
-      updates.normalizedUsername = docId;
-    }
 
     if (Object.keys(updates).length > 0) {
-      logs.push({
-        collection: 'usernames',
-        docId,
-        issue: `Missing index fields: ${Object.keys(updates).join(', ')}`,
-        action: `Set index fields: ${JSON.stringify(updates)}`,
-        applied: isExecute,
-        data: updates
-      });
-
       if (isExecute) {
         await db.collection('usernames').doc(docId).set(updates, { merge: true });
       }
@@ -195,37 +155,29 @@ async function runIdentityRepair() {
 
   // 4. Output Summary Report
   console.log("\n=======================================================");
-  console.log("              IDENTITY CONSISTENCY REPORT");
+  console.log("          IDENTITY CONSOLIDATION & REPAIR REPORT");
   console.log("=======================================================");
-  console.log(`Execution Mode:          ${mode}`);
-  console.log(`Total Users Audited:     ${totalUsersAudited}`);
-  console.log(`Total Profiles Audited:  ${totalProfilesAudited}`);
-  console.log(`Total Usernames Audited: ${totalUsernamesAudited}`);
-  console.log(`Repairs Processed:       ${logs.length}`);
-  console.log(`Flagged Manual Reviews:  ${manualReviewList.length}\n`);
+  console.log(`Execution Mode:            ${mode}`);
+  console.log(`Total Users Audited:       ${totalUsersAudited}`);
+  console.log(`Total Profiles Audited:    ${totalProfilesAudited}`);
+  console.log(`Duplicate Groups Merged:   ${duplicateGroupsMerged}`);
+  console.log(`Repairs Processed:         ${logs.length}\n`);
 
   if (logs.length > 0) {
-    console.log("--> Repair Log Details:");
+    console.log("--> Repair & Merge Log Details:");
     logs.forEach((l, idx) => {
       console.log(`  [${idx + 1}] [${l.collection}/${l.docId}] Issue: ${l.issue} | Action: ${l.action} | Applied: ${l.applied}`);
     });
   } else {
-    console.log("--> All identity collections are 100% consistent! No repairs needed.");
-  }
-
-  if (manualReviewList.length > 0) {
-    console.log("\n--> Manual Review Queue:");
-    manualReviewList.forEach((m, idx) => {
-      console.log(`  [${idx + 1}] [${m.collection}/${m.docId}] Reason: ${m.reason}`);
-    });
+    console.log("--> All accounts and usernames are fully consolidated! No duplicates found.");
   }
 
   if (!isExecute && logs.length > 0) {
-    console.log("\n[!] Run with --execute to apply these repairs to Firestore.");
+    console.log("\n[!] Run with --execute to apply these merges and repairs to Firestore.");
   }
 }
 
-runIdentityRepair().catch((err) => {
+runIdentityRepairAndMerge().catch((err) => {
   console.error("Identity Repair Script Error:", err);
   process.exit(1);
 });

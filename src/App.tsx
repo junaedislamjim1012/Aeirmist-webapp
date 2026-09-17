@@ -22,7 +22,6 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { Sparkles, Zap, Lock, AlertCircle, Clock } from 'lucide-react';
 import { AeirmistLogo } from './components/ui/AeirmistLogo';
 import { ReportProvider } from './components/reporting/ReportContext';
-import { PWAInstallBanner } from './components/pwa/PWAInstallBanner';
 
 // Aeirmist Core Component Architecture
 function toMathBoldScript(text: string): string {
@@ -161,7 +160,6 @@ import { SEO } from './components/ui/SEO';
 import { analytics } from './services/AnalyticsService';
 import { followRecommService } from './services/FollowRecommendationService';
 import { NetworkStatusProvider } from './context/NetworkStatusContext';
-import { NetworkBanner } from './components/ui/NetworkBanner';
 
 const ComingSoonScreen = ({ sectorName, onHomeClick }: { sectorName: string; onHomeClick: () => void }) => {
   return (
@@ -1128,7 +1126,6 @@ function AppContent() {
           />
 
           <main id="main-content" className="flex-1 min-w-0 h-full relative overflow-hidden flex flex-col">
-            <PWAInstallBanner />
             <Suspense fallback={<LazyFallback />}>
               <Routes>
                 <Route path="/payment-success" element={<Suspense fallback={null}><PaymentResult status="success" /></Suspense>} />
@@ -1385,7 +1382,6 @@ function AppContent() {
           </Suspense>
 
           <ToastNotification />
-          <NetworkBanner />
           
           <AnimatePresence>
             {cameraConfig?.isOpen && (

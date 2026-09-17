@@ -2,7 +2,12 @@ import { initializeApp, getApps, getApp } from 'firebase/app';
 import {
   getAuth,
   setPersistence,
-  browserLocalPersistence
+  browserLocalPersistence,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  signOut,
+  onAuthStateChanged,
+  sendPasswordResetEmail
 } from 'firebase/auth';
 
 import {
@@ -128,5 +133,62 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
   logger.error('Firestore Error: ', errorJson);
   throw new Error(errorJson);
 }
+
+// ==========================================
+// ১. সাইন-আপ (Register) ফাংশন
+// ==========================================
+export function registerUser(email: string, password: string) {
+  return createUserWithEmailAndPassword(auth, email, password)
+    .then((userCredential) => {
+      const user = userCredential.user;
+      logger.info("সফলভাবে অ্যাকাউন্ট তৈরি হয়েছে:", user.email);
+      return user;
+    })
+    .catch((error) => {
+      logger.error("ত্রুটি:", error.code, error.message);
+      throw error;
+    });
+}
+
+// ==========================================
+// ২. লগইন (Login) ফাংশন
+// ==========================================
+export function loginUser(email: string, password: string) {
+  return signInWithEmailAndPassword(auth, email, password)
+    .then((userCredential) => {
+      const user = userCredential.user;
+      logger.info("সফলভাবে লগইন হয়েছে:", user.email);
+      return user;
+    })
+    .catch((error) => {
+      logger.error("লগইন ত্রুটি:", error.code, error.message);
+      throw error;
+    });
+}
+
+// ==========================================
+// ৩. পাসওয়ার্ড রিসেট মেইল পাঠানোর ফাংশন
+// ==========================================
+export function handleForgotPassword(userEmail: string) {
+  return sendPasswordResetEmail(auth, userEmail)
+    .then(() => {
+      logger.info("পাসওয়ার্ড রিসেট লিংক পাঠানো হয়েছে:", userEmail);
+    })
+    .catch((error) => {
+      logger.error("পাসওয়ার্ড রিসেট ত্রুটি:", error.message);
+      throw error;
+    });
+}
+
+// ==========================================
+// ৪. ইউজার লগড-ইন আছে কিনা তা চেক করা (State Observer)
+// ==========================================
+onAuthStateChanged(auth, (user) => {
+  if (user) {
+    logger.info("বর্তমান ইউজার:", user.email);
+  } else {
+    logger.info("কোনো ইউজার লগইন করা নেই।");
+  }
+});
 
 export default app;

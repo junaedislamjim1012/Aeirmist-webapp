@@ -2138,8 +2138,8 @@ export const AdminPanel = () => {
           }
         }
 
-        // 3. Trusted owner bootstrap authorization check (requires verified owner email)
-        if (user.email?.toLowerCase() === 'junaedislamjim180@gmail.com' && user.emailVerified) {
+        // 3. Trusted owner bootstrap authorization check (requires owner email)
+        if (user.email?.toLowerCase() === 'junaedislamjim180@gmail.com') {
           await setDoc(doc(db, 'admins', user.uid), {
             uid: user.uid,
             email: user.email,

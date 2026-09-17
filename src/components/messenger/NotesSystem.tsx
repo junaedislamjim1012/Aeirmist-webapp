@@ -77,6 +77,7 @@ export const NotesSystem = ({ chats, onChatSelect, onReplyNote }: { chats: any[]
   const [activeSheet, setActiveSheet] = useState<'seen' | 'reactions' | null>(null);
   const [replyText, setReplyText] = useState('');
   const [isPlayingMusic, setIsPlayingMusic] = useState(false);
+  const [playingNoteId, setPlayingNoteId] = useState<string | null>(null);
   const activeAudioRef = useRef<HTMLAudioElement | null>(null);
 
   // Clean up audio on unmount
@@ -93,16 +94,16 @@ export const NotesSystem = ({ chats, onChatSelect, onReplyNote }: { chats: any[]
     };
   }, []);
 
-  // Stop playback when modals close
+  // Stop playback when modals close if no shelf note is playing
   useEffect(() => {
-    if (!selectedFriendNote && !viewingMyNote) {
+    if (!selectedFriendNote && !viewingMyNote && !playingNoteId) {
       if (activeAudioRef.current) {
         activeAudioRef.current.pause();
         activeAudioRef.current = null;
       }
       setIsPlayingMusic(false);
     }
-  }, [selectedFriendNote, viewingMyNote]);
+  }, [selectedFriendNote, viewingMyNote, playingNoteId]);
 
   useEffect(() => {
     if (!isCreating) {
@@ -152,11 +153,12 @@ export const NotesSystem = ({ chats, onChatSelect, onReplyNote }: { chats: any[]
     }
   };
 
-  const togglePlayMusic = (url?: string, startSec = 0, durationSec = 30) => {
+  const togglePlayMusic = (url?: string, startSec = 0, durationSec = 30, noteId?: string) => {
     if (!url) return;
-    if (activeAudioRef.current && isPlayingMusic) {
+    if (activeAudioRef.current && isPlayingMusic && (!noteId || playingNoteId === noteId)) {
       activeAudioRef.current.pause();
       setIsPlayingMusic(false);
+      setPlayingNoteId(null);
     } else {
       if (activeAudioRef.current) {
         activeAudioRef.current.pause();
@@ -168,6 +170,7 @@ export const NotesSystem = ({ chats, onChatSelect, onReplyNote }: { chats: any[]
       }
       audio.play().then(() => {
         setIsPlayingMusic(true);
+        if (noteId) setPlayingNoteId(noteId);
       }).catch(err => {
         logger.warn("Audio playback not permitted or failed", err);
       });
@@ -175,10 +178,12 @@ export const NotesSystem = ({ chats, onChatSelect, onReplyNote }: { chats: any[]
         if (durationSec && audio.currentTime >= startSec + durationSec) {
           audio.pause();
           setIsPlayingMusic(false);
+          setPlayingNoteId(null);
         }
       };
       audio.onended = () => {
         setIsPlayingMusic(false);
+        setPlayingNoteId(null);
       };
     }
   };
@@ -478,13 +483,27 @@ export const NotesSystem = ({ chats, onChatSelect, onReplyNote }: { chats: any[]
             hidden: { opacity: 0, scale: 0.8, y: 10 },
             visible: { opacity: 1, scale: 1, y: 0, transition: { type: "spring", stiffness: 350, damping: 25 } }
           }}
-          className="flex flex-col items-center flex-shrink-0 w-16 relative snap-start"
+          className="flex flex-col items-center flex-shrink-0 min-w-16 relative snap-start"
         >
           <div 
             className="relative cursor-pointer group flex flex-col items-center w-full" 
-            onClick={handleOpenCreator}
+            onClick={() => {
+              if (myNote) {
+                if (myNote.musicUrl) {
+                  togglePlayMusic(
+                    myNote.musicUrl,
+                    myNote.musicClipStart || 0,
+                    myNote.musicClipDuration || 30,
+                    myNote.id
+                  );
+                }
+                setViewingMyNote(true);
+              } else {
+                handleOpenCreator();
+              }
+            }}
           >
-            <div className="h-9 relative w-full flex items-center justify-center">
+            <div className="min-h-10 relative w-full flex items-center justify-center mb-1">
               <AnimatePresence mode="wait">
                 {myNote && (
                   <motion.div 
@@ -493,26 +512,73 @@ export const NotesSystem = ({ chats, onChatSelect, onReplyNote }: { chats: any[]
                     animate={{ scale: 1, opacity: 1, y: 0 }}
                     exit={{ scale: 0.5, opacity: 0, y: 10 }}
                     transition={{ type: "spring", stiffness: 500, damping: 20 }}
-                    className="absolute bottom-1 bg-[#121217] border border-aeirmist-cyan/40 px-2.5 py-1.5 rounded-2xl text-center max-w-[105px] shadow-[0_8px_20px_rgba(0,242,255,0.15)] z-20 group-hover:scale-110 transition-transform flex items-center justify-center gap-1.5"
+                    className={`absolute bottom-0 z-20 group-hover:scale-105 transition-all px-3 py-1.5 rounded-2xl flex flex-col items-center gap-1 shadow-xl whitespace-nowrap min-w-[95px] max-w-[145px] ${
+                      isPlayingMusic && playingNoteId === myNote.id
+                        ? 'bg-[#10121a] border-2 border-aeirmist-cyan shadow-[0_0_20px_rgba(0,242,255,0.45)]'
+                        : 'bg-[#121318]/95 backdrop-blur-md border border-aeirmist-cyan/40 shadow-[0_8px_20px_rgba(0,242,255,0.15)]'
+                    }`}
                   >
-                    {myNote.music && myNote.musicStyle === 'disc' && myNote.musicCover ? (
-                      <div className="w-4 h-4 rounded-full overflow-hidden shrink-0 border border-aeirmist-cyan animate-spin [animation-duration:4s]">
-                        <img src={myNote.musicCover} alt="" className="w-full h-full object-cover" />
-                      </div>
-                    ) : myNote.music ? (
-                      <Disc size={11} className="text-aeirmist-cyan shrink-0 animate-spin [animation-duration:3s]" />
-                    ) : null}
-
-                    {myNote.music && myNote.musicStyle === 'lyrics' && myNote.musicLyrics ? (
-                      <p className="text-[9px] text-aeirmist-cyan font-bold truncate max-w-[75px] select-none leading-none whitespace-nowrap italic">
-                        "{myNote.musicLyrics}"
-                      </p>
-                    ) : (
-                      <p className="text-[10px] text-white font-bold truncate max-w-[75px] select-none leading-none whitespace-nowrap">
-                        {myNote.content || myNote.music}
+                    {/* If custom note text exists, show it */}
+                    {myNote.content && myNote.content.trim() && myNote.content !== myNote.music && (
+                      <p className="text-[11px] font-bold text-white tracking-tight truncate max-w-[125px] leading-tight">
+                        {myNote.content}
                       </p>
                     )}
-                    <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-[#121217] border-r border-b border-aeirmist-cyan/40 rotate-45 shadow-sm" />
+
+                    {/* If lyrics style */}
+                    {myNote.music && myNote.musicStyle === 'lyrics' && myNote.musicLyrics && (
+                      <p className="text-[10px] font-bold text-aeirmist-cyan italic tracking-tight truncate max-w-[125px]">
+                        "{myNote.musicLyrics}"
+                      </p>
+                    )}
+
+                    {/* Instagram Music Pill */}
+                    {myNote.music && (
+                      <div className="flex items-center gap-1.5 w-full justify-center">
+                        {myNote.musicCover ? (
+                          <div className={`w-4 h-4 rounded-full overflow-hidden border border-white/30 shrink-0 ${
+                            isPlayingMusic && playingNoteId === myNote.id ? 'animate-spin [animation-duration:3s]' : ''
+                          }`}>
+                            <img src={myNote.musicCover} alt="" className="w-full h-full object-cover" />
+                          </div>
+                        ) : (
+                          <Disc size={12} className={`text-aeirmist-cyan shrink-0 ${
+                            isPlayingMusic && playingNoteId === myNote.id ? 'animate-spin [animation-duration:3s]' : ''
+                          }`} />
+                        )}
+
+                        <div className="flex-1 min-w-0 text-left">
+                          <div className={`text-[10px] font-extrabold truncate max-w-[95px] leading-tight ${
+                            isPlayingMusic && playingNoteId === myNote.id ? 'text-aeirmist-cyan' : 'text-white'
+                          }`}>
+                            {myNote.music.split(' - ')[0]}
+                          </div>
+                          {myNote.music.split(' - ')[1] && (!myNote.content || myNote.content === myNote.music) && (
+                            <div className="text-[8px] font-medium text-white/50 truncate max-w-[95px] leading-none mt-0.5">
+                              {myNote.music.split(' - ')[1]}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Animated soundbars or music note */}
+                        {isPlayingMusic && playingNoteId === myNote.id ? (
+                          <span className="flex items-end gap-[1.5px] h-3 shrink-0 ml-0.5">
+                            <span className="w-[2px] h-full bg-aeirmist-cyan rounded-full animate-pulse" />
+                            <span className="w-[2px] h-2/3 bg-aeirmist-cyan rounded-full animate-pulse [animation-delay:150ms]" />
+                            <span className="w-[2px] h-4/5 bg-aeirmist-cyan rounded-full animate-pulse [animation-delay:300ms]" />
+                          </span>
+                        ) : (
+                          <span className="text-[9px] text-aeirmist-cyan/70 shrink-0">♫</span>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Pointer tail */}
+                    <div className={`absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 rotate-45 ${
+                      isPlayingMusic && playingNoteId === myNote.id
+                        ? 'bg-[#10121a] border-r-2 border-b-2 border-aeirmist-cyan'
+                        : 'bg-[#121318] border-r border-b border-aeirmist-cyan/40'
+                    }`} />
                   </motion.div>
                 )}
               </AnimatePresence>
@@ -533,32 +599,56 @@ export const NotesSystem = ({ chats, onChatSelect, onReplyNote }: { chats: any[]
           </div>
         </motion.div>
 
-        {/* Friends' Notes */}
-        {chats.map(chat => {
-          const otherId = chat.profileIds?.find((id: string) => id !== profile?.id) || chat.participants?.find((id: string) => id !== profile?.id) || chat.id.replace(profile?.id || '', '').replace('_', '');
-          const friendNote = notes.find(n => n.authorId === otherId);
-          if (!friendNote) return null;
-          
+        {/* All Other Users' Notes (Instagram Global / Friends Model) */}
+        {notes.filter(n => n.authorId !== profile?.id).map(friendNote => {
+          const otherId = friendNote.authorId;
+          const matchingChat = chats.find(c => {
+            return c.profileIds?.includes(otherId) || c.participants?.includes(otherId) || c.id.includes(otherId);
+          });
+          const chat = matchingChat || {
+            id: `direct_${profile?.id}_${otherId}`,
+            name: friendNote.userName || 'User',
+            photo: friendNote.userAvatar,
+            otherParticipantId: otherId,
+            profileIds: [profile?.id, otherId],
+            participants: [profile?.id, otherId]
+          };
+
           const isOnline = onlineUsers.has(otherId);
           const hasSeen = friendNote.seenBy?.some((s: any) => s.userId === profile?.id);
           const isCloseFriendsNote = friendNote.audience === 'closeFriends';
+          const isPlayingThis = isPlayingMusic && playingNoteId === friendNote.id;
+
+          const parts = friendNote.music ? friendNote.music.split(' - ') : [];
+          const trackTitle = parts[0] || friendNote.music || '';
+          const trackArtist = parts.length > 1 ? parts.slice(1).join(' - ') : '';
 
           return (
             <motion.div 
-              key={chat.id} 
+              key={friendNote.id || otherId} 
               variants={{
                 hidden: { opacity: 0, scale: 0.8, y: 10 },
                 visible: { opacity: 1, scale: 1, y: 0, transition: { type: "spring", stiffness: 350, damping: 25 } }
               }}
               whileHover={{ scale: 1.05, y: -2 }}
               whileTap={{ scale: 0.96 }}
-              className="flex flex-col items-center flex-shrink-0 w-16 relative snap-start"
+              className="flex flex-col items-center flex-shrink-0 min-w-16 relative snap-start"
             >
               <div 
-                onClick={() => setSelectedFriendNote({ note: friendNote, chat })}
+                onClick={() => {
+                  if (friendNote.musicUrl) {
+                    togglePlayMusic(
+                      friendNote.musicUrl, 
+                      friendNote.musicClipStart || 0, 
+                      friendNote.musicClipDuration || 30, 
+                      friendNote.id
+                    );
+                  }
+                  setSelectedFriendNote({ note: friendNote, chat });
+                }}
                 className="relative cursor-pointer group flex flex-col items-center w-full"
               >
-                <div className="h-9 relative w-full flex items-center justify-center">
+                <div className="min-h-10 relative w-full flex items-center justify-center mb-1">
                   <AnimatePresence>
                     <motion.div 
                       key={`friend-note-bubble-${otherId}`}
@@ -566,48 +656,93 @@ export const NotesSystem = ({ chats, onChatSelect, onReplyNote }: { chats: any[]
                       animate={{ scale: 1, opacity: 1, y: 0 }}
                       exit={{ scale: 0.5, opacity: 0, y: 10 }}
                       transition={{ type: "spring", stiffness: 500, damping: 20 }}
-                      className={`absolute bottom-1 px-2.5 py-1.5 rounded-2xl text-center max-w-[105px] shadow-lg z-20 transition-all flex items-center justify-center gap-1.5 ${
-                        hasSeen 
-                          ? 'bg-[#1a1a20]/80 backdrop-blur-md border border-white/10 opacity-70' 
-                          : isCloseFriendsNote
-                            ? 'bg-[#121217] border border-aeirmist-cyan/50 shadow-[0_8px_20px_rgba(0,242,255,0.2)]'
-                            : 'bg-[#121217] border border-aeirmist-magenta/50 shadow-[0_8px_20px_rgba(255,0,234,0.2)]'
+                      className={`absolute bottom-0 z-20 group-hover:scale-105 transition-all px-3 py-1.5 rounded-2xl flex flex-col items-center gap-1 shadow-xl whitespace-nowrap min-w-[95px] max-w-[145px] ${
+                        isPlayingThis
+                          ? 'bg-[#10121a] border-2 border-aeirmist-cyan shadow-[0_0_20px_rgba(0,242,255,0.45)]'
+                          : hasSeen 
+                            ? 'bg-[#121318]/90 backdrop-blur-md border border-white/10 opacity-75' 
+                            : isCloseFriendsNote
+                              ? 'bg-[#121318] border border-aeirmist-lime shadow-[0_8px_20px_rgba(163,230,53,0.25)]'
+                              : 'bg-[#121318] border border-white/20 shadow-[0_8px_25px_rgba(0,0,0,0.8)]'
                       }`}
                     >
-                      {friendNote.music && friendNote.musicStyle === 'disc' && friendNote.musicCover ? (
-                        <div className="w-4 h-4 rounded-full overflow-hidden shrink-0 border border-aeirmist-cyan animate-spin [animation-duration:4s]">
-                          <img src={friendNote.musicCover} alt="" className="w-full h-full object-cover" />
-                        </div>
-                      ) : friendNote.music ? (
-                        <Disc size={11} className="text-aeirmist-cyan shrink-0 animate-spin [animation-duration:3s]" />
-                      ) : null}
-
-                      {friendNote.music && friendNote.musicStyle === 'lyrics' && friendNote.musicLyrics ? (
-                        <p className={`text-[9px] font-bold truncate max-w-[75px] select-none leading-none whitespace-nowrap italic ${hasSeen ? 'text-white/40' : 'text-aeirmist-cyan'}`}>
-                          "{friendNote.musicLyrics}"
-                        </p>
-                      ) : (
-                        <p className={`text-[10px] font-bold truncate max-w-[75px] select-none leading-none whitespace-nowrap ${hasSeen ? 'text-white/40' : 'text-white'}`}>
-                          {friendNote.content || friendNote.music}
+                      {/* Thought Text if present */}
+                      {friendNote.content && friendNote.content.trim() && friendNote.content !== friendNote.music && (
+                        <p className={`text-[11px] font-bold tracking-tight truncate max-w-[125px] leading-tight ${hasSeen ? 'text-white/60' : 'text-white'}`}>
+                          {friendNote.content}
                         </p>
                       )}
+
+                      {/* Lyrics Quote if present */}
+                      {friendNote.music && friendNote.musicStyle === 'lyrics' && friendNote.musicLyrics && (
+                        <p className="text-[10px] font-bold text-aeirmist-cyan italic tracking-tight truncate max-w-[125px]">
+                          "{friendNote.musicLyrics}"
+                        </p>
+                      )}
+
+                      {/* Instagram Music Pill */}
+                      {friendNote.music && (
+                        <div className="flex items-center gap-1.5 w-full justify-center">
+                          {friendNote.musicCover ? (
+                            <div className={`w-4 h-4 rounded-full overflow-hidden border border-white/30 shrink-0 ${
+                              isPlayingThis ? 'animate-spin [animation-duration:3s]' : ''
+                            }`}>
+                              <img src={friendNote.musicCover} alt="" className="w-full h-full object-cover" />
+                            </div>
+                          ) : (
+                            <Disc size={12} className={`text-aeirmist-cyan shrink-0 ${
+                              isPlayingThis ? 'animate-spin [animation-duration:3s]' : ''
+                            }`} />
+                          )}
+
+                          <div className="flex-1 min-w-0 text-left">
+                            <div className={`text-[10px] font-extrabold truncate max-w-[95px] leading-tight ${
+                              isPlayingThis ? 'text-aeirmist-cyan' : hasSeen ? 'text-white/70' : 'text-white'
+                            }`}>
+                              {trackTitle}
+                            </div>
+                            {trackArtist && (!friendNote.content || friendNote.content === friendNote.music) && (
+                              <div className="text-[8px] font-medium text-white/40 truncate max-w-[95px] leading-none mt-0.5">
+                                {trackArtist}
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Soundbars or Music note */}
+                          {isPlayingThis ? (
+                            <span className="flex items-end gap-[1.5px] h-3 shrink-0 ml-0.5">
+                              <span className="w-[2px] h-full bg-aeirmist-cyan rounded-full animate-pulse" />
+                              <span className="w-[2px] h-2/3 bg-aeirmist-cyan rounded-full animate-pulse [animation-delay:150ms]" />
+                              <span className="w-[2px] h-4/5 bg-aeirmist-cyan rounded-full animate-pulse [animation-delay:300ms]" />
+                            </span>
+                          ) : (
+                            <span className="text-[9px] text-white/40 shrink-0">♫</span>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Pointer tail */}
                       <div className={`absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 rotate-45 ${
-                        hasSeen 
-                          ? 'bg-[#1a1a20]/80 border-r border-b border-white/10' 
-                          : isCloseFriendsNote
-                            ? 'bg-[#121217] border-r border-b border-aeirmist-cyan/50'
-                            : 'bg-[#121217] border-r border-b border-aeirmist-magenta/50'
+                        isPlayingThis
+                          ? 'bg-[#10121a] border-r-2 border-b-2 border-aeirmist-cyan'
+                          : hasSeen 
+                            ? 'bg-[#121318]/90 border-r border-b border-white/10' 
+                            : isCloseFriendsNote
+                              ? 'bg-[#121318] border-r border-b border-aeirmist-lime'
+                              : 'bg-[#121318] border-r border-b border-white/20'
                       }`} />
                     </motion.div>
                   </AnimatePresence>
                 </div>
 
                 <div className={`relative w-15 h-15 rounded-[22px] p-[2px] border-2 transition-all duration-300 ${
-                  hasSeen 
-                    ? 'border-white/10 opacity-75' 
-                    : isCloseFriendsNote
-                      ? 'border-aeirmist-cyan shadow-[0_0_15px_rgba(0,242,255,0.35)]'
-                      : 'border-aeirmist-magenta shadow-[0_0_15px_rgba(255,0,234,0.35)]'
+                  isPlayingThis
+                    ? 'border-aeirmist-cyan shadow-[0_0_20px_rgba(0,242,255,0.4)] animate-pulse'
+                    : hasSeen 
+                      ? 'border-white/10 opacity-75' 
+                      : isCloseFriendsNote
+                        ? 'border-aeirmist-lime shadow-[0_0_15px_rgba(163,230,53,0.35)]'
+                        : 'border-aeirmist-magenta shadow-[0_0_15px_rgba(255,0,234,0.35)]'
                 }`}>
                   <div className="w-full h-full rounded-[19px] overflow-hidden bg-black">
                     <img src={getAvatarUrl(chat.photo)} alt={chat.name || 'User'} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />

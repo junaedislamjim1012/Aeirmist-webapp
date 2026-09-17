@@ -128,7 +128,17 @@ export const useInboxData = (allowedAuthorIds?: string[]) => {
     mediaUrl?: string, 
     mediaType?: 'image' | 'video', 
     hiddenFrom: string[] = [],
-    musicData?: { title?: string; artist?: string; url?: string; coverUrl?: string; spotifyUrl?: string }
+    musicData?: { 
+      title?: string; 
+      artist?: string; 
+      url?: string; 
+      coverUrl?: string; 
+      spotifyUrl?: string;
+      clipStart?: number;
+      clipDuration?: number;
+      style?: 'badge' | 'lyrics' | 'disc';
+      lyrics?: string;
+    }
   ) => {
     if (!db || !user || !profile || !canWrite('createNote', 10000)) return;
     try {
@@ -146,6 +156,10 @@ export const useInboxData = (allowedAuthorIds?: string[]) => {
         musicUrl: musicData?.url || null,
         musicCover: musicData?.coverUrl || null,
         spotifyUrl: musicData?.spotifyUrl || null,
+        musicClipStart: musicData?.clipStart ?? 0,
+        musicClipDuration: musicData?.clipDuration ?? 30,
+        musicStyle: musicData?.style || 'badge',
+        musicLyrics: musicData?.lyrics || null,
         mediaUrl: mediaUrl || null,
         mediaType: mediaType || null,
         createdAt: serverTimestamp(),

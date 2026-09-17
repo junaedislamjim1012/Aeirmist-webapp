@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   Plus, Music, Users, Shield, X, Globe, Camera, Loader2, Trash2, Heart, Eye, 
   MessageCircle, Volume2, Search, CheckCircle2, MoreHorizontal, UserPlus, UserMinus,
-  EyeOff, ShieldCheck, Check, Sparkles, Disc, Play, Pause, Send, ExternalLink
+  EyeOff, ShieldCheck, Check, Sparkles, Disc, Play, Pause, Send, ExternalLink, Sliders, Radio
 } from 'lucide-react';
 import { doc, deleteDoc, updateDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
 import { formatAeirmistTimestamp, formatActiveStatus } from '../../lib/date';
@@ -52,6 +52,13 @@ export const NotesSystem = ({ chats, onChatSelect, onReplyNote }: { chats: any[]
   }, [noteContent, isCreating]);
   const [audience, setAudience] = useState<'public' | 'followers' | 'closeFriends'>('public');
   const [selectedMusic, setSelectedMusic] = useState<any>(null);
+  const [musicClipStart, setMusicClipStart] = useState<number>(0);
+  const [musicClipDuration, setMusicClipDuration] = useState<number>(30);
+  const [musicStyle, setMusicStyle] = useState<'badge' | 'lyrics' | 'disc'>('badge');
+  const [musicLyrics, setMusicLyrics] = useState<string>('');
+  const [isAuditioning, setIsAuditioning] = useState<boolean>(false);
+  const auditionAudioRef = useRef<HTMLAudioElement | null>(null);
+
   const [isMusicModalOpen, setIsMusicModalOpen] = useState(false);
   const [media, setMedia] = useState<{ url: string, file: File, type: 'image' | 'video' } | null>(null);
   const [isUploading, setIsUploading] = useState(false);
@@ -72,15 +79,21 @@ export const NotesSystem = ({ chats, onChatSelect, onReplyNote }: { chats: any[]
   const [isPlayingMusic, setIsPlayingMusic] = useState(false);
   const activeAudioRef = useRef<HTMLAudioElement | null>(null);
 
+  // Clean up audio on unmount
   useEffect(() => {
     return () => {
       if (activeAudioRef.current) {
         activeAudioRef.current.pause();
         activeAudioRef.current = null;
       }
+      if (auditionAudioRef.current) {
+        auditionAudioRef.current.pause();
+        auditionAudioRef.current = null;
+      }
     };
   }, []);
 
+  // Stop playback when modals close
   useEffect(() => {
     if (!selectedFriendNote && !viewingMyNote) {
       if (activeAudioRef.current) {
@@ -91,7 +104,55 @@ export const NotesSystem = ({ chats, onChatSelect, onReplyNote }: { chats: any[]
     }
   }, [selectedFriendNote, viewingMyNote]);
 
-  const togglePlayMusic = (url?: string) => {
+  useEffect(() => {
+    if (!isCreating) {
+      if (auditionAudioRef.current) {
+        auditionAudioRef.current.pause();
+        auditionAudioRef.current = null;
+      }
+      setIsAuditioning(false);
+    }
+  }, [isCreating]);
+
+  // Audition playback in creator
+  const toggleAudition = () => {
+    const audioUrl = selectedMusic?.audioURL || selectedMusic?.previewUrl || selectedMusic?.url;
+    if (!audioUrl) return;
+
+    if (isAuditioning && auditionAudioRef.current) {
+      auditionAudioRef.current.pause();
+      setIsAuditioning(false);
+    } else {
+      if (auditionAudioRef.current) {
+        auditionAudioRef.current.pause();
+      }
+      const audio = new Audio(audioUrl);
+      auditionAudioRef.current = audio;
+      audio.currentTime = musicClipStart;
+      audio.play().then(() => {
+        setIsAuditioning(true);
+      }).catch(err => logger.warn("Audition error:", err));
+
+      audio.ontimeupdate = () => {
+        if (audio.currentTime >= musicClipStart + musicClipDuration) {
+          audio.pause();
+          setIsAuditioning(false);
+        }
+      };
+      audio.onended = () => {
+        setIsAuditioning(false);
+      };
+    }
+  };
+
+  const handleSeekClipStart = (newStart: number) => {
+    setMusicClipStart(newStart);
+    if (auditionAudioRef.current && isAuditioning) {
+      auditionAudioRef.current.currentTime = newStart;
+    }
+  };
+
+  const togglePlayMusic = (url?: string, startSec = 0, durationSec = 30) => {
     if (!url) return;
     if (activeAudioRef.current && isPlayingMusic) {
       activeAudioRef.current.pause();
@@ -102,11 +163,20 @@ export const NotesSystem = ({ chats, onChatSelect, onReplyNote }: { chats: any[]
       }
       const audio = new Audio(url);
       activeAudioRef.current = audio;
+      if (startSec > 0) {
+        audio.currentTime = startSec;
+      }
       audio.play().then(() => {
         setIsPlayingMusic(true);
       }).catch(err => {
         logger.warn("Audio playback not permitted or failed", err);
       });
+      audio.ontimeupdate = () => {
+        if (durationSec && audio.currentTime >= startSec + durationSec) {
+          audio.pause();
+          setIsPlayingMusic(false);
+        }
+      };
       audio.onended = () => {
         setIsPlayingMusic(false);
       };
@@ -249,6 +319,10 @@ export const NotesSystem = ({ chats, onChatSelect, onReplyNote }: { chats: any[]
     } else {
       setNoteContent('');
       setSelectedMusic(null);
+      setMusicClipStart(0);
+      setMusicClipDuration(30);
+      setMusicStyle('badge');
+      setMusicLyrics('');
       setAudience('public');
       setMedia(null);
       setHiddenFromUserIds([]);
@@ -291,9 +365,13 @@ export const NotesSystem = ({ chats, onChatSelect, onReplyNote }: { chats: any[]
     const musicData = selectedMusic ? {
       title: selectedMusic.title,
       artist: selectedMusic.artist,
-      url: selectedMusic.audioURL || selectedMusic.streamURL || selectedMusic.previewURL || selectedMusic.url || null,
-      coverUrl: selectedMusic.coverArtURL || selectedMusic.albumArtUrl || null,
-      spotifyUrl: selectedMusic.spotifyURL || null
+      url: selectedMusic.audioURL || selectedMusic.streamURL || selectedMusic.previewURL || selectedMusic.previewUrl || selectedMusic.url || null,
+      coverUrl: selectedMusic.coverArtURL || selectedMusic.albumArtUrl || selectedMusic.albumArtURL || null,
+      spotifyUrl: selectedMusic.spotifyURL || selectedMusic.spotifyUrl || null,
+      clipStart: musicClipStart,
+      clipDuration: musicClipDuration,
+      style: musicStyle,
+      lyrics: musicLyrics
     } : undefined;
 
     if (myNote && db) {
@@ -304,6 +382,10 @@ export const NotesSystem = ({ chats, onChatSelect, onReplyNote }: { chats: any[]
           musicUrl: musicData?.url || null,
           musicCover: musicData?.coverUrl || null,
           spotifyUrl: musicData?.spotifyUrl || null,
+          musicClipStart: musicClipStart,
+          musicClipDuration: musicClipDuration,
+          musicStyle: musicStyle,
+          musicLyrics: musicLyrics,
           mediaUrl: mediaUrl || null,
           mediaType: mediaType || null,
           audience,
@@ -318,6 +400,10 @@ export const NotesSystem = ({ chats, onChatSelect, onReplyNote }: { chats: any[]
     
     setNoteContent('');
     setSelectedMusic(null);
+    setMusicClipStart(0);
+    setMusicClipDuration(30);
+    setMusicStyle('badge');
+    setMusicLyrics('');
     setMedia(null);
     setHiddenFromUserIds([]);
     setIsCreating(false);
@@ -407,12 +493,25 @@ export const NotesSystem = ({ chats, onChatSelect, onReplyNote }: { chats: any[]
                     animate={{ scale: 1, opacity: 1, y: 0 }}
                     exit={{ scale: 0.5, opacity: 0, y: 10 }}
                     transition={{ type: "spring", stiffness: 500, damping: 20 }}
-                    className="absolute bottom-1 bg-[#121217] border border-aeirmist-cyan/40 px-2.5 py-1.5 rounded-2xl text-center max-w-[95px] shadow-[0_8px_20px_rgba(0,242,255,0.15)] z-20 group-hover:scale-110 transition-transform flex items-center justify-center gap-1"
+                    className="absolute bottom-1 bg-[#121217] border border-aeirmist-cyan/40 px-2.5 py-1.5 rounded-2xl text-center max-w-[105px] shadow-[0_8px_20px_rgba(0,242,255,0.15)] z-20 group-hover:scale-110 transition-transform flex items-center justify-center gap-1.5"
                   >
-                    {myNote.music && (
+                    {myNote.music && myNote.musicStyle === 'disc' && myNote.musicCover ? (
+                      <div className="w-4 h-4 rounded-full overflow-hidden shrink-0 border border-aeirmist-cyan animate-spin [animation-duration:4s]">
+                        <img src={myNote.musicCover} alt="" className="w-full h-full object-cover" />
+                      </div>
+                    ) : myNote.music ? (
                       <Disc size={11} className="text-aeirmist-cyan shrink-0 animate-spin [animation-duration:3s]" />
+                    ) : null}
+
+                    {myNote.music && myNote.musicStyle === 'lyrics' && myNote.musicLyrics ? (
+                      <p className="text-[9px] text-aeirmist-cyan font-bold truncate max-w-[75px] select-none leading-none whitespace-nowrap italic">
+                        "{myNote.musicLyrics}"
+                      </p>
+                    ) : (
+                      <p className="text-[10px] text-white font-bold truncate max-w-[75px] select-none leading-none whitespace-nowrap">
+                        {myNote.content || myNote.music}
+                      </p>
                     )}
-                    <p className="text-[10px] text-white font-bold truncate max-w-[70px] select-none leading-none whitespace-nowrap">{myNote.content || myNote.music}</p>
                     <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-[#121217] border-r border-b border-aeirmist-cyan/40 rotate-45 shadow-sm" />
                   </motion.div>
                 )}
@@ -467,7 +566,7 @@ export const NotesSystem = ({ chats, onChatSelect, onReplyNote }: { chats: any[]
                       animate={{ scale: 1, opacity: 1, y: 0 }}
                       exit={{ scale: 0.5, opacity: 0, y: 10 }}
                       transition={{ type: "spring", stiffness: 500, damping: 20 }}
-                      className={`absolute bottom-1 px-2.5 py-1.5 rounded-2xl text-center max-w-[95px] shadow-lg z-20 transition-all flex items-center justify-center gap-1 ${
+                      className={`absolute bottom-1 px-2.5 py-1.5 rounded-2xl text-center max-w-[105px] shadow-lg z-20 transition-all flex items-center justify-center gap-1.5 ${
                         hasSeen 
                           ? 'bg-[#1a1a20]/80 backdrop-blur-md border border-white/10 opacity-70' 
                           : isCloseFriendsNote
@@ -475,12 +574,23 @@ export const NotesSystem = ({ chats, onChatSelect, onReplyNote }: { chats: any[]
                             : 'bg-[#121217] border border-aeirmist-magenta/50 shadow-[0_8px_20px_rgba(255,0,234,0.2)]'
                       }`}
                     >
-                      {friendNote.music && (
+                      {friendNote.music && friendNote.musicStyle === 'disc' && friendNote.musicCover ? (
+                        <div className="w-4 h-4 rounded-full overflow-hidden shrink-0 border border-aeirmist-cyan animate-spin [animation-duration:4s]">
+                          <img src={friendNote.musicCover} alt="" className="w-full h-full object-cover" />
+                        </div>
+                      ) : friendNote.music ? (
                         <Disc size={11} className="text-aeirmist-cyan shrink-0 animate-spin [animation-duration:3s]" />
+                      ) : null}
+
+                      {friendNote.music && friendNote.musicStyle === 'lyrics' && friendNote.musicLyrics ? (
+                        <p className={`text-[9px] font-bold truncate max-w-[75px] select-none leading-none whitespace-nowrap italic ${hasSeen ? 'text-white/40' : 'text-aeirmist-cyan'}`}>
+                          "{friendNote.musicLyrics}"
+                        </p>
+                      ) : (
+                        <p className={`text-[10px] font-bold truncate max-w-[75px] select-none leading-none whitespace-nowrap ${hasSeen ? 'text-white/40' : 'text-white'}`}>
+                          {friendNote.content || friendNote.music}
+                        </p>
                       )}
-                      <p className={`text-[10px] font-bold truncate max-w-[70px] select-none leading-none whitespace-nowrap ${hasSeen ? 'text-white/40' : 'text-white'}`}>
-                        {friendNote.content || friendNote.music}
-                      </p>
                       <div className={`absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 rotate-45 ${
                         hasSeen 
                           ? 'bg-[#1a1a20]/80 border-r border-b border-white/10' 
@@ -543,8 +653,39 @@ export const NotesSystem = ({ chats, onChatSelect, onReplyNote }: { chats: any[]
               </div>
 
               {/* Profile & Input Area */}
-              <div className="flex flex-col items-center mb-10">
+              <div className="flex flex-col items-center mb-6">
                 <div className="relative mb-6">
+                  {/* Live Avatar Bubble Preview */}
+                  <AnimatePresence>
+                    {(noteContent.trim() || selectedMusic) && (
+                      <motion.div
+                        initial={{ scale: 0.8, opacity: 0, y: 10 }}
+                        animate={{ scale: 1, opacity: 1, y: 0 }}
+                        exit={{ scale: 0.8, opacity: 0, y: 10 }}
+                        className="absolute -top-10 left-1/2 -translate-x-1/2 bg-[#121217] border border-aeirmist-cyan/50 px-3 py-1.5 rounded-2xl text-center shadow-[0_8px_25px_rgba(0,242,255,0.25)] z-20 flex items-center justify-center gap-1.5 whitespace-nowrap max-w-[160px]"
+                      >
+                        {selectedMusic && musicStyle === 'disc' && (selectedMusic.coverArtURL || selectedMusic.albumArtUrl) ? (
+                          <div className={`w-4 h-4 rounded-full overflow-hidden shrink-0 border border-aeirmist-cyan ${isAuditioning ? 'animate-spin [animation-duration:3s]' : ''}`}>
+                            <img src={selectedMusic.coverArtURL || selectedMusic.albumArtUrl} alt="" className="w-full h-full object-cover" />
+                          </div>
+                        ) : selectedMusic ? (
+                          <Disc size={12} className={`text-aeirmist-cyan shrink-0 ${isAuditioning ? 'animate-spin [animation-duration:3s]' : ''}`} />
+                        ) : null}
+
+                        {selectedMusic && musicStyle === 'lyrics' && musicLyrics.trim() ? (
+                          <span className="text-[10px] text-aeirmist-cyan font-bold italic truncate max-w-[110px]">
+                            "{musicLyrics}"
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-white font-bold truncate max-w-[110px]">
+                            {noteContent || selectedMusic?.title || 'Frequency'}
+                          </span>
+                        )}
+                        <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-[#121217] border-r border-b border-aeirmist-cyan/50 rotate-45" />
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
                   <div className="w-20 h-20 rounded-[2rem] border-2 border-white/5 p-1 relative z-10 bg-black">
                      <img src={getAvatarUrl(profile?.photoURL)} alt="" className="w-full h-full rounded-[1.8rem] object-cover" />
                   </div>
@@ -568,6 +709,158 @@ export const NotesSystem = ({ chats, onChatSelect, onReplyNote }: { chats: any[]
                   </div>
                 </div>
               </div>
+
+              {/* Instagram-Style Music Controller Card */}
+              {selectedMusic && (
+                <div className="mb-6 p-4 rounded-3xl bg-white/[0.03] border border-aeirmist-cyan/30 shadow-[0_8px_30px_rgba(0,242,255,0.08)] space-y-3.5">
+                  {/* Music Track Header */}
+                  <div className="flex items-center gap-3">
+                    <div className="relative w-12 h-12 rounded-2xl overflow-hidden shrink-0 bg-white/5 border border-white/10 shadow-md">
+                      <img 
+                        src={selectedMusic.coverArtURL || selectedMusic.albumArtUrl || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?q=80&w=300&auto=format&fit=crop'} 
+                        alt="" 
+                        className={`w-full h-full object-cover ${isAuditioning ? 'animate-spin [animation-duration:6s]' : ''}`} 
+                      />
+                      <button
+                        type="button"
+                        onClick={toggleAudition}
+                        className="absolute inset-0 bg-black/40 flex items-center justify-center text-white"
+                      >
+                        {isAuditioning ? <Pause size={16} /> : <Play size={16} className="ml-0.5" />}
+                      </button>
+                    </div>
+
+                    <div className="flex-1 min-w-0">
+                      <div className="text-xs font-bold text-white truncate">{selectedMusic.title}</div>
+                      <div className="text-[10px] text-white/40 uppercase tracking-tight truncate mt-0.5">{selectedMusic.artist}</div>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setIsMusicModalOpen(true)}
+                        className="px-2.5 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-white/70 hover:text-white transition-all text-[9px] font-bold"
+                        title="Change Song"
+                      >
+                        Change
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (auditionAudioRef.current) auditionAudioRef.current.pause();
+                          setIsAuditioning(false);
+                          setSelectedMusic(null);
+                        }}
+                        className="p-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-white/40 hover:text-red-400 transition-all"
+                        title="Remove Music"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Clip Scale & Trim Scrubber (like Instagram Notes) */}
+                  <div className="space-y-1.5 pt-1 border-t border-white/5">
+                    <div className="flex items-center justify-between text-[8px] font-black uppercase tracking-wider text-white/40">
+                      <span className="flex items-center gap-1">
+                        <Sliders size={10} className="text-aeirmist-cyan" />
+                        Clip Scale (Start Time)
+                      </span>
+                      <span className="font-mono text-aeirmist-cyan">
+                        0:{musicClipStart.toString().padStart(2, '0')} - 0:{Math.min(30, musicClipStart + musicClipDuration).toString().padStart(2, '0')}
+                      </span>
+                    </div>
+
+                    <input 
+                      type="range"
+                      min={0}
+                      max={15}
+                      step={1}
+                      value={musicClipStart}
+                      onChange={(e) => handleSeekClipStart(Number(e.target.value))}
+                      className="w-full accent-aeirmist-cyan h-1.5 bg-white/10 rounded-lg cursor-pointer"
+                    />
+
+                    {/* Clip Duration: 15s vs 30s */}
+                    <div className="flex items-center justify-between pt-1">
+                      <span className="text-[8px] font-mono text-white/30 uppercase">Segment Length:</span>
+                      <div className="flex gap-1.5">
+                        {[15, 30].map(dur => (
+                          <button
+                            key={dur}
+                            type="button"
+                            onClick={() => setMusicClipDuration(dur)}
+                            className={`px-2.5 py-0.5 rounded-lg text-[8px] font-black uppercase transition-all ${
+                              musicClipDuration === dur
+                                ? 'bg-aeirmist-cyan text-black font-bold'
+                                : 'bg-white/5 text-white/40 hover:text-white'
+                            }`}
+                          >
+                            {dur}s
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Display Style Selector (like Instagram) */}
+                  <div className="space-y-1.5 pt-1 border-t border-white/5">
+                    <span className="text-[8px] font-black uppercase tracking-wider text-white/40 block">
+                      Display Style
+                    </span>
+                    <div className="grid grid-cols-3 gap-2">
+                      {[
+                        { id: 'badge', label: 'Waveform', icon: <Volume2 size={12} /> },
+                        { id: 'lyrics', label: 'Lyrics', icon: <MessageCircle size={12} /> },
+                        { id: 'disc', label: 'Vinyl Disc', icon: <Disc size={12} /> }
+                      ].map(style => (
+                        <button
+                          key={style.id}
+                          type="button"
+                          onClick={() => setMusicStyle(style.id as any)}
+                          className={`py-2 rounded-xl text-[9px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all border ${
+                            musicStyle === style.id
+                              ? 'bg-white text-black border-white shadow-md'
+                              : 'bg-white/[0.03] text-white/40 border-white/5 hover:text-white'
+                          }`}
+                        >
+                          {style.icon}
+                          <span>{style.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Lyrics / Highlight Quote Input */}
+                  {musicStyle === 'lyrics' && (
+                    <div className="space-y-1.5 pt-1 border-t border-white/5">
+                      <label className="text-[8px] font-black uppercase tracking-wider text-aeirmist-cyan block">
+                        Highlight Lyrics / Song Quote
+                      </label>
+                      <input 
+                        type="text"
+                        value={musicLyrics}
+                        onChange={(e) => setMusicLyrics(e.target.value)}
+                        placeholder="Type lyrics to show above avatar..."
+                        maxLength={50}
+                        className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs text-white placeholder:text-white/25 focus:outline-none focus:border-aeirmist-cyan"
+                      />
+                      <div className="flex gap-1.5 overflow-x-auto no-scrollbar pt-1">
+                        {['♫ Vibes on repeat', '♫ Feeling the beat', '♫ আমার গান', '♫ दिल दियां गल्लां'].map(pill => (
+                          <button
+                            key={pill}
+                            type="button"
+                            onClick={() => setMusicLyrics(pill)}
+                            className="px-2 py-0.5 rounded-full bg-white/5 text-[8px] text-white/50 hover:text-white whitespace-nowrap"
+                          >
+                            {pill}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Quick Actions (Music, Camera) */}
               <div className="grid grid-cols-2 gap-3 mb-8">
@@ -723,29 +1016,67 @@ export const NotesSystem = ({ chats, onChatSelect, onReplyNote }: { chats: any[]
                 <p className="text-2xl font-bold text-white leading-snug tracking-tight">{selectedFriendNote.note.content}</p>
                 
                 {selectedFriendNote.note.music && (
-                  <div className="flex items-center justify-center gap-2.5 mt-5 py-2 px-4 bg-white/5 rounded-full text-aeirmist-cyan text-[10px] font-black tracking-[0.15em] uppercase w-fit mx-auto border border-aeirmist-cyan/20">
-                    <Disc size={13} className="animate-spin [animation-duration:3s] text-aeirmist-cyan shrink-0" />
-                    <span className="truncate max-w-[170px]">{selectedFriendNote.note.music}</span>
-                    {selectedFriendNote.note.musicUrl && (
-                      <button 
-                        type="button"
-                        onClick={() => togglePlayMusic(selectedFriendNote.note.musicUrl)}
-                        className="ml-1 w-6 h-6 rounded-full bg-aeirmist-cyan/20 hover:bg-aeirmist-cyan text-white hover:text-black flex items-center justify-center transition-all shadow-sm"
-                        title={isPlayingMusic ? "Pause Preview" : "Play Preview"}
-                      >
-                        {isPlayingMusic ? <Pause size={10} /> : <Play size={10} className="ml-0.5" />}
-                      </button>
-                    )}
-                    {selectedFriendNote.note.spotifyUrl && (
-                      <a 
-                        href={selectedFriendNote.note.spotifyUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-white/40 hover:text-[#1DB954] transition-colors ml-0.5"
-                        title="Open on Spotify"
-                      >
-                        <ExternalLink size={12} />
-                      </a>
+                  <div className="mt-5 p-4 bg-white/[0.04] rounded-3xl border border-white/10 w-full space-y-3">
+                    <div className="flex items-center gap-3">
+                      {/* Vinyl / Cover Artwork */}
+                      <div className="relative w-12 h-12 rounded-2xl overflow-hidden shadow-md shrink-0 bg-white/5 border border-white/10">
+                        {selectedFriendNote.note.musicCover ? (
+                          <img 
+                            src={selectedFriendNote.note.musicCover} 
+                            alt="" 
+                            className={`w-full h-full object-cover ${isPlayingMusic ? 'animate-spin [animation-duration:6s]' : ''}`} 
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center bg-aeirmist-cyan/10 text-aeirmist-cyan">
+                            <Disc size={20} className={isPlayingMusic ? 'animate-spin [animation-duration:4s]' : ''} />
+                          </div>
+                        )}
+                        {selectedFriendNote.note.musicUrl && (
+                          <button
+                            type="button"
+                            onClick={() => togglePlayMusic(
+                              selectedFriendNote.note.musicUrl,
+                              selectedFriendNote.note.musicClipStart || 0,
+                              selectedFriendNote.note.musicClipDuration || 30
+                            )}
+                            className="absolute inset-0 bg-black/40 flex items-center justify-center text-white"
+                          >
+                            {isPlayingMusic ? <Pause size={14} /> : <Play size={14} className="ml-0.5" />}
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Song Details */}
+                      <div className="flex-1 min-w-0 text-left">
+                        <div className="text-xs font-bold text-white truncate">{selectedFriendNote.note.music}</div>
+                        <div className="text-[9px] text-white/40 uppercase font-mono tracking-wider mt-0.5">
+                          {selectedFriendNote.note.musicClipDuration || 30}s Clip • Spotify Music
+                        </div>
+                      </div>
+
+                      {/* Spotify Link */}
+                      {selectedFriendNote.note.spotifyUrl && (
+                        <a
+                          href={selectedFriendNote.note.spotifyUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="px-3 py-1.5 rounded-xl bg-[#1DB954]/15 hover:bg-[#1DB954] text-[#1DB954] hover:text-black text-[9px] font-black uppercase tracking-wider flex items-center gap-1.5 transition-all"
+                        >
+                          <svg viewBox="0 0 24 24" fill="currentColor" className="w-3 h-3">
+                            <path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm4.586 14.424c-.18.295-.563.387-.857.207-2.377-1.454-5.37-1.783-8.893-.982-.336.075-.668-.135-.744-.47-.077-.337.135-.669.47-.745 3.856-.88 7.15-.51 9.817 1.123.294.18.386.563.207.857zm1.224-2.724c-.226.367-.707.487-1.074.26-2.72-1.672-6.87-2.157-10.078-1.182-.413.125-.85-.107-.975-.52-.125-.413.107-.85.52-.975 3.67-1.114 8.24-.57 11.347 1.342.368.227.488.708.26 1.075zm.105-2.81c-3.262-1.937-8.644-2.115-11.758-1.17-.5.152-1.025-.133-1.177-.633-.153-.5.132-1.025.633-1.177 3.616-1.098 9.544-.89 13.3 1.34.45.267.6.845.333 1.295-.267.45-.845.6-1.295.334z"/>
+                          </svg>
+                          <span>Spotify</span>
+                        </a>
+                      )}
+                    </div>
+
+                    {/* Lyrics Quote if present */}
+                    {selectedFriendNote.note.musicLyrics && (
+                      <div className="w-full bg-white/[0.03] border border-white/5 rounded-xl p-2 text-center">
+                        <p className="text-[11px] font-bold text-aeirmist-cyan italic">
+                          "{selectedFriendNote.note.musicLyrics}"
+                        </p>
+                      </div>
                     )}
                   </div>
                 )}
@@ -884,29 +1215,67 @@ export const NotesSystem = ({ chats, onChatSelect, onReplyNote }: { chats: any[]
               <div className="bg-white/[0.03] rounded-[2.2rem] p-8 w-full text-center border border-white/5 mb-6">
                 <p className="text-2xl font-bold text-white leading-tight tracking-tight">{myNote.content}</p>
                 {myNote.music && (
-                  <div className="flex items-center justify-center gap-2.5 mt-5 py-2 px-4 bg-white/5 rounded-full text-aeirmist-cyan text-[10px] font-black tracking-[0.15em] uppercase w-fit mx-auto border border-aeirmist-cyan/20">
-                    <Disc size={13} className="animate-spin [animation-duration:3s] text-aeirmist-cyan shrink-0" />
-                    <span className="truncate max-w-[170px]">{myNote.music}</span>
-                    {myNote.musicUrl && (
-                      <button 
-                        type="button"
-                        onClick={() => togglePlayMusic(myNote.musicUrl)}
-                        className="ml-1 w-6 h-6 rounded-full bg-aeirmist-cyan/20 hover:bg-aeirmist-cyan text-white hover:text-black flex items-center justify-center transition-all shadow-sm"
-                        title={isPlayingMusic ? "Pause Preview" : "Play Preview"}
-                      >
-                        {isPlayingMusic ? <Pause size={10} /> : <Play size={10} className="ml-0.5" />}
-                      </button>
-                    )}
-                    {myNote.spotifyUrl && (
-                      <a 
-                        href={myNote.spotifyUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-white/40 hover:text-[#1DB954] transition-colors ml-0.5"
-                        title="Open on Spotify"
-                      >
-                        <ExternalLink size={12} />
-                      </a>
+                  <div className="mt-5 p-4 bg-white/[0.04] rounded-3xl border border-white/10 w-full space-y-3">
+                    <div className="flex items-center gap-3">
+                      {/* Vinyl / Cover Artwork */}
+                      <div className="relative w-12 h-12 rounded-2xl overflow-hidden shadow-md shrink-0 bg-white/5 border border-white/10">
+                        {myNote.musicCover ? (
+                          <img 
+                            src={myNote.musicCover} 
+                            alt="" 
+                            className={`w-full h-full object-cover ${isPlayingMusic ? 'animate-spin [animation-duration:6s]' : ''}`} 
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center bg-aeirmist-cyan/10 text-aeirmist-cyan">
+                            <Disc size={20} className={isPlayingMusic ? 'animate-spin [animation-duration:4s]' : ''} />
+                          </div>
+                        )}
+                        {myNote.musicUrl && (
+                          <button
+                            type="button"
+                            onClick={() => togglePlayMusic(
+                              myNote.musicUrl,
+                              myNote.musicClipStart || 0,
+                              myNote.musicClipDuration || 30
+                            )}
+                            className="absolute inset-0 bg-black/40 flex items-center justify-center text-white"
+                          >
+                            {isPlayingMusic ? <Pause size={14} /> : <Play size={14} className="ml-0.5" />}
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Song Details */}
+                      <div className="flex-1 min-w-0 text-left">
+                        <div className="text-xs font-bold text-white truncate">{myNote.music}</div>
+                        <div className="text-[9px] text-white/40 uppercase font-mono tracking-wider mt-0.5">
+                          {myNote.musicClipDuration || 30}s Clip • Spotify Music
+                        </div>
+                      </div>
+
+                      {/* Spotify Link */}
+                      {myNote.spotifyUrl && (
+                        <a
+                          href={myNote.spotifyUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="px-3 py-1.5 rounded-xl bg-[#1DB954]/15 hover:bg-[#1DB954] text-[#1DB954] hover:text-black text-[9px] font-black uppercase tracking-wider flex items-center gap-1.5 transition-all"
+                        >
+                          <svg viewBox="0 0 24 24" fill="currentColor" className="w-3 h-3">
+                            <path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm4.586 14.424c-.18.295-.563.387-.857.207-2.377-1.454-5.37-1.783-8.893-.982-.336.075-.668-.135-.744-.47-.077-.337.135-.669.47-.745 3.856-.88 7.15-.51 9.817 1.123.294.18.386.563.207.857zm1.224-2.724c-.226.367-.707.487-1.074.26-2.72-1.672-6.87-2.157-10.078-1.182-.413.125-.85-.107-.975-.52-.125-.413.107-.85.52-.975 3.67-1.114 8.24-.57 11.347 1.342.368.227.488.708.26 1.075zm.105-2.81c-3.262-1.937-8.644-2.115-11.758-1.17-.5.152-1.025-.133-1.177-.633-.153-.5.132-1.025.633-1.177 3.616-1.098 9.544-.89 13.3 1.34.45.267.6.845.333 1.295-.267.45-.845.6-1.295.334z"/>
+                          </svg>
+                          <span>Spotify</span>
+                        </a>
+                      )}
+                    </div>
+
+                    {/* Lyrics Quote if present */}
+                    {myNote.musicLyrics && (
+                      <div className="w-full bg-white/[0.03] border border-white/5 rounded-xl p-2 text-center">
+                        <p className="text-[11px] font-bold text-aeirmist-cyan italic">
+                          "{myNote.musicLyrics}"
+                        </p>
+                      </div>
                     )}
                   </div>
                 )}

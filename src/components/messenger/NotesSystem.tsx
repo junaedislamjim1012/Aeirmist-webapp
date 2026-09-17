@@ -46,27 +46,49 @@ export const NoteUserAvatar = ({
   className?: string;
   roundedClassName?: string;
 }) => {
-  const { db } = useAeirmist();
+  const { db, profile, user } = useAeirmist();
+
+  const getCleanPhoto = (p?: string | null) => {
+    if (!p || typeof p !== 'string') return undefined;
+    const trimmed = p.trim();
+    if (!trimmed || trimmed === 'null' || trimmed === 'undefined' || trimmed.includes('data:image/svg+xml') || trimmed.includes('default_avatar')) {
+      return undefined;
+    }
+    return trimmed;
+  };
+
   const [photo, setPhoto] = useState<string | undefined>(() => {
-    if (fallbackPhoto && !fallbackPhoto.includes('data:image/svg+xml') && fallbackPhoto !== 'null' && fallbackPhoto !== 'undefined') {
-      return fallbackPhoto;
+    const cleanFallback = getCleanPhoto(fallbackPhoto);
+    if (cleanFallback) return cleanFallback;
+
+    if (userId && profile && (userId === profile.id || userId === user?.uid)) {
+      const ownPhoto = getCleanPhoto(profile.photoURL || user?.photoURL);
+      if (ownPhoto) return ownPhoto;
     }
-    if (userId && profilePhotoCache[userId]) {
-      return profilePhotoCache[userId];
-    }
-    if (authorUid && profilePhotoCache[authorUid]) {
-      return profilePhotoCache[authorUid];
-    }
-    return fallbackPhoto;
+
+    if (userId && profilePhotoCache[userId]) return profilePhotoCache[userId];
+    if (authorUid && profilePhotoCache[authorUid]) return profilePhotoCache[authorUid];
+
+    return undefined;
   });
 
   useEffect(() => {
-    if (fallbackPhoto && !fallbackPhoto.includes('data:image/svg+xml') && fallbackPhoto !== 'null' && fallbackPhoto !== 'undefined') {
-      setPhoto(fallbackPhoto);
+    const cleanFallback = getCleanPhoto(fallbackPhoto);
+    if (cleanFallback) {
+      setPhoto(cleanFallback);
     }
   }, [fallbackPhoto]);
 
   useEffect(() => {
+    if (userId && profile && (userId === profile.id || userId === user?.uid)) {
+      const ownPhoto = getCleanPhoto(profile.photoURL || user?.photoURL);
+      if (ownPhoto) {
+        setPhoto(ownPhoto);
+        profilePhotoCache[userId] = ownPhoto;
+        return;
+      }
+    }
+
     if (!db) return;
     const targetIds = [userId, authorUid].filter(Boolean) as string[];
     if (targetIds.length === 0) return;
@@ -85,8 +107,8 @@ export const NoteUserAvatar = ({
       const unsub = onSnapshot(doc(db, 'profiles', id), (docSnap) => {
         if (docSnap.exists()) {
           const data = docSnap.data();
-          const pUrl = data?.photoURL || data?.photo || data?.avatar;
-          if (pUrl && !pUrl.includes('data:image/svg+xml')) {
+          const pUrl = getCleanPhoto(data?.photoURL || data?.photo || data?.avatar);
+          if (pUrl) {
             profilePhotoCache[id] = pUrl;
             if (userId) profilePhotoCache[userId] = pUrl;
             if (authorUid) profilePhotoCache[authorUid] = pUrl;
@@ -100,8 +122,8 @@ export const NoteUserAvatar = ({
           getDoc(doc(db, 'profiles', `profile_${id}`)).then(pSnap => {
             if (pSnap.exists()) {
               const pData = pSnap.data();
-              const pUrl2 = pData?.photoURL || pData?.photo || pData?.avatar;
-              if (pUrl2 && !pUrl2.includes('data:image/svg+xml')) {
+              const pUrl2 = getCleanPhoto(pData?.photoURL || pData?.photo || pData?.avatar);
+              if (pUrl2) {
                 profilePhotoCache[id] = pUrl2;
                 if (userId) profilePhotoCache[userId] = pUrl2;
                 if (authorUid) profilePhotoCache[authorUid] = pUrl2;
@@ -114,8 +136,8 @@ export const NoteUserAvatar = ({
           getDoc(doc(db, 'profiles', rawId)).then(pSnap => {
             if (pSnap.exists()) {
               const pData = pSnap.data();
-              const pUrl2 = pData?.photoURL || pData?.photo || pData?.avatar;
-              if (pUrl2 && !pUrl2.includes('data:image/svg+xml')) {
+              const pUrl2 = getCleanPhoto(pData?.photoURL || pData?.photo || pData?.avatar);
+              if (pUrl2) {
                 profilePhotoCache[id] = pUrl2;
                 if (userId) profilePhotoCache[userId] = pUrl2;
                 if (authorUid) profilePhotoCache[authorUid] = pUrl2;
@@ -129,8 +151,8 @@ export const NoteUserAvatar = ({
         getDoc(doc(db, 'users', id)).then(uSnap => {
           if (uSnap.exists()) {
             const uData = uSnap.data();
-            const uUrl = uData?.photoURL || uData?.photo || uData?.avatar;
-            if (uUrl && !uUrl.includes('data:image/svg+xml')) {
+            const uUrl = getCleanPhoto(uData?.photoURL || uData?.photo || uData?.avatar);
+            if (uUrl) {
               profilePhotoCache[id] = uUrl;
               if (userId) profilePhotoCache[userId] = uUrl;
               if (authorUid) profilePhotoCache[authorUid] = uUrl;
@@ -148,19 +170,26 @@ export const NoteUserAvatar = ({
     return () => {
       unsubs.forEach(u => u());
     };
-  }, [db, userId, authorUid]);
+  }, [db, userId, authorUid, profile?.photoURL, user?.photoURL]);
+
+  if (photo) {
+    return (
+      <img 
+        src={photo} 
+        alt={alt} 
+        className={`${className} ${roundedClassName}`}
+        onError={() => setPhoto(undefined)}
+        referrerPolicy="no-referrer"
+      />
+    );
+  }
+
+  const initial = (alt || 'U').trim().charAt(0).toUpperCase();
 
   return (
-    <img 
-      src={getAvatarUrl(photo)} 
-      alt={alt} 
-      className={`${className} ${roundedClassName}`}
-      onError={(e) => {
-        const target = e.target as HTMLImageElement;
-        target.src = getAvatarUrl(null);
-      }}
-      referrerPolicy="no-referrer"
-    />
+    <div className={`${className} ${roundedClassName} bg-gradient-to-br from-[#242735] via-[#1a1c26] to-[#12131a] border border-white/10 flex items-center justify-center font-bold text-white shadow-inner select-none`}>
+      <span className="text-xl font-bold tracking-wider text-white/90">{initial}</span>
+    </div>
   );
 };
 
@@ -1251,384 +1280,424 @@ export const NotesSystem = ({ chats, onChatSelect, onReplyNote }: { chats: any[]
         )}
       </AnimatePresence>
 
-      {/* Friend Note View Modal */}
+      {/* Friend Note View Modal (Meta / Instagram Standard) */}
       <AnimatePresence>
-        {selectedFriendNote && (
-          <div className="fixed inset-0 z-[400] flex items-center justify-center p-4">
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="absolute inset-0 bg-black/80 backdrop-blur-md"
-              onClick={() => setSelectedFriendNote(null)}
-            />
-            <motion.div 
-              initial={{ scale: 0.95, opacity: 0, y: 15 }}
-              animate={{ scale: 1, opacity: 1, y: 0, transition: { duration: 0.2 } }}
-              exit={{ scale: 0.95, opacity: 0, y: 15 }}
-              className="relative w-full max-w-[340px] bg-[#16161a] border border-white/10 rounded-[28px] shadow-2xl p-6 flex flex-col items-center"
-            >
-              {/* Close Button */}
-              <button 
-                onClick={() => setSelectedFriendNote(null)} 
-                className="absolute top-4 right-4 text-white/40 hover:text-white transition-colors p-1.5 rounded-full hover:bg-white/10"
+        {selectedFriendNote && (() => {
+          const friendNote = selectedFriendNote.note;
+          const chat = selectedFriendNote.chat;
+          const authorName = chat.name || friendNote.userName || 'User';
+          const authorFirstName = authorName.split(' ')[0] || 'User';
+          const isOnline = onlineUsers.has(friendNote.authorId);
+
+          const parts = friendNote.music ? friendNote.music.split(' - ') : [];
+          const trackTitle = parts[0] || friendNote.music || '';
+          const trackArtist = parts.length > 1 ? parts.slice(1).join(' - ') : '';
+          const isPlayingThis = isPlayingMusic && playingNoteId === friendNote.id;
+
+          return (
+            <div className="fixed inset-0 z-[400] flex items-center justify-center p-4">
+              <motion.div 
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="absolute inset-0 bg-black/80 backdrop-blur-md"
+                onClick={() => setSelectedFriendNote(null)}
+              />
+              <motion.div 
+                initial={{ scale: 0.95, opacity: 0, y: 15 }}
+                animate={{ scale: 1, opacity: 1, y: 0, transition: { duration: 0.2 } }}
+                exit={{ scale: 0.95, opacity: 0, y: 15 }}
+                className="relative w-full max-w-[320px] bg-[#141416] border border-white/10 rounded-[28px] shadow-2xl p-6 flex flex-col items-center"
               >
-                <X size={18} />
-              </button>
+                {/* Close Button */}
+                <button 
+                  onClick={() => setSelectedFriendNote(null)} 
+                  className="absolute top-4 right-4 text-white/40 hover:text-white transition-colors p-1.5 rounded-full hover:bg-white/10"
+                >
+                  <X size={18} />
+                </button>
 
-              {/* Square Profile Picture & Name */}
-              <div className="relative w-20 h-20 mb-3 flex-shrink-0">
-                <div className="w-full h-full rounded-2xl ring-2 ring-white/15 overflow-hidden bg-neutral-900 shadow-md">
-                  <NoteUserAvatar 
-                    userId={selectedFriendNote.note.authorId || selectedFriendNote.chat.otherParticipantId}
-                    authorUid={selectedFriendNote.note.authorUid}
-                    fallbackPhoto={selectedFriendNote.note.userAvatar || selectedFriendNote.chat.photo}
-                    alt={selectedFriendNote.chat.name || 'User'}
-                    className="w-full h-full object-cover"
-                    roundedClassName="rounded-2xl"
-                  />
-                </div>
-                {onlineUsers.has(selectedFriendNote.note.authorId) && (
-                  <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-emerald-500 rounded-lg ring-2 ring-[#16161a]" />
-                )}
-              </div>
-
-              <h3 className="text-base font-semibold text-white truncate max-w-[240px]">
-                {selectedFriendNote.chat.name || selectedFriendNote.note.userName || 'User'}
-              </h3>
-              
-              <p className="text-xs text-neutral-400 mt-0.5">
-                {getRelativeTime(selectedFriendNote.note.createdAt)} ago
-              </p>
-              
-              {/* Note Content Bubble */}
-              {selectedFriendNote.note.content && selectedFriendNote.note.content.trim() && selectedFriendNote.note.content !== selectedFriendNote.note.music && (
-                <div className="w-full bg-neutral-800/70 rounded-2xl px-4 py-3 my-2.5 text-center border border-white/5">
-                  <p className="text-sm font-medium text-white break-words leading-relaxed">
-                    {selectedFriendNote.note.content}
-                  </p>
-                </div>
-              )}
-
-              {/* Music Player Card */}
-              {selectedFriendNote.note.music && (
-                <div className="w-full bg-neutral-800/80 border border-white/10 rounded-2xl p-3 my-2 flex flex-col gap-2">
-                  <div className="flex items-center gap-3">
-                    {/* Cover Art */}
-                    <div className="relative w-11 h-11 rounded-xl overflow-hidden shadow shrink-0 bg-neutral-900 border border-white/10">
-                      {selectedFriendNote.note.musicCover ? (
-                        <img 
-                          src={selectedFriendNote.note.musicCover} 
-                          alt="" 
-                          className={`w-full h-full object-cover ${isPlayingMusic ? 'animate-spin [animation-duration:6s]' : ''}`} 
-                        />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center text-white/40">
-                          <Disc size={20} />
-                        </div>
-                      )}
-                      {selectedFriendNote.note.musicUrl && (
-                        <button
-                          type="button"
-                          onClick={() => togglePlayMusic(
-                            selectedFriendNote.note.musicUrl,
-                            selectedFriendNote.note.musicClipStart || 0,
-                            selectedFriendNote.note.musicClipDuration || 30
-                          )}
-                          className="absolute inset-0 bg-black/40 hover:bg-black/30 flex items-center justify-center text-white transition-colors"
-                        >
-                          {isPlayingMusic ? <Pause size={15} /> : <Play size={15} className="ml-0.5" />}
-                        </button>
-                      )}
-                    </div>
-
-                    {/* Details */}
-                    <div className="flex-1 min-w-0 text-left">
-                      <div className="text-xs font-bold text-white truncate">
-                        {selectedFriendNote.note.music.split(' - ')[0] || selectedFriendNote.note.music}
-                      </div>
-                      <div className="text-[11px] text-neutral-400 truncate mt-0.5">
-                        {selectedFriendNote.note.music.split(' - ')[1] 
-                          ? `${selectedFriendNote.note.music.split(' - ')[1]} • Spotify` 
-                          : `${selectedFriendNote.note.musicClipDuration || 30}s preview • Spotify`}
-                      </div>
-                    </div>
-
-                    {/* Spotify Link */}
-                    {selectedFriendNote.note.spotifyUrl && (
-                      <a
-                        href={selectedFriendNote.note.spotifyUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="p-2 rounded-full hover:bg-white/10 text-[#1DB954] transition-colors"
-                        title="Open on Spotify"
-                      >
-                        <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
-                          <path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm4.586 14.424c-.18.295-.563.387-.857.207-2.377-1.454-5.37-1.783-8.893-.982-.336.075-.668-.135-.744-.47-.077-.337.135-.669.47-.745 3.856-.88 7.15-.51 9.817 1.123.294.18.386.563.207.857zm1.224-2.724c-.226.367-.707.487-1.074.26-2.72-1.672-6.87-2.157-10.078-1.182-.413.125-.85-.107-.975-.52-.125-.413.107-.85.52-.975 3.67-1.114 8.24-.57 11.347 1.342.368.227.488.708.26 1.075zm.105-2.81c-3.262-1.937-8.644-2.115-11.758-1.17-.5.152-1.025-.133-1.177-.633-.153-.5.132-1.025.633-1.177 3.616-1.098 9.544-.89 13.3 1.34.45.267.6.845.333 1.295-.267.45-.845.6-1.295.334z"/>
-                        </svg>
-                      </a>
-                    )}
-                  </div>
-
-                  {selectedFriendNote.note.musicLyrics && (
-                    <p className="text-xs text-cyan-400 italic text-center pt-1.5 border-t border-white/5">
-                      "{selectedFriendNote.note.musicLyrics}"
+                {/* 1. Meta Floating Thought Bubble (Text & Music) */}
+                <div className="relative w-full bg-[#1e1e24] border border-white/10 rounded-2xl p-3.5 shadow-lg flex flex-col items-center gap-2 mb-3.5">
+                  {/* Thought Text */}
+                  {friendNote.content && friendNote.content.trim() && friendNote.content !== friendNote.music && (
+                    <p className="text-sm font-semibold text-white text-center leading-relaxed break-words px-1">
+                      {friendNote.content}
                     </p>
                   )}
+
+                  {/* Music Strip */}
+                  {friendNote.music && (
+                    <div className="flex items-center gap-2.5 w-full bg-black/40 rounded-xl p-2 border border-white/5">
+                      {/* Play/Pause Cover */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (friendNote.musicUrl) {
+                            togglePlayMusic(
+                              friendNote.musicUrl,
+                              friendNote.musicClipStart || 0,
+                              friendNote.musicClipDuration || 30,
+                              friendNote.id
+                            );
+                          }
+                        }}
+                        className="relative w-9 h-9 rounded-lg overflow-hidden shrink-0 bg-neutral-900 border border-white/10 shadow group"
+                      >
+                        {friendNote.musicCover ? (
+                          <img 
+                            src={friendNote.musicCover} 
+                            alt="" 
+                            className={`w-full h-full object-cover ${isPlayingThis ? 'animate-spin [animation-duration:5s]' : ''}`} 
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-white/40">
+                            <Disc size={16} />
+                          </div>
+                        )}
+                        <div className="absolute inset-0 bg-black/40 flex items-center justify-center text-white transition-colors">
+                          {isPlayingThis ? <Pause size={13} fill="currentColor" /> : <Play size={13} fill="currentColor" className="ml-0.5" />}
+                        </div>
+                      </button>
+
+                      {/* Details */}
+                      <div className="flex-1 min-w-0 text-left">
+                        <div className="text-xs font-bold text-white truncate">
+                          {trackTitle}
+                        </div>
+                        <div className="text-[10px] text-neutral-400 truncate mt-0.5">
+                          {trackArtist ? `${trackArtist} • Spotify` : `${friendNote.musicClipDuration || 30}s • Spotify`}
+                        </div>
+                      </div>
+
+                      {/* Playing Bars or Spotify Icon */}
+                      {isPlayingThis ? (
+                        <span className="flex items-end gap-[2px] h-3.5 shrink-0 px-1">
+                          <span className="w-[2px] h-full bg-[#1DB954] rounded-full animate-pulse" />
+                          <span className="w-[2px] h-2/3 bg-[#1DB954] rounded-full animate-pulse [animation-delay:150ms]" />
+                          <span className="w-[2px] h-4/5 bg-[#1DB954] rounded-full animate-pulse [animation-delay:300ms]" />
+                        </span>
+                      ) : friendNote.spotifyUrl ? (
+                        <a
+                          href={friendNote.spotifyUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="p-1.5 rounded-full hover:bg-white/10 text-[#1DB954] transition-colors shrink-0"
+                          title="Open on Spotify"
+                        >
+                          <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
+                            <path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm4.586 14.424c-.18.295-.563.387-.857.207-2.377-1.454-5.37-1.783-8.893-.982-.336.075-.668-.135-.744-.47-.077-.337.135-.669.47-.745 3.856-.88 7.15-.51 9.817 1.123.294.18.386.563.207.857zm1.224-2.724c-.226.367-.707.487-1.074.26-2.72-1.672-6.87-2.157-10.078-1.182-.413.125-.85-.107-.975-.52-.125-.413.107-.85.52-.975 3.67-1.114 8.24-.57 11.347 1.342.368.227.488.708.26 1.075zm.105-2.81c-3.262-1.937-8.644-2.115-11.758-1.17-.5.152-1.025-.133-1.177-.633-.153-.5.132-1.025.633-1.177 3.616-1.098 9.544-.89 13.3 1.34.45.267.6.845.333 1.295-.267.45-.845.6-1.295.334z"/>
+                          </svg>
+                        </a>
+                      ) : null}
+                    </div>
+                  )}
+
+                  {/* Lyrics if available */}
+                  {friendNote.musicLyrics && (
+                    <p className="text-[11px] text-cyan-400 italic text-center pt-0.5">
+                      "{friendNote.musicLyrics}"
+                    </p>
+                  )}
+
+                  {/* Speech Bubble Pointer Tail pointing down to avatar */}
+                  <div className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-[#1e1e24] border-r border-b border-white/10 rotate-45" />
                 </div>
-              )}
 
-              {/* Quick Reactions Bar */}
-              <div className="flex w-full items-center justify-around bg-neutral-800/60 py-2 px-2.5 rounded-2xl border border-white/5 my-2">
-                {REACTIONS.map(emoji => (
-                  <button
-                    key={emoji}
-                    onClick={() => handleReact(selectedFriendNote.note.id, emoji)}
-                    className="w-9 h-9 rounded-xl hover:bg-white/10 flex items-center justify-center text-xl transition-transform active:scale-125 hover:scale-110"
-                  >
-                    {emoji}
-                  </button>
-                ))}
-              </div>
+                {/* 2. Square Avatar */}
+                <div className="relative w-18 h-18 mb-2 flex-shrink-0">
+                  <div className="w-full h-full rounded-2xl ring-2 ring-white/15 overflow-hidden bg-neutral-900 shadow-xl">
+                    <NoteUserAvatar 
+                      userId={friendNote.authorId || chat.otherParticipantId}
+                      authorUid={friendNote.authorUid}
+                      fallbackPhoto={friendNote.userAvatar || chat.photo}
+                      alt={authorName}
+                      className="w-full h-full object-cover"
+                      roundedClassName="rounded-2xl"
+                    />
+                  </div>
+                  {isOnline && (
+                    <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-emerald-500 rounded-lg ring-2 ring-[#141416]" />
+                  )}
+                </div>
 
-              {/* Direct Reply Bar */}
-              <form 
-                onSubmit={async (e) => {
-                  e.preventDefault();
-                  if (!replyText.trim() || !selectedFriendNote) return;
-                  const authorName = selectedFriendNote.chat.name || selectedFriendNote.note.userName || 'User';
-                  const noteQuote = selectedFriendNote.note.content || selectedFriendNote.note.music || 'Note';
-                  const messageBody = `Replying to note: "${noteQuote}"\n${replyText.trim()}`;
-                  try {
-                    if (sendMessage) {
-                      await sendMessage(selectedFriendNote.chat.id, messageBody, 'text', undefined, {
-                        replyTo: {
-                          text: `${authorName}'s Note: "${noteQuote}"`,
-                          senderName: authorName
-                        }
-                      });
-                      addToast?.({ title: "Reply Sent", message: `Sent to ${authorName}`, type: "success" });
-                    } else {
-                      onReplyNote?.(selectedFriendNote.chat.id, noteQuote, authorName);
-                    }
-                    setReplyText('');
-                    setSelectedFriendNote(null);
-                  } catch (err) {
-                    logger.error("Failed to send reply to note:", err);
-                  }
-                }}
-                className="w-full flex items-center gap-2 mt-1 bg-neutral-800/80 border border-white/10 rounded-full py-1 px-1.5 pl-4 focus-within:border-white/30 transition-all"
-              >
-                <input 
-                  type="text"
-                  value={replyText}
-                  onChange={(e) => setReplyText(e.target.value)}
-                  placeholder={`Reply to ${selectedFriendNote.chat.name || selectedFriendNote.note.userName || 'User'}...`}
-                  className="flex-1 bg-transparent text-xs text-white placeholder:text-neutral-500 outline-none font-normal"
-                />
-                <button
-                  type="submit"
-                  disabled={!replyText.trim()}
-                  className="px-3.5 py-1.5 rounded-full bg-white text-black font-semibold text-xs hover:bg-neutral-200 active:scale-95 disabled:opacity-30 disabled:grayscale transition-all flex items-center gap-1"
-                >
-                  <Send size={12} />
-                  <span>Send</span>
-                </button>
-              </form>
+                {/* Author Name & Time */}
+                <h3 className="text-sm font-semibold text-white truncate max-w-[240px]">
+                  {authorName}
+                </h3>
+                <p className="text-[11px] text-neutral-400 mt-0.5">
+                  {getRelativeTime(friendNote.createdAt)} ago
+                </p>
 
-              {/* Secondary Actions */}
-              <div className="flex w-full gap-2 mt-2.5">
-                <button 
-                  onClick={() => {
-                    onReplyNote?.(selectedFriendNote.chat.id, selectedFriendNote.note.content, selectedFriendNote.chat.name || 'User');
-                    setSelectedFriendNote(null);
-                  }}
-                  className="flex-1 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-xs font-medium text-neutral-300 hover:text-white transition-all flex items-center justify-center gap-1.5 border border-white/5"
-                >
-                  <MessageCircle size={14} />
-                  <span>Open chat</span>
-                </button>
+                {/* 3. Floating Quick Reactions (Clean Meta Style, NO heavy border box) */}
+                <div className="flex w-full items-center justify-around py-3 px-1">
+                  {REACTIONS.map(emoji => (
+                    <button
+                      key={emoji}
+                      onClick={() => handleReact(friendNote.id, emoji)}
+                      className="text-2xl hover:scale-130 active:scale-95 transition-transform duration-150 p-1"
+                    >
+                      {emoji}
+                    </button>
+                  ))}
+                </div>
 
-                <button 
-                  onClick={async () => {
-                    if (!profile || !selectedFriendNote) return;
-                    const shareText = `Check out @${selectedFriendNote.chat.username || selectedFriendNote.note.userName || 'user'}'s note on Aeirmist: "${selectedFriendNote.note.content || selectedFriendNote.note.music}"`;
-                    if (navigator.share) {
-                      try {
-                        await navigator.share({
-                          title: 'Aeirmist Note',
-                          text: shareText,
-                          url: window.location.origin
+                {/* 4. Direct Reply Bar (Minimal Meta Pill) */}
+                <form 
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    if (!replyText.trim() || !selectedFriendNote) return;
+                    const noteQuote = friendNote.content || friendNote.music || 'Note';
+                    const messageBody = `Replying to note: "${noteQuote}"\n${replyText.trim()}`;
+                    try {
+                      if (sendMessage) {
+                        await sendMessage(chat.id, messageBody, 'text', undefined, {
+                          replyTo: {
+                            text: `${authorName}'s Note: "${noteQuote}"`,
+                            senderName: authorName
+                          }
                         });
-                      } catch (err) {}
-                    } else {
-                      await navigator.clipboard.writeText(shareText);
-                      addToast({ title: 'Link Copied', message: 'Note content copied to clipboard.', type: 'success' });
+                        addToast?.({ title: "Reply Sent", message: `Sent to ${authorName}`, type: "success" });
+                      } else {
+                        onReplyNote?.(chat.id, noteQuote, authorName);
+                      }
+                      setReplyText('');
+                      setSelectedFriendNote(null);
+                    } catch (err) {
+                      logger.error("Failed to send reply to note:", err);
                     }
-                    setSelectedFriendNote(null);
                   }}
-                  className="py-2.5 px-3.5 rounded-xl bg-white/5 hover:bg-white/10 text-xs font-medium text-neutral-400 hover:text-white transition-all flex items-center justify-center border border-white/5"
-                  title="Share note"
+                  className="w-full flex items-center gap-2 bg-white/10 hover:bg-white/[0.12] focus-within:bg-white/[0.15] border border-white/10 focus-within:border-white/25 rounded-full py-2 px-4 transition-all"
                 >
-                  <Share2 size={14} />
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
+                  <input 
+                    type="text"
+                    value={replyText}
+                    onChange={(e) => setReplyText(e.target.value)}
+                    placeholder={`Reply to ${authorFirstName}...`}
+                    className="flex-1 bg-transparent text-xs text-white placeholder:text-neutral-500 outline-none font-normal"
+                  />
+                  {replyText.trim() && (
+                    <button
+                      type="submit"
+                      className="text-xs font-semibold text-white hover:text-cyan-400 transition-colors shrink-0 flex items-center gap-1"
+                    >
+                      <span>Send</span>
+                      <Send size={11} />
+                    </button>
+                  )}
+                </form>
+
+                {/* 5. Minimal Footer Actions */}
+                <div className="flex items-center justify-between w-full mt-3 px-2 text-xs text-neutral-400">
+                  <button 
+                    onClick={() => {
+                      onReplyNote?.(chat.id, friendNote.content || friendNote.music || '', authorName);
+                      setSelectedFriendNote(null);
+                    }}
+                    className="hover:text-white transition-colors flex items-center gap-1.5 py-1"
+                  >
+                    <MessageCircle size={13} />
+                    <span>Open chat</span>
+                  </button>
+
+                  <button 
+                    onClick={async () => {
+                      const shareText = `Check out @${chat.username || friendNote.userName || 'user'}'s note on Aeirmist: "${friendNote.content || friendNote.music}"`;
+                      if (navigator.share) {
+                        try {
+                          await navigator.share({
+                            title: 'Aeirmist Note',
+                            text: shareText,
+                            url: window.location.origin
+                          });
+                        } catch (err) {}
+                      } else {
+                        await navigator.clipboard.writeText(shareText);
+                        addToast({ title: 'Link Copied', message: 'Note content copied to clipboard.', type: 'success' });
+                      }
+                      setSelectedFriendNote(null);
+                    }}
+                    className="hover:text-white transition-colors flex items-center gap-1.5 py-1"
+                  >
+                    <Share2 size={13} />
+                    <span>Share</span>
+                  </button>
+                </div>
+              </motion.div>
+            </div>
+          );
+        })()}
       </AnimatePresence>
 
-      {/* My Note Modal */}
+      {/* My Note Modal (Meta / Instagram Standard) */}
       <AnimatePresence>
-        {viewingMyNote && myNote && (
-          <div className="fixed inset-0 z-[400] flex items-center justify-center p-4">
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="absolute inset-0 bg-black/80 backdrop-blur-md"
-              onClick={() => setViewingMyNote(false)}
-            />
-            <motion.div 
-              initial={{ scale: 0.95, opacity: 0, y: 15 }}
-              animate={{ scale: 1, opacity: 1, y: 0, transition: { duration: 0.2 } }}
-              exit={{ scale: 0.95, opacity: 0, y: 15 }}
-              className="relative w-full max-w-[340px] bg-[#16161a] border border-white/10 rounded-[28px] shadow-2xl p-6 flex flex-col items-center"
-            >
-              <button 
-                onClick={() => setViewingMyNote(false)} 
-                className="absolute top-4 right-4 text-white/40 hover:text-white transition-colors p-1.5 rounded-full hover:bg-white/10"
+        {viewingMyNote && myNote && (() => {
+          const parts = myNote.music ? myNote.music.split(' - ') : [];
+          const trackTitle = parts[0] || myNote.music || '';
+          const trackArtist = parts.length > 1 ? parts.slice(1).join(' - ') : '';
+          const isPlayingThis = isPlayingMusic && playingNoteId === myNote.id;
+
+          return (
+            <div className="fixed inset-0 z-[400] flex items-center justify-center p-4">
+              <motion.div 
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="absolute inset-0 bg-black/80 backdrop-blur-md"
+                onClick={() => setViewingMyNote(false)}
+              />
+              <motion.div 
+                initial={{ scale: 0.95, opacity: 0, y: 15 }}
+                animate={{ scale: 1, opacity: 1, y: 0, transition: { duration: 0.2 } }}
+                exit={{ scale: 0.95, opacity: 0, y: 15 }}
+                className="relative w-full max-w-[320px] bg-[#141416] border border-white/10 rounded-[28px] shadow-2xl p-6 flex flex-col items-center"
               >
-                <X size={18} />
-              </button>
-              
-              {/* Square Avatar & Header */}
-              <div className="relative w-20 h-20 mb-3 flex-shrink-0">
-                <div className="w-full h-full rounded-2xl overflow-hidden ring-2 ring-white/15 bg-neutral-900 shadow-md">
-                  <NoteUserAvatar 
-                    userId={profile?.id} 
-                    authorUid={user?.uid}
-                    fallbackPhoto={profile?.photoURL || user?.photoURL}
-                    alt={profile?.displayName || 'You'} 
-                    className="w-full h-full object-cover" 
-                    roundedClassName="rounded-2xl"
-                  />
-                </div>
-              </div>
-              
-              <h3 className="text-base font-semibold text-white">Your Note</h3>
-              <p className="text-xs text-neutral-400 mt-0.5">Visible for 24h • Posted {getRelativeTime(myNote.createdAt)} ago</p>
-              
-              {/* Note Content Bubble */}
-              {myNote.content && myNote.content.trim() && myNote.content !== myNote.music && (
-                <div className="w-full bg-neutral-800/70 rounded-2xl px-4 py-3 my-2.5 text-center border border-white/5">
-                  <p className="text-sm font-medium text-white break-words leading-relaxed">{myNote.content}</p>
-                </div>
-              )}
+                <button 
+                  onClick={() => setViewingMyNote(false)} 
+                  className="absolute top-4 right-4 text-white/40 hover:text-white transition-colors p-1.5 rounded-full hover:bg-white/10"
+                >
+                  <X size={18} />
+                </button>
 
-              {/* Music Player Card */}
-              {myNote.music && (
-                <div className="w-full bg-neutral-800/80 border border-white/10 rounded-2xl p-3 my-2 flex flex-col gap-2">
-                  <div className="flex items-center gap-3">
-                    <div className="relative w-11 h-11 rounded-xl overflow-hidden shadow shrink-0 bg-neutral-900 border border-white/10">
-                      {myNote.musicCover ? (
-                        <img 
-                          src={myNote.musicCover} 
-                          alt="" 
-                          className={`w-full h-full object-cover ${isPlayingMusic ? 'animate-spin [animation-duration:6s]' : ''}`} 
-                        />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center text-white/40">
-                          <Disc size={20} />
-                        </div>
-                      )}
-                      {myNote.musicUrl && (
-                        <button
-                          type="button"
-                          onClick={() => togglePlayMusic(
-                            myNote.musicUrl,
-                            myNote.musicClipStart || 0,
-                            myNote.musicClipDuration || 30
-                          )}
-                          className="absolute inset-0 bg-black/40 hover:bg-black/30 flex items-center justify-center text-white transition-colors"
-                        >
-                          {isPlayingMusic ? <Pause size={15} /> : <Play size={15} className="ml-0.5" />}
-                        </button>
-                      )}
-                    </div>
+                {/* 1. Meta Floating Thought Bubble (Text & Music) */}
+                <div className="relative w-full bg-[#1e1e24] border border-white/10 rounded-2xl p-3.5 shadow-lg flex flex-col items-center gap-2 mb-3.5">
+                  {myNote.content && myNote.content.trim() && myNote.content !== myNote.music && (
+                    <p className="text-sm font-semibold text-white text-center leading-relaxed break-words px-1">
+                      {myNote.content}
+                    </p>
+                  )}
 
-                    <div className="flex-1 min-w-0 text-left">
-                      <div className="text-xs font-bold text-white truncate">
-                        {myNote.music.split(' - ')[0] || myNote.music}
-                      </div>
-                      <div className="text-[11px] text-neutral-400 truncate mt-0.5">
-                        {myNote.music.split(' - ')[1] 
-                          ? `${myNote.music.split(' - ')[1]} • Spotify` 
-                          : `${myNote.musicClipDuration || 30}s preview • Spotify`}
-                      </div>
-                    </div>
-
-                    {myNote.spotifyUrl && (
-                      <a
-                        href={myNote.spotifyUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="p-2 rounded-full hover:bg-white/10 text-[#1DB954] transition-colors"
-                        title="Open on Spotify"
+                  {myNote.music && (
+                    <div className="flex items-center gap-2.5 w-full bg-black/40 rounded-xl p-2 border border-white/5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (myNote.musicUrl) {
+                            togglePlayMusic(
+                              myNote.musicUrl,
+                              myNote.musicClipStart || 0,
+                              myNote.musicClipDuration || 30,
+                              myNote.id
+                            );
+                          }
+                        }}
+                        className="relative w-9 h-9 rounded-lg overflow-hidden shrink-0 bg-neutral-900 border border-white/10 shadow group"
                       >
-                        <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
-                          <path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm4.586 14.424c-.18.295-.563.387-.857.207-2.377-1.454-5.37-1.783-8.893-.982-.336.075-.668-.135-.744-.47-.077-.337.135-.669.47-.745 3.856-.88 7.15-.51 9.817 1.123.294.18.386.563.207.857zm1.224-2.724c-.226.367-.707.487-1.074.26-2.72-1.672-6.87-2.157-10.078-1.182-.413.125-.85-.107-.975-.52-.125-.413.107-.85.52-.975 3.67-1.114 8.24-.57 11.347 1.342.368.227.488.708.26 1.075zm.105-2.81c-3.262-1.937-8.644-2.115-11.758-1.17-.5.152-1.025-.133-1.177-.633-.153-.5.132-1.025.633-1.177 3.616-1.098 9.544-.89 13.3 1.34.45.267.6.845.333 1.295-.267.45-.845.6-1.295.334z"/>
-                        </svg>
-                      </a>
-                    )}
-                  </div>
+                        {myNote.musicCover ? (
+                          <img 
+                            src={myNote.musicCover} 
+                            alt="" 
+                            className={`w-full h-full object-cover ${isPlayingThis ? 'animate-spin [animation-duration:5s]' : ''}`} 
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-white/40">
+                            <Disc size={16} />
+                          </div>
+                        )}
+                        <div className="absolute inset-0 bg-black/40 flex items-center justify-center text-white transition-colors">
+                          {isPlayingThis ? <Pause size={13} fill="currentColor" /> : <Play size={13} fill="currentColor" className="ml-0.5" />}
+                        </div>
+                      </button>
+
+                      <div className="flex-1 min-w-0 text-left">
+                        <div className="text-xs font-bold text-white truncate">
+                          {trackTitle}
+                        </div>
+                        <div className="text-[10px] text-neutral-400 truncate mt-0.5">
+                          {trackArtist ? `${trackArtist} • Spotify` : `${myNote.musicClipDuration || 30}s • Spotify`}
+                        </div>
+                      </div>
+
+                      {isPlayingThis ? (
+                        <span className="flex items-end gap-[2px] h-3.5 shrink-0 px-1">
+                          <span className="w-[2px] h-full bg-[#1DB954] rounded-full animate-pulse" />
+                          <span className="w-[2px] h-2/3 bg-[#1DB954] rounded-full animate-pulse [animation-delay:150ms]" />
+                          <span className="w-[2px] h-4/5 bg-[#1DB954] rounded-full animate-pulse [animation-delay:300ms]" />
+                        </span>
+                      ) : myNote.spotifyUrl ? (
+                        <a
+                          href={myNote.spotifyUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="p-1.5 rounded-full hover:bg-white/10 text-[#1DB954] transition-colors shrink-0"
+                          title="Open on Spotify"
+                        >
+                          <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
+                            <path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm4.586 14.424c-.18.295-.563.387-.857.207-2.377-1.454-5.37-1.783-8.893-.982-.336.075-.668-.135-.744-.47-.077-.337.135-.669.47-.745 3.856-.88 7.15-.51 9.817 1.123.294.18.386.563.207.857zm1.224-2.724c-.226.367-.707.487-1.074.26-2.72-1.672-6.87-2.157-10.078-1.182-.413.125-.85-.107-.975-.52-.125-.413.107-.85.52-.975 3.67-1.114 8.24-.57 11.347 1.342.368.227.488.708.26 1.075zm.105-2.81c-3.262-1.937-8.644-2.115-11.758-1.17-.5.152-1.025-.133-1.177-.633-.153-.5.132-1.025.633-1.177 3.616-1.098 9.544-.89 13.3 1.34.45.267.6.845.333 1.295-.267.45-.845.6-1.295.334z"/>
+                          </svg>
+                        </a>
+                      ) : null}
+                    </div>
+                  )}
 
                   {myNote.musicLyrics && (
-                    <p className="text-xs text-cyan-400 italic text-center pt-1.5 border-t border-white/5">
+                    <p className="text-[11px] text-cyan-400 italic text-center pt-0.5">
                       "{myNote.musicLyrics}"
                     </p>
                   )}
-                </div>
-              )}
 
-              {/* Insights: Views & Reactions */}
-              <div className="grid grid-cols-2 gap-2 w-full my-2.5">
-                <button 
-                  onClick={() => setActiveSheet('seen')}
-                  className="flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-neutral-800/60 hover:bg-neutral-800 border border-white/5 transition-all text-xs font-medium text-neutral-300 hover:text-white"
-                >
-                  <Eye size={15} className="text-neutral-400" />
-                  <span>{myNote.seenBy?.length || 0} views</span>
-                </button>
-                <button 
-                  onClick={() => setActiveSheet('reactions')}
-                  className="flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-neutral-800/60 hover:bg-neutral-800 border border-white/5 transition-all text-xs font-medium text-neutral-300 hover:text-white"
-                >
-                  <Heart size={15} className="text-pink-400" />
-                  <span>{myNote.reactions?.length || 0} reactions</span>
-                </button>
-              </div>
-              
-              {/* Action Buttons */}
-              <div className="flex flex-col w-full gap-2 mt-2">
-                <button 
-                  onClick={() => { setViewingMyNote(false); setIsCreating(true); }}
-                  className="w-full py-2.5 rounded-xl bg-white hover:bg-neutral-200 text-black font-semibold text-xs transition-all shadow-sm active:scale-98 flex items-center justify-center gap-2"
-                >
-                  <Plus size={15} />
-                  Share a new note
-                </button>
-                <button 
-                  onClick={handleDeleteNote}
-                  className="w-full py-2 rounded-xl text-red-400 hover:text-red-300 hover:bg-red-500/10 font-medium text-xs transition-all active:scale-98 flex items-center justify-center gap-1.5"
-                >
-                  <Trash2 size={13} />
-                  Delete note
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
+                  {/* Speech Bubble Pointer Tail pointing down */}
+                  <div className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-[#1e1e24] border-r border-b border-white/10 rotate-45" />
+                </div>
+
+                {/* 2. Square Avatar */}
+                <div className="relative w-18 h-18 mb-2 flex-shrink-0">
+                  <div className="w-full h-full rounded-2xl overflow-hidden ring-2 ring-white/15 bg-neutral-900 shadow-xl">
+                    <NoteUserAvatar 
+                      userId={profile?.id} 
+                      authorUid={user?.uid}
+                      fallbackPhoto={profile?.photoURL || user?.photoURL}
+                      alt={profile?.displayName || 'You'} 
+                      className="w-full h-full object-cover" 
+                      roundedClassName="rounded-2xl"
+                    />
+                  </div>
+                </div>
+                
+                <h3 className="text-sm font-semibold text-white">Your Note</h3>
+                <p className="text-[11px] text-neutral-400 mt-0.5">
+                  Visible for 24h • Posted {getRelativeTime(myNote.createdAt)} ago
+                </p>
+
+                {/* Insights: Views & Reactions */}
+                <div className="grid grid-cols-2 gap-2 w-full my-3">
+                  <button 
+                    onClick={() => setActiveSheet('seen')}
+                    className="flex items-center justify-center gap-2 py-2 px-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/5 transition-all text-xs font-medium text-neutral-300 hover:text-white"
+                  >
+                    <Eye size={14} className="text-neutral-400" />
+                    <span>{myNote.seenBy?.length || 0} views</span>
+                  </button>
+                  <button 
+                    onClick={() => setActiveSheet('reactions')}
+                    className="flex items-center justify-center gap-2 py-2 px-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/5 transition-all text-xs font-medium text-neutral-300 hover:text-white"
+                  >
+                    <Heart size={14} className="text-pink-400" />
+                    <span>{myNote.reactions?.length || 0} reactions</span>
+                  </button>
+                </div>
+                
+                {/* Action Buttons */}
+                <div className="flex flex-col w-full gap-2 mt-1">
+                  <button 
+                    onClick={() => { setViewingMyNote(false); setIsCreating(true); }}
+                    className="w-full py-2.5 rounded-full bg-white hover:bg-neutral-200 text-black font-semibold text-xs transition-all shadow-sm active:scale-98 flex items-center justify-center gap-2"
+                  >
+                    <Plus size={14} />
+                    Share a new note
+                  </button>
+                  <button 
+                    onClick={handleDeleteNote}
+                    className="w-full py-2 rounded-xl text-red-400 hover:text-red-300 hover:bg-red-500/10 font-medium text-xs transition-all active:scale-98 flex items-center justify-center gap-1.5"
+                  >
+                    <Trash2 size={13} />
+                    Delete note
+                  </button>
+                </div>
+              </motion.div>
+            </div>
+          );
+        })()}
       </AnimatePresence>
 
       {/* Sheets for Seen/Reactions */}

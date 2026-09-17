@@ -18,6 +18,7 @@ import { AeirmistLogo } from '../ui/AeirmistLogo';
 import { getAvatarUrl, BLANK_DP } from '../../lib/avatar';
 import { Skeleton } from '../ui/Skeleton';
 import { logger } from '@/src/utils/logger';
+import { LocalSqlService } from '../../services/LocalSqlService';
 
 
 export const HomeFeedSystem: React.FC<{ onUserClick?: (user: any) => void, onPostClick?: (postId: string) => void, onCreate?: () => void, onNavigate?: (tab: string) => void }> = React.memo(({ onUserClick, onPostClick, onCreate, onNavigate }) => {
@@ -39,6 +40,16 @@ export const HomeFeedSystem: React.FC<{ onUserClick?: (user: any) => void, onPos
   const { db, user, profile, permissions, requestPermission, setCameraConfig, addToast, unreadNotificationsCount } = useAeirmist();
   const { settings } = useAppearance(); 
   const isGlobalBgActive = settings.globalBgType !== 'none' && !!settings.globalBgValue;
+
+  // Hydrate from Local SQLite/IndexedDB vault on mount
+  useEffect(() => {
+    LocalSqlService.getFeedPosts(20).then(cached => {
+      if (cached && cached.length > 0) {
+        setPosts(prev => prev.length === 0 ? cached.map(c => c.raw || c) : prev);
+        setLoading(false);
+      }
+    }).catch(e => logger.warn("Local DB hydration failed", e));
+  }, []);
 
   const showNotificationPrompt = permissions.notifications?.status === 'prompt';
 
@@ -82,6 +93,8 @@ export const HomeFeedSystem: React.FC<{ onUserClick?: (user: any) => void, onPos
       try {
         // Store only the first 20 for fast cold-start hydration
         localStorage.setItem('aeirmist_home_feed_cache', JSON.stringify(processedPosts.slice(0, 20)));
+        // Persist into Local SQLite/IndexedDB vault
+        LocalSqlService.saveFeedPosts(processedPosts.slice(0, 50));
       } catch (e) {
         logger.warn("Feed cache sync failed", e);
       }
@@ -174,6 +187,12 @@ export const HomeFeedSystem: React.FC<{ onUserClick?: (user: any) => void, onPos
 
     const handleError = (err: any) => {
       logger.error("Feed listener error:", err);
+      // Attempt to load from local SQLite vault when connection drops or fails
+      LocalSqlService.getFeedPosts(30).then(cached => {
+        if (cached && cached.length > 0) {
+          setPosts(prev => prev.length === 0 ? cached.map(c => c.raw || c) : prev);
+        }
+      }).catch(() => {});
       setLoading(false);
       setIsRefreshing(false);
 

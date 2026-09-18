@@ -2482,8 +2482,13 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         if (change.type === 'added') {
           const data = change.doc.data();
           // Avoid triggering on initial load of historical unread notifications
-          const createdAt = data.createdAt?.toMillis() || Date.now();
-          if (Date.now() - createdAt < 15000) {
+          const createdAt = data.createdAt?.toMillis 
+            ? data.createdAt.toMillis() 
+            : (data.createdAt?.seconds ? data.createdAt.seconds * 1000 : Date.now());
+
+          if (Date.now() - createdAt < 30000) {
+            playNotificationSound();
+
             // Internal Toast Notification for all types
             addToast({
               title: data.type ? String(data.type).toUpperCase().replace('_', ' ') : 'Notification',
@@ -2494,44 +2499,40 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             const type = String(data.type).toLowerCase();
             const isMessage = ['message', 'message_media', 'message_voice', 'message_video', 'store_message'].includes(type) || type.includes('msg') || type === 'store_message_received' || type.includes('call');
 
-            if (isMessage) {
-              // Standard native desktop/browser/device Notification API
-              if (typeof window !== 'undefined' && 'Notification' in window) {
-                const title = data.fromUser?.displayName ? `@${data.fromUser.displayName}` : 'New Aeirmist Message';
-                const iconSeed = data.fromUser?.displayName || 'Aeirmist';
-                const avatar = getAvatarUrl(data.fromUser?.photoURL, iconSeed);
-                
-                if (Notification.permission === 'granted') {
+            // Dispatch system/device/browser notification if permission granted
+            if (typeof window !== 'undefined' && 'Notification' in window) {
+              const title = data.fromUser?.displayName ? `@${data.fromUser.displayName}` : (isMessage ? 'New Aeirmist Message' : 'Aeirmist Notification');
+              const iconSeed = data.fromUser?.displayName || 'Aeirmist';
+              const avatar = getAvatarUrl(data.fromUser?.photoURL, iconSeed);
+              const notifOptions: any = {
+                body: data.message || '',
+                icon: avatar,
+                badge: avatar,
+                tag: data.metadata?.conversationId || `notif_${change.doc.id}`,
+                data: {
+                  url: window.location.origin
+                }
+              };
+
+              if (Notification.permission === 'granted') {
+                if ('serviceWorker' in navigator) {
+                  navigator.serviceWorker.ready.then((reg) => {
+                    reg.showNotification(title, notifOptions);
+                  }).catch(() => {
+                    try {
+                      new Notification(title, notifOptions);
+                    } catch (e) {
+                      logger.warn("Native notification dispatch failed:", e);
+                    }
+                  });
+                } else {
                   try {
-                    new Notification(title, {
-                      body: data.message,
-                      icon: avatar
-                    });
+                    new Notification(title, notifOptions);
                   } catch (e) {
                     logger.warn("Direct native notification failed:", e);
                   }
-                } else if (Notification.permission !== 'denied') {
-                  Notification.requestPermission().then(perm => {
-                    if (perm === 'granted') {
-                      try {
-                        new Notification(title, {
-                          body: data.message,
-                          icon: avatar
-                        });
-                      } catch (err) {
-                        logger.warn("Direct native notification failed after permission request:", err);
-                      }
-                    }
-                  });
                 }
               }
-            } else {
-              playNotificationSound();
-              addToast({
-                title: 'Alert',
-                message: data.message,
-                type: 'info'
-              });
             }
           }
         }
@@ -2552,7 +2553,7 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }, (error) => logger.warn("Notifications unread count sync failed", error));
 
     return () => unsubscribe();
-  }, [db, profile?.id]);
+  }, [db, profile?.id, user?.uid]);
 
   // Listen for Message Requests (Sound & Toast)
   useEffect(() => {

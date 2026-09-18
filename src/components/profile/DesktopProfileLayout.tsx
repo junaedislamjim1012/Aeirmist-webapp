@@ -105,6 +105,8 @@ interface DesktopProfileLayoutProps {
   onOpenMutuals?: () => void;
   userNote?: any;
   onNoteClick?: () => void;
+  onSelectAvatarFile?: (file: File) => void;
+  onSelectCoverFile?: (file: File) => void;
 }
 
 export const DesktopProfileLayout = React.memo<DesktopProfileLayoutProps>(({
@@ -163,7 +165,9 @@ export const DesktopProfileLayout = React.memo<DesktopProfileLayoutProps>(({
   mutualConnections = [],
   onOpenMutuals,
   userNote,
-  onNoteClick
+  onNoteClick,
+  onSelectAvatarFile,
+  onSelectCoverFile
 }) => {
 
   const { 
@@ -316,7 +320,8 @@ export const DesktopProfileLayout = React.memo<DesktopProfileLayoutProps>(({
           e.stopPropagation();
           const file = e.dataTransfer.files?.[0];
           if (file && file.type.startsWith('image/') && isOwnProfile) {
-            handleCoverUpload(file);
+            if (onSelectCoverFile) onSelectCoverFile(file);
+            else handleCoverUpload(file);
           }
         }}
       >
@@ -357,7 +362,8 @@ export const DesktopProfileLayout = React.memo<DesktopProfileLayoutProps>(({
               input.onchange = async (e: any) => {
                 const file = e.target.files?.[0];
                 if (!file) return;
-                handleCoverUpload(file);
+                if (onSelectCoverFile) onSelectCoverFile(file);
+                else handleCoverUpload(file);
               };
               input.click();
             }}
@@ -417,25 +423,16 @@ export const DesktopProfileLayout = React.memo<DesktopProfileLayoutProps>(({
 
                 {isOwnProfile && (
                   <button 
+                    type="button"
                     onClick={() => {
                       const input = document.createElement('input');
                       input.type = 'file';
                       input.accept = 'image/*';
-                      input.onchange = async (e: any) => {
+                      input.onchange = (e: any) => {
                         const file = e.target.files?.[0];
                         if (!file) return;
-                        
-                        // We trigger the parent's handler for consistency
-                        const event = { target: { files: [file] } } as any;
-                        const profileSystem = document.getElementById('profile-system-root');
-                        if (profileSystem) {
-                          const fileInput = document.getElementById('global-avatar-input') as HTMLInputElement;
-                          if (fileInput) {
-                            const dataTransfer = new DataTransfer();
-                            dataTransfer.items.add(file);
-                            fileInput.files = dataTransfer.files;
-                            fileInput.dispatchEvent(new Event('change', { bubbles: true }));
-                          }
+                        if (onSelectAvatarFile) {
+                          onSelectAvatarFile(file);
                         }
                       };
                       input.click();

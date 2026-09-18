@@ -363,8 +363,7 @@ class MessagingService {
         const receiverId = targetProfileId || metadata.recipientId || (convSnap.data()?.profileIds?.find((id: string) => id !== profile.id)) || null;
         const receiverUid = targetOwnerUid || metadata.receiverUid || (convSnap.data()?.participants?.find((uid: string) => uid !== user.uid)) || null;
         
-        // OPTIMIZATION: Only send notification if receiver is NOT online 
-        // or if explicitly requested (e.g. mention)
+        const shouldNotify = true;
         this.updateExistingConversation(batch, db, finalConvId, profile.id, receiverId, receiverUid, text, type, mediaUrl, { 
           ...metadata, 
           senderName: metadata.senderName || profile.displayName || profile.username,
@@ -480,11 +479,13 @@ class MessagingService {
 
     batch.update(convRef, cleanUndefined(updates));
 
-    // Skip non-essential notifications in Safe Mode to save writes
-    if (receiverUid && metadata.shouldNotify && !this.isSafeMode && metadata.senderUid !== receiverUid) {
+    // Write notification for receiver if not self and not in safe mode
+    const targetUserId = receiverId || receiverUid;
+    const isSelf = (receiverId && receiverId === senderId) || (receiverUid && metadata.senderUid && metadata.senderUid === receiverUid);
+    if (targetUserId && !this.isSafeMode && !isSelf) {
       const notifRef = doc(collection(db, 'notifications'));
       batch.set(notifRef, cleanUndefined({
-        userId: receiverId || receiverUid, // Use Profile ID if available, else Auth UID
+        userId: targetUserId, // Use Profile ID if available, else Auth UID
         fromUserId: senderId,
         fromUser: {
           displayName: cleanSenderName,

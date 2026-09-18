@@ -22,6 +22,7 @@ import { StoryViewer } from '../feed/StoriesSystem';
 import { HighlightManagerModal } from './HighlightManagerModal';
 import { NGLButton, NGLDashboard, NGLComposer } from './NGLSystem';
 import { DesktopProfileLayout } from './DesktopProfileLayout';
+import { DigitalImageEditor } from '../media/DigitalImageEditor';
 import { ProfileCompletionCard } from './ProfileCompletionCard';
 import { QuartCard } from './QuartCard';
 import { AeirmistCreatorStudio } from '../videos/AeirmistCreatorStudio';
@@ -249,6 +250,7 @@ const ProfileSystem = ({ targetProfile, onMessageClick, onEditProfile, onUserCli
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isAccountSwitcherOpen, setIsAccountSwitcherOpen] = useState(false);
   const [showAvatarMenu, setShowAvatarMenu] = useState(false);
+  const [editingPhoto, setEditingPhoto] = useState<{ file: File; src: string; type: 'avatar' | 'cover' } | null>(null);
   const [isNGLDashboardOpen, setIsNGLDashboardOpen] = useState(false);
   const [isNGLComposerOpen, setIsNGLComposerOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -302,6 +304,10 @@ const ProfileSystem = ({ targetProfile, onMessageClick, onEditProfile, onUserCli
 
   // Intercept back actions for Profile modals, sheets, and sub-views
   useBackHandler(() => {
+    if (editingPhoto) {
+      setEditingPhoto(null);
+      return true;
+    }
     if (showAvatarMenu) {
       setShowAvatarMenu(false);
       return true;
@@ -353,6 +359,7 @@ const ProfileSystem = ({ targetProfile, onMessageClick, onEditProfile, onUserCli
     }
     return false;
   }, true, 100, [
+    editingPhoto,
     showAvatarMenu,
     followListType,
     isEditProfileModalOpen,
@@ -863,105 +870,101 @@ const ProfileSystem = ({ targetProfile, onMessageClick, onEditProfile, onUserCli
     setShowAvatarMenu(true);
   };
 
-  const handleGalleryUpdate = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !user) return;
+  const handleSelectAvatarFile = (file: File) => {
+    if (!file) return;
+    setShowAvatarMenu(false);
+    const previewSrc = URL.createObjectURL(file);
+    setEditingPhoto({ file, src: previewSrc, type: 'avatar' });
+  };
+
+  const handleSelectCoverFile = (file: File) => {
+    if (!file) return;
+    const previewSrc = URL.createObjectURL(file);
+    setEditingPhoto({ file, src: previewSrc, type: 'cover' });
+  };
+
+  const handleSaveEditedPhoto = async (blob: Blob) => {
+    if (!editingPhoto || !user) return;
+    const { type, src } = editingPhoto;
+    const fileName = `aeirmist_${type}_${Date.now()}.jpg`;
+    const file = new File([blob], fileName, { type: 'image/jpeg' });
     
-    // Validate size locally for instant feedback
-    if (file.size > 10 * 1024 * 1024) {
-      addToast?.({
-        title: 'SIZE VIOLATION',
-        message: 'Profile image must be under 10MB for premium HD quality.',
-        type: 'warning'
-      });
-      return;
+    // Revoke previous preview and set local preview from edited file
+    if (src) URL.revokeObjectURL(src);
+    const localUrl = URL.createObjectURL(file);
+    if (type === 'avatar') {
+      setLocalAvatarURL(localUrl);
+      setProfileUploadProgress(15);
+    } else {
+      setLocalCoverURL(localUrl);
+      setCoverUploadProgress(15);
     }
+    setEditingPhoto(null);
+    setIsUpdating(true);
 
     try {
-      setIsUpdating(true);
-      setShowAvatarMenu(false);
+      const folder = type === 'avatar' ? `users/${user.uid}/profile` : `users/${user.uid}/cover`;
+      const quality = type === 'avatar' ? MediaQuality.PROFILE : MediaQuality.HD;
+      const onProgress = (p: number) => {
+        if (type === 'avatar') setProfileUploadProgress(p);
+        else setCoverUploadProgress(p);
+      };
+
+      const url = await uploadMedia(file, folder, onProgress, quality);
+
+      if (type === 'avatar') {
+        await updateProfile({ photoURL: url });
+        addToast?.({
+          title: 'Profile Photo Updated',
+          message: 'Your profile picture has been updated.',
+          type: 'success'
+        });
+      } else {
+        await updateProfile({ coverURL: url, bannerURL: url });
+        addToast?.({
+          title: 'Cover Photo Updated',
+          message: 'Your cover banner has been updated.',
+          type: 'success'
+        });
+      }
       
-      // OPTIMISTIC UI: Instant preview using URL.createObjectURL
-      const localUrl = URL.createObjectURL(file);
-      setLocalAvatarURL(localUrl);
-      
-      console.log("[ProfileSystem] Uploading avatar artifact...");
-      const url = await uploadMedia(file, `users/${user.uid}/profile`, (progress: number) => {
-        setProfileUploadProgress(progress);
-      }, MediaQuality.PROFILE);
-      
-      await updateProfile({ photoURL: url });
-      console.log("[ProfileSystem] Avatar successfully saved.");
-      
-      // Cleanup optimistic URL
       URL.revokeObjectURL(localUrl);
-      setLocalAvatarURL(null);
-      setProfileUploadProgress(0);
+      if (type === 'avatar') {
+        setLocalAvatarURL(null);
+      } else {
+        setLocalCoverURL(null);
+      }
     } catch (err: any) {
-      console.error("[ProfileSystem] Avatar upload failed:", err);
-      setLocalAvatarURL(null);
+      console.error(`[ProfileSystem] ${type} upload failed:`, err);
+      if (type === 'avatar') {
+        setLocalAvatarURL(null);
+        setProfileUploadProgress(0);
+      } else {
+        setLocalCoverURL(null);
+        setCoverUploadProgress(0);
+      }
       addToast?.({
         title: 'Upload Failed',
-        message: 'Could not update your profile photo. Please try again.',
+        message: `Could not update your ${type === 'avatar' ? 'profile' : 'cover'} photo. Please try again.`,
         type: 'warning'
       });
     } finally {
       setIsUpdating(false);
-      setProfileUploadProgress(0);
-      if (e?.target) e.target.value = '';
+      if (type === 'avatar') setProfileUploadProgress(0);
+      else setCoverUploadProgress(0);
     }
+  };
+
+  const handleGalleryUpdate = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !user) return;
+    handleSelectAvatarFile(file);
+    if (e?.target) e.target.value = '';
   };
 
   const handleCoverUpload = async (file: File) => {
     if (!file || !user) return;
-    
-    // Validate size locally
-    if (file.size > 15 * 1024 * 1024) {
-      addToast?.({
-        title: 'SIZE VIOLATION',
-        message: 'Cover banner must be under 15MB for crystal clear HD render.',
-        type: 'warning'
-      });
-      return;
-    }
-
-    try {
-      setIsUpdating(true);
-      
-      // OPTIMISTIC UI: Instant preview
-      const localUrl = URL.createObjectURL(file);
-      setLocalCoverURL(localUrl);
-      
-      const url = await uploadMedia(file, `users/${user.uid}/cover`, (progress: number) => {
-        setCoverUploadProgress(progress);
-      }, MediaQuality.HD);
-      
-      await updateProfile({ 
-        coverURL: url,
-        bannerURL: url // Sync for both systems
-      });
-      
-      addToast?.({
-        title: 'COVER saved',
-        message: 'Your custom wave cover banner has been compiled and updated.',
-        type: 'success'
-      });
-      
-      URL.revokeObjectURL(localUrl);
-      setLocalCoverURL(null);
-      setCoverUploadProgress(0);
-    } catch (err) {
-      console.error("Cover upload failure", err);
-      setLocalCoverURL(null);
-      addToast?.({
-        title: 'SYNC ERROR',
-        message: 'Upload timeout. Artifact rejected by storage.',
-        type: 'warning'
-      });
-    } finally {
-      setIsUpdating(false);
-      setCoverUploadProgress(0);
-    }
+    handleSelectCoverFile(file);
   };
 
   const handleRemoveAvatar = async () => {
@@ -1130,6 +1133,22 @@ const ProfileSystem = ({ targetProfile, onMessageClick, onEditProfile, onUserCli
                     </div>
                   )}
                 </AnimatePresence>
+
+                {/* Meta/Facebook-Style Photo Crop/Edit Modal */}
+                <AnimatePresence>
+                  {editingPhoto && (
+                    <DigitalImageEditor
+                      imageSrc={editingPhoto.src}
+                      aspectRatio={editingPhoto.type === 'avatar' ? 1 : 2.7}
+                      title={editingPhoto.type === 'avatar' ? 'Update profile picture' : 'Update cover photo'}
+                      onSave={handleSaveEditedPhoto}
+                      onCancel={() => {
+                        if (editingPhoto.src) URL.revokeObjectURL(editingPhoto.src);
+                        setEditingPhoto(null);
+                      }}
+                    />
+                  )}
+                </AnimatePresence>
       {/* Layer 1: Background Grid */}
       <div className="fixed inset-0 pointer-events-none z-0">
         <div className="absolute inset-0 bg-[linear-gradient(rgba(0,242,255,0.01)_1.5px,transparent_1.5px),linear-gradient(90deg,rgba(0,242,255,0.01)_1.5px,transparent_1.5px)] bg-[size:60px_60px] [mask-image:radial-gradient(ellipse_at_center,black,transparent_80%)]" />
@@ -1204,6 +1223,8 @@ const ProfileSystem = ({ targetProfile, onMessageClick, onEditProfile, onUserCli
             onOpenMutuals={() => setIsMutualModalOpen(true)}
             userNote={userNote}
             onNoteClick={() => setIsNoteModalOpen(true)}
+            onSelectAvatarFile={handleSelectAvatarFile}
+            onSelectCoverFile={handleSelectCoverFile}
           />
         </div>
 

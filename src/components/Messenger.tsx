@@ -556,6 +556,7 @@ const Messenger = ({ initialRecipient, onUserClick }: { initialRecipient?: any, 
   };
   const [contextMenu, setContextMenu] = useState<{ x: number, y: number, chatId: string } | null>(null);
   const [viewportHeight, setViewportHeight] = useState('100%');
+  const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
   const [isWallpaperCustomizerOpen, setIsWallpaperCustomizerOpen] = useState(false);
   const [forwardingMessage, setForwardingMessage] = useState<any | null>(null);
 
@@ -692,6 +693,8 @@ const Messenger = ({ initialRecipient, onUserClick }: { initialRecipient?: any, 
     const updateHeight = () => {
       // Use visualViewport height to handle keyboard overlays accurately
       const isMobile = window.innerWidth < 768;
+      const keyboardActive = isMobile && (window.innerHeight - vc.height > 120);
+      setIsKeyboardOpen(keyboardActive);
       if (isMobile && !isMobileList) {
         setViewportHeight(`${vc.height}px`);
       } else {
@@ -3210,8 +3213,12 @@ const ChatWindow = ({
         <div ref={messagesEndRef} className="h-4 w-full flex-shrink-0" />
       </div>
 
-      {/* Input Area - Docked at Bottom */}
-      <footer className={`flex-shrink-0 w-full px-2 sm:px-4 md:px-8 pb-1.5 sm:pb-3 md:pb-10 z-30`}>
+      {/* Input Area - Docked at Bottom with Android navigation bar clearance */}
+      <footer className={`flex-shrink-0 w-full px-2 sm:px-4 md:px-8 ${
+        isKeyboardOpen 
+          ? 'pb-2 sm:pb-3 md:pb-8' 
+          : 'pb-[max(calc(0.75rem+env(safe-area-inset-bottom,0px)),3.25rem)] sm:pb-3 md:pb-8'
+      } z-30 transition-all duration-150`}>
         <div className="w-full">
           {(() => {
             const otherId = chat.otherParticipantId || chat.profileIds?.find((id: string) => id !== profile?.id);

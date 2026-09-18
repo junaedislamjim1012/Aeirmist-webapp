@@ -1,5 +1,5 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { motion } from 'motion/react';
 import { 
   X, 
   RotateCcw, 
@@ -7,191 +7,360 @@ import {
   ZoomIn, 
   ZoomOut, 
   Check, 
-  Maximize, 
-  Minimize,
   RefreshCw,
-  Crop as CropIcon,
-  Eraser,
-  Undo,
-  Redo
+  Undo2
 } from 'lucide-react';
+import { useBackHandler } from '../../utils/backNavigation';
 
 interface DigitalImageEditorProps {
   imageSrc: string;
   onSave: (editedBlob: Blob) => void;
   onCancel: () => void;
   aspectRatio?: number;
+  title?: string;
 }
 
 export const DigitalImageEditor: React.FC<DigitalImageEditorProps> = ({ 
   imageSrc, 
   onSave, 
   onCancel,
-  aspectRatio = 1 
+  aspectRatio = 1,
+  title
 }) => {
   const [zoom, setZoom] = useState(1);
   const [rotation, setRotation] = useState(0);
   const [position, setPosition] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
-  
+
   const containerRef = useRef<HTMLDivElement>(null);
+  const cropFrameRef = useRef<HTMLDivElement>(null);
   const imageRef = useRef<HTMLImageElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const dragStartRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const positionRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+
+  // Sync ref with state
+  useEffect(() => {
+    positionRef.current = position;
+  }, [position]);
+
+  // Back button closes modal cleanly on Android/browser
+  useBackHandler(() => {
+    onCancel();
+    return true;
+  }, true, 110, [onCancel]);
 
   const handleZoom = (delta: number) => {
-    setZoom(prev => Math.min(Math.max(0.5, prev + delta), 3));
+    setZoom(prev => Math.min(Math.max(1, +(prev + delta).toFixed(2)), 3));
   };
 
   const handleRotate = (deg: number) => {
-    setRotation(prev => (prev + deg) % 360);
+    setRotation(prev => (prev + deg + 360) % 360);
   };
+
+  const handleReset = () => {
+    setZoom(1);
+    setRotation(0);
+    setPosition({ x: 0, y: 0 });
+  };
+
+  // Drag-to-Pan Handling (Mouse & Touch)
+  const onPointerDown = (clientX: number, clientY: number) => {
+    setIsDragging(true);
+    dragStartRef.current = {
+      x: clientX - positionRef.current.x,
+      y: clientY - positionRef.current.y
+    };
+  };
+
+  const onPointerMove = useCallback((clientX: number, clientY: number) => {
+    if (!isDragging) return;
+    const newX = clientX - dragStartRef.current.x;
+    const newY = clientY - dragStartRef.current.y;
+    setPosition({ x: newX, y: newY });
+  }, [isDragging]);
+
+  const onPointerUp = useCallback(() => {
+    setIsDragging(false);
+  }, []);
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      onPointerMove(e.clientX, e.clientY);
+    };
+    const handleMouseUp = () => {
+      onPointerUp();
+    };
+    const handleTouchMove = (e: TouchEvent) => {
+      if (e.touches.length > 0) {
+        onPointerMove(e.touches[0].clientX, e.touches[0].clientY);
+      }
+    };
+    const handleTouchEnd = () => {
+      onPointerUp();
+    };
+
+    if (isDragging) {
+      window.addEventListener('mousemove', handleMouseMove);
+      window.addEventListener('mouseup', handleMouseUp);
+      window.addEventListener('touchmove', handleTouchMove, { passive: false });
+      window.addEventListener('touchend', handleTouchEnd);
+    }
+
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+      window.removeEventListener('touchmove', handleTouchMove);
+      window.removeEventListener('touchend', handleTouchEnd);
+    };
+  }, [isDragging, onPointerMove, onPointerUp]);
 
   const handleSave = async () => {
-    if (!imageRef.current || !canvasRef.current) return;
+    if (!imageRef.current || !canvasRef.current || !cropFrameRef.current) return;
     setIsProcessing(true);
 
-    const canvas = canvasRef.current;
-    const img = imageRef.current;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+    try {
+      const canvas = canvasRef.current;
+      const img = imageRef.current;
+      const cropRect = cropFrameRef.current.getBoundingClientRect();
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('Canvas context unavailable');
 
-    // Fixed output size for profiles
-    const outputSize = 1024;
-    canvas.width = outputSize;
-    canvas.height = outputSize / aspectRatio;
+      // High-resolution output canvas
+      const outputWidth = aspectRatio === 1 ? 1024 : 1920;
+      const outputHeight = Math.round(outputWidth / aspectRatio);
+      canvas.width = outputWidth;
+      canvas.height = outputHeight;
 
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    
-    ctx.save();
-    ctx.translate(canvas.width / 2, canvas.height / 2);
-    ctx.rotate((rotation * Math.PI) / 180);
-    ctx.scale(zoom, zoom);
-    
-    // Draw image centered
-    const drawWidth = canvas.width;
-    const drawHeight = (img.naturalHeight / img.naturalWidth) * drawWidth;
-    ctx.drawImage(img, -drawWidth/2, -drawHeight/2, drawWidth, drawHeight);
-    
-    ctx.restore();
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    canvas.toBlob((blob) => {
-      if (blob) {
-        onSave(blob);
+      // Ratio of output resolution to on-screen preview resolution
+      const scaleMultiplier = outputWidth / (cropRect.width || 1);
+
+      ctx.save();
+      // Center canvas origin
+      ctx.translate(canvas.width / 2, canvas.height / 2);
+      ctx.rotate((rotation * Math.PI) / 180);
+      ctx.scale(zoom, zoom);
+
+      // Apply scaled pan position
+      ctx.translate(position.x * scaleMultiplier, position.y * scaleMultiplier);
+
+      // Draw image covering the crop area
+      const imgAspect = img.naturalWidth / img.naturalHeight;
+      let drawWidth = canvas.width;
+      let drawHeight = canvas.width / imgAspect;
+
+      if (imgAspect < aspectRatio) {
+        drawWidth = canvas.width;
+        drawHeight = canvas.width / imgAspect;
+      } else {
+        drawHeight = canvas.height;
+        drawWidth = canvas.height * imgAspect;
       }
+
+      ctx.drawImage(img, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
+      ctx.restore();
+
+      canvas.toBlob((blob) => {
+        if (blob) {
+          onSave(blob);
+        } else {
+          console.error('[DigitalImageEditor] Blob export returned null');
+        }
+        setIsProcessing(false);
+      }, 'image/jpeg', 0.92);
+    } catch (err) {
+      console.error('[DigitalImageEditor] Export error:', err);
       setIsProcessing(false);
-    }, 'image/jpeg', 0.9);
+    }
   };
 
+  const defaultTitle = aspectRatio === 1 ? 'Update profile picture' : 'Update cover photo';
+  const modalTitle = title || defaultTitle;
+  const isAvatar = aspectRatio === 1;
+
   return (
-    <motion.div 
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[1100] bg-black/95 backdrop-blur-2xl flex flex-col font-sans"
-    >
-      {/* Header */}
-      <header className="p-6 flex justify-between items-center bg-gradient-to-b from-black/60 to-transparent">
-        <button onClick={onCancel} className="p-2 rounded-full hover:bg-white/10 transition-colors text-white/60">
-          <X size={24} />
-        </button>
-        <div className="flex flex-col items-center">
-          <h2 className="text-[12px] font-black uppercase tracking-[0.4em] text-aeirmist-cyan">Image Editor</h2>
-          <div className="flex items-center gap-1.5 mt-1">
-             <div className="w-1 h-1 rounded-full bg-aeirmist-cyan animate-pulse" />
-             <span className="text-[8px] font-bold text-aeirmist-cyan/60 uppercase">Processing Frequency...</span>
+    <div className="fixed inset-0 z-[1200] flex items-center justify-center p-3 sm:p-6 bg-black/80 backdrop-blur-md select-none font-sans">
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.95, y: 15 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.95, y: 15 }}
+        transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+        className="relative w-full max-w-[540px] bg-[#1a1c21] border border-white/10 rounded-2xl sm:rounded-3xl shadow-[0_25px_60px_rgba(0,0,0,0.85)] overflow-hidden flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header - Meta/Facebook clean title & close button */}
+        <header className="px-5 py-4 sm:px-6 sm:py-4.5 border-b border-white/10 flex items-center justify-between bg-[#15171b]">
+          <h2 className="text-base sm:text-lg font-bold text-white tracking-tight">
+            {modalTitle}
+          </h2>
+          <button 
+            type="button"
+            onClick={onCancel}
+            disabled={isProcessing}
+            className="w-9 h-9 rounded-full bg-white/5 hover:bg-white/10 active:scale-95 flex items-center justify-center text-white/60 hover:text-white transition-all cursor-pointer"
+            aria-label="Close"
+          >
+            <X size={20} />
+          </button>
+        </header>
+
+        {/* Viewport - Darkened surrounding area with clear squircle/rectangular crop window */}
+        <div 
+          ref={containerRef}
+          className="relative w-full h-[320px] sm:h-[380px] bg-[#0c0d10] flex items-center justify-center overflow-hidden cursor-grab active:cursor-grabbing touch-none"
+          onMouseDown={(e) => onPointerDown(e.clientX, e.clientY)}
+          onTouchStart={(e) => {
+            if (e.touches.length > 0) {
+              onPointerDown(e.touches[0].clientX, e.touches[0].clientY);
+            }
+          }}
+        >
+          {/* Pan-able and Zoom-able Image Layer */}
+          <div 
+            style={{ 
+              transform: `translate(${position.x}px, ${position.y}px) scale(${zoom}) rotate(${rotation}deg)`,
+              transformOrigin: 'center center',
+              transition: isDragging ? 'none' : 'transform 0.15s ease-out'
+            }}
+            className="absolute flex items-center justify-center pointer-events-none"
+          >
+            <img 
+              ref={imageRef}
+              src={imageSrc} 
+              alt="Crop target" 
+              draggable={false}
+              className={`max-w-none ${isAvatar ? 'w-[320px] h-[320px] sm:w-[380px] sm:h-[380px]' : 'w-[480px] h-[320px] sm:w-[540px] sm:h-[380px]'} object-cover`}
+            />
+          </div>
+
+          {/* Crop Frame with Box-Shadow Mask (DIMS EVERYTHING OUTSIDE THE FRAME) */}
+          <div 
+            ref={cropFrameRef}
+            className={`relative pointer-events-none z-10 ${
+              isAvatar 
+                ? 'w-[240px] h-[240px] sm:w-[280px] sm:h-[280px] rounded-3xl sm:rounded-[2.25rem]' 
+                : 'w-[90%] aspect-[2.7/1] rounded-2xl'
+            } border-2 border-white/60 shadow-[0_0_0_9999px_rgba(0,0,0,0.65)]`}
+          >
+            {/* Subtle center alignment cross-guide for intuitive positioning */}
+            <div className="absolute inset-0 grid grid-cols-3 grid-rows-3 pointer-events-none opacity-25">
+              <div className="border-r border-b border-white/20" />
+              <div className="border-r border-b border-white/20" />
+              <div className="border-b border-white/20" />
+              <div className="border-r border-b border-white/20" />
+              <div className="border-r border-b border-white/20" />
+              <div className="border-b border-white/20" />
+              <div className="border-r border-b border-white/20" />
+              <div className="border-r border-b border-white/20" />
+              <div />
+            </div>
+          </div>
+
+          {/* Helper hint */}
+          <div className="absolute bottom-2.5 left-1/2 -translate-x-1/2 z-20 pointer-events-none px-3 py-1 rounded-full bg-black/60 backdrop-blur-md border border-white/10 text-[10px] text-white/60 font-medium">
+            Drag image to reposition
           </div>
         </div>
-        <button 
-          onClick={handleSave}
-          disabled={isProcessing}
-          className="px-6 py-2 rounded-xl bg-aeirmist-cyan text-black font-black uppercase tracking-widest text-[10px] hover:bg-white transition-all shadow-[0_0_20px_rgba(0,242,255,0.3)] flex items-center gap-2"
-        >
-          {isProcessing ? <RefreshCw size={14} className="animate-spin" /> : <Check size={14} strokeWidth={3} />}
-          Save
-        </button>
-      </header>
 
-      {/* Workspace */}
-      <div className="flex-1 relative flex items-center justify-center p-12 overflow-hidden" ref={containerRef}>
-         <div className="relative w-full max-w-2xl aspect-square border-2 border-aeirmist-cyan/20 rounded-[3rem] overflow-hidden bg-white/[0.02] shadow-[0_0_100px_rgba(0,242,255,0.1)]">
-            {/* Grid Overlay */}
-            <div className="absolute inset-0 pointer-events-none opacity-20 flex">
-               <div className="flex-1 border-r border-aeirmist-cyan/30" />
-               <div className="flex-1 border-r border-aeirmist-cyan/30" />
-            </div>
-            <div className="absolute inset-0 pointer-events-none opacity-20 flex flex-col">
-               <div className="flex-1 border-b border-aeirmist-cyan/30" />
-               <div className="flex-1 border-b border-aeirmist-cyan/30" />
-            </div>
-
-            <motion.div 
-              style={{ x: position.x, y: position.y, scale: zoom, rotate: rotation }}
-              className="w-full h-full flex items-center justify-center transition-transform duration-300 ease-out"
+        {/* Controls - Meta/Facebook style zoom slider & quick rotate */}
+        <div className="px-5 py-3.5 sm:px-6 bg-[#16181d] border-t border-white/5 flex flex-col gap-3">
+          <div className="flex items-center gap-3 sm:gap-4">
+            <button 
+              type="button"
+              onClick={() => handleZoom(-0.1)} 
+              className="w-8 h-8 rounded-lg flex items-center justify-center text-white/50 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+              title="Zoom out"
             >
-              <img 
-                ref={imageRef}
-                src={imageSrc} 
-                className="max-w-full max-h-full object-contain" 
-                alt="reconstruct" 
-                draggable={false}
+              <ZoomOut size={17} />
+            </button>
+            <div className="flex-1 relative flex items-center">
+              <input 
+                type="range" 
+                min="1" 
+                max="3" 
+                step="0.01" 
+                value={zoom} 
+                onChange={(e) => setZoom(parseFloat(e.target.value))}
+                className="w-full h-1.5 bg-white/20 rounded-full appearance-none cursor-pointer accent-aeirmist-cyan"
               />
-            </motion.div>
-         </div>
-
-         {/* Corner Accents */}
-         <div className="absolute top-20 left-20 w-8 h-8 border-t-2 border-l-2 border-aeirmist-cyan/40 rounded-tl-xl" />
-         <div className="absolute top-20 right-20 w-8 h-8 border-t-2 border-r-2 border-aeirmist-cyan/40 rounded-tr-xl" />
-         <div className="absolute bottom-20 left-20 w-8 h-8 border-b-2 border-l-2 border-aeirmist-cyan/40 rounded-bl-xl" />
-         <div className="absolute bottom-20 right-20 w-8 h-8 border-b-2 border-r-2 border-aeirmist-cyan/40 rounded-br-xl" />
-      </div>
-
-      {/* Controls Bar */}
-      <footer className="p-8 pb-[calc(2rem+var(--spacing-safe-bottom))] bg-gradient-to-t from-black/80 to-transparent">
-         <div className="max-w-2xl mx-auto space-y-8">
-            {/* Zoom Slider */}
-            <div className="flex items-center gap-6">
-               <button onClick={() => handleZoom(-0.1)} className="text-white/40 hover:text-aeirmist-cyan"><ZoomOut size={20}/></button>
-               <div className="flex-1 h-1 bg-white/10 rounded-full relative">
-                  <div className="absolute h-full bg-aeirmist-cyan rounded-full" style={{ width: `${((zoom - 0.5) / 2.5) * 100}%` }} />
-                  <input 
-                    type="range" 
-                    min="0.5" 
-                    max="3" 
-                    step="0.01" 
-                    value={zoom} 
-                    onChange={(e) => setZoom(parseFloat(e.target.value))}
-                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                  />
-               </div>
-               <button onClick={() => handleZoom(0.1)} className="text-white/40 hover:text-aeirmist-cyan"><ZoomIn size={20}/></button>
             </div>
+            <button 
+              type="button"
+              onClick={() => handleZoom(0.1)} 
+              className="w-8 h-8 rounded-lg flex items-center justify-center text-white/50 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+              title="Zoom in"
+            >
+              <ZoomIn size={17} />
+            </button>
 
-            {/* Actions Row */}
-            <div className="flex justify-center items-center gap-8">
-               <EditorAction icon={<RotateCcw />} label="L-90" onClick={() => handleRotate(-90)} />
-               <EditorAction icon={<RotateCw />} label="R-90" onClick={() => handleRotate(90)} />
-               <div className="w-px h-8 bg-white/10 mx-2" />
-               <EditorAction icon={<Maximize />} label="Scale Up" onClick={() => handleZoom(0.2)} />
-               <EditorAction icon={<Minimize />} label="Scale Down" onClick={() => handleZoom(-0.2)} />
-               <div className="w-px h-8 bg-white/10 mx-2" />
-               <EditorAction icon={<Undo />} label="Reset" onClick={() => { setZoom(1); setRotation(0); setPosition({x:0, y:0}); }} />
+            <div className="h-4 w-px bg-white/10 mx-1" />
+
+            {/* Quick rotate & reset */}
+            <div className="flex items-center gap-1.5">
+              <button 
+                type="button"
+                onClick={() => handleRotate(-90)} 
+                className="w-8 h-8 rounded-lg flex items-center justify-center text-white/50 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+                title="Rotate left"
+              >
+                <RotateCcw size={15} />
+              </button>
+              <button 
+                type="button"
+                onClick={() => handleRotate(90)} 
+                className="w-8 h-8 rounded-lg flex items-center justify-center text-white/50 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+                title="Rotate right"
+              >
+                <RotateCw size={15} />
+              </button>
+              <button 
+                type="button"
+                onClick={handleReset} 
+                className="w-8 h-8 rounded-lg flex items-center justify-center text-white/40 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+                title="Reset adjustments"
+              >
+                <Undo2 size={15} />
+              </button>
             </div>
-         </div>
-      </footer>
+          </div>
+        </div>
 
-      <canvas ref={canvasRef} className="hidden" />
-    </motion.div>
+        {/* Footer Actions - Meta/Facebook Clean Cancel and Save Buttons */}
+        <footer className="px-5 py-3.5 sm:px-6 sm:py-4 bg-[#141519] border-t border-white/10 flex items-center justify-end gap-3">
+          <button 
+            type="button"
+            onClick={onCancel}
+            disabled={isProcessing}
+            className="px-5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 active:scale-95 text-white/80 hover:text-white text-xs sm:text-sm font-semibold transition-all cursor-pointer"
+          >
+            Cancel
+          </button>
+          <button 
+            type="button"
+            onClick={handleSave}
+            disabled={isProcessing}
+            className="px-6 py-2.5 rounded-xl bg-aeirmist-cyan text-black hover:brightness-110 active:scale-95 text-xs sm:text-sm font-bold tracking-wide transition-all shadow-[0_0_20px_rgba(0,242,255,0.3)] flex items-center gap-2 cursor-pointer disabled:opacity-50"
+          >
+            {isProcessing ? (
+              <>
+                <RefreshCw size={14} className="animate-spin" />
+                <span>Applying...</span>
+              </>
+            ) : (
+              <>
+                <Check size={16} strokeWidth={2.5} />
+                <span>Save</span>
+              </>
+            )}
+          </button>
+        </footer>
+
+        {/* Offscreen Canvas for High-Res Output */}
+        <canvas ref={canvasRef} className="hidden" />
+      </motion.div>
+    </div>
   );
 };
-
-const EditorAction = ({ icon, label, onClick }: any) => (
-  <button 
-    onClick={onClick}
-    className="flex flex-col items-center gap-2 group"
-  >
-    <div className="p-3 rounded-2xl bg-white/5 border border-white/5 text-white/40 group-hover:bg-aeirmist-cyan/10 group-hover:text-aeirmist-cyan group-hover:border-aeirmist-cyan/30 transition-all">
-       {React.cloneElement(icon, { size: 20 })}
-    </div>
-    <span className="text-[8px] font-black uppercase tracking-[0.2em] text-white/20 group-hover:text-aeirmist-cyan transition-colors">{label}</span>
-  </button>
-);

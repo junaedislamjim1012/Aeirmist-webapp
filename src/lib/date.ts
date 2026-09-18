@@ -34,11 +34,38 @@ export const extractTimestampMs = (val: any): number => {
     const ms = val._seconds * 1000 + (val._nanoseconds ? Math.floor(val._nanoseconds / 1000000) : 0);
     if (ms > 0) return ms;
   }
+  if (typeof val?.timestampMs === 'number' && val.timestampMs > 0) {
+    return val.timestampMs;
+  }
+  if (typeof val?.latestMessageAtMs === 'number' && val.latestMessageAtMs > 0) {
+    return val.latestMessageAtMs;
+  }
+  if (typeof val?.updatedAtMs === 'number' && val.updatedAtMs > 0) {
+    return val.updatedAtMs;
+  }
   if (typeof val === 'string') {
     const trimmed = val.trim();
     if (trimmed) {
       const parsed = Date.parse(trimmed);
       if (!isNaN(parsed) && parsed > 0) return parsed;
+    }
+  }
+  if (typeof val === 'object' && val !== null) {
+    if (val.latestMessageAt && val.latestMessageAt !== val) {
+      const ms = extractTimestampMs(val.latestMessageAt);
+      if (ms > 0) return ms;
+    }
+    if (val.timestamp && val.timestamp !== val) {
+      const ms = extractTimestampMs(val.timestamp);
+      if (ms > 0) return ms;
+    }
+    if (val.updatedAt && val.updatedAt !== val) {
+      const ms = extractTimestampMs(val.updatedAt);
+      if (ms > 0) return ms;
+    }
+    if (val.createdAt && val.createdAt !== val) {
+      const ms = extractTimestampMs(val.createdAt);
+      if (ms > 0) return ms;
     }
   }
   return 0;

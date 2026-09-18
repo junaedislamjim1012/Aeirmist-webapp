@@ -103,26 +103,26 @@ export const getChatActivityMs = (chat: any): number => {
     }
   }
 
-  // 2. Canonical single source: latestMessageAt
-  const t0 = extractTimestampMs(chat.latestMessageAt);
-  if (t0 > 0) return t0;
-
-  // 3. Fallbacks: lastMessage timestamp or updatedAt
-  const t1 = extractTimestampMs(chat.lastMessage?.timestamp || chat.lastMessage?.createdAt || chat.rawLastMessage?.timestamp);
-  const t2 = extractTimestampMs(chat.updatedAt);
-  const fallbackMs = Math.max(t1, t2);
-  if (fallbackMs > 0) return fallbackMs;
-
-  const t3 = extractTimestampMs(chat.createdAt);
-  if (t3 > 0) return t3;
-
+  // 2. Direct latestMessageAtMs if set as number
   if (typeof chat.latestMessageAtMs === 'number' && chat.latestMessageAtMs > 0) {
     return chat.latestMessageAtMs;
   }
 
-  if (typeof chat.updatedAtMs === 'number' && chat.updatedAtMs > 0) {
-    return chat.updatedAtMs;
-  }
+  // 3. Canonical single source: latestMessageAt
+  const t0 = extractTimestampMs(chat.latestMessageAt);
+  if (t0 > 0) return t0;
+
+  // 4. Fallbacks: lastMessage (timestamp / timestampMs / createdAt) -> updatedAt -> createdAt
+  const t1 = extractTimestampMs(chat.lastMessage?.timestamp || chat.lastMessage?.createdAt || chat.rawLastMessage?.timestamp);
+  const t1Ms = typeof chat.lastMessage?.timestampMs === 'number' && chat.lastMessage.timestampMs > 0 ? chat.lastMessage.timestampMs : 0;
+  const t2 = extractTimestampMs(chat.updatedAt);
+  const t2Ms = typeof chat.updatedAtMs === 'number' && chat.updatedAtMs > 0 ? chat.updatedAtMs : 0;
+  
+  const fallbackMs = Math.max(t1, t1Ms, t2, t2Ms);
+  if (fallbackMs > 0) return fallbackMs;
+
+  const t3 = extractTimestampMs(chat.createdAt);
+  if (t3 > 0) return t3;
 
   if (chat.hasPendingWrites || chat.isOptimistic) {
     return Date.now();
@@ -1903,7 +1903,7 @@ const Messenger = ({ initialRecipient, onUserClick }: { initialRecipient?: any, 
               {filteredChats.map((chat) => {
                 const isOnline = !!onlineUsers?.has?.(chat.otherParticipantId);
                 const isSelected = currentChat?.id === chat.id;
-                const activityTimestamp = chat.latestMessageAtMs || chat.updatedAtMs || getChatActivityMs(chat);
+                const activityTimestamp = getChatActivityMs(chat);
                 const metaTime = formatConversationTime(activityTimestamp) || (chat.createdAt ? formatConversationTime(chat.createdAt) : '');
 
                 return (

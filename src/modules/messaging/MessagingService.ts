@@ -365,9 +365,14 @@ class MessagingService {
         
         // OPTIMIZATION: Only send notification if receiver is NOT online 
         // or if explicitly requested (e.g. mention)
-        const shouldNotify = !metadata.isReceiverOnline || metadata.forceNotify;
-        
-        this.updateExistingConversation(batch, db, finalConvId, profile.id, receiverId, receiverUid, text, type, mediaUrl, { ...metadata, shouldNotify, senderUid: user.uid, messageId });
+        this.updateExistingConversation(batch, db, finalConvId, profile.id, receiverId, receiverUid, text, type, mediaUrl, { 
+          ...metadata, 
+          senderName: metadata.senderName || profile.displayName || profile.username,
+          senderPhoto: metadata.senderPhoto || profile.photoURL || '',
+          shouldNotify, 
+          senderUid: user.uid, 
+          messageId 
+        });
       }
       
       const msgRef = doc(db, 'conversations', finalConvId, 'messages', messageId);
@@ -447,9 +452,16 @@ class MessagingService {
     if (metadata.targetProfile && metadata.recipientId) {
       updates[`participantDetails.${metadata.recipientId}`] = metadata.targetProfile;
     }
-    if (metadata.senderName || metadata.senderPhoto || metadata.senderUid) {
+    const rawSenderName = metadata.senderName || metadata.senderDisplayName;
+    const isSenderNameValid = rawSenderName && typeof rawSenderName === 'string' &&
+      rawSenderName.trim() !== '' &&
+      rawSenderName.toLowerCase() !== 'unknown' &&
+      rawSenderName.toLowerCase() !== 'unknown user';
+    const cleanSenderName = isSenderNameValid ? rawSenderName.trim() : 'Aeirmist User';
+
+    if (rawSenderName || metadata.senderPhoto || metadata.senderUid) {
       updates[`participantDetails.${senderId}`] = {
-        displayName: metadata.senderName || 'Unknown',
+        displayName: cleanSenderName,
         photoURL: metadata.senderPhoto || '',
         uid: metadata.senderUid || '',
         username: senderId
@@ -475,7 +487,7 @@ class MessagingService {
         userId: receiverId || receiverUid, // Use Profile ID if available, else Auth UID
         fromUserId: senderId,
         fromUser: {
-          displayName: metadata.senderName || 'Unknown',
+          displayName: cleanSenderName,
           photoURL: metadata.senderPhoto || ''
         },
         type: 'message',

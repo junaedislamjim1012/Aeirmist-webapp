@@ -339,14 +339,30 @@ export const MessageItem = React.memo<{
                   <p className="text-[11px] leading-relaxed font-medium italic tracking-tight text-white/40">Message Removed</p>
                 ) : (
                   <div className="relative">
-                    {message.metadata?.replyTo && (
-                      <div className="mb-2 p-2 bg-white/5 rounded-xl border-l-2 border-[#00F2FF]/70 text-left text-[11px] leading-normal opacity-90 select-none max-w-[320px] min-w-[140px]">
-                        <p className="font-semibold text-[#00F2FF] text-[10px] mb-0.5">
-                          {message.metadata.replyTo.senderName || (message.metadata.replyTo.senderId === profile?.id ? "You" : (otherParticipantName || "User"))}
-                        </p>
-                        <p className="truncate text-white/50 text-[10.5px] font-medium">{message.metadata.replyTo.text}</p>
-                      </div>
-                    )}
+                    {message.metadata?.replyTo && (() => {
+                      const replySender = message.metadata.replyTo.senderName;
+                      const isReplySenderValid = replySender && typeof replySender === 'string' &&
+                        replySender.trim() !== '' &&
+                        replySender.toLowerCase() !== 'unknown' &&
+                        replySender.toLowerCase() !== 'unknown user';
+                      const cleanSender = isReplySenderValid 
+                        ? replySender 
+                        : (message.metadata.replyTo.senderId === profile?.id ? "You" : (otherParticipantName || "User"));
+                      
+                      let cleanText = message.metadata.replyTo.text || '';
+                      if (cleanText.includes("Unknown's Note:")) {
+                        cleanText = cleanText.replace(/Unknown's Note:/g, `${cleanSender}'s Note:`);
+                      }
+
+                      return (
+                        <div className="mb-2 p-2 bg-white/5 rounded-xl border-l-2 border-[#00F2FF]/70 text-left text-[11px] leading-normal opacity-90 select-none max-w-[320px] min-w-[140px]">
+                          <p className="font-semibold text-[#00F2FF] text-[10px] mb-0.5">
+                            {cleanSender}
+                          </p>
+                          <p className="truncate text-white/50 text-[10.5px] font-medium">{cleanText}</p>
+                        </div>
+                      );
+                    })()}
                     <div className="relative flex flex-wrap gap-x-1.5 items-end">
                       <p className="text-[14.5px] leading-[1.4] font-normal tracking-normal whitespace-pre-wrap break-words text-white" style={{ fontFamily: 'Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif', fontWeight: 400 }}>
                         {message.text}

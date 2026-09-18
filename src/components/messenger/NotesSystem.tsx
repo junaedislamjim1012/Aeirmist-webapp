@@ -29,7 +29,28 @@ const getRelativeTime = (timestamp: any) => {
 
 // Global cache for live user profile photos & names to avoid refetching
 const profilePhotoCache: Record<string, string> = {};
-const profileNameCache: Record<string, string> = {};
+export const profileNameCache: Record<string, string> = {};
+
+export const isValidName = (name?: string | null): boolean => {
+  if (!name || typeof name !== 'string') return false;
+  const trimmed = name.trim().toLowerCase();
+  return (
+    trimmed !== '' &&
+    trimmed !== 'unknown' &&
+    trimmed !== 'unknown user' &&
+    trimmed !== 'aeirmist user' &&
+    trimmed !== 'user' &&
+    trimmed !== 'null' &&
+    trimmed !== 'undefined'
+  );
+};
+
+export const getFirstName = (name?: string | null): string => {
+  if (!isValidName(name)) return '';
+  const trimmed = (name || '').trim();
+  const clean = trimmed.startsWith('@') ? trimmed.slice(1) : trimmed;
+  return clean.split(/\s+/)[0] || clean;
+};
 
 export const NoteUserAvatar = ({
   userId,
@@ -191,6 +212,106 @@ export const NoteUserAvatar = ({
       <span className="text-xl font-bold tracking-wider text-white/90">{initial}</span>
     </div>
   );
+};
+
+export const LiveNoteAuthorName = ({
+  userId,
+  authorUid,
+  fallbackName,
+  username,
+  onlyFirstName = true,
+  className = ""
+}: {
+  userId?: string;
+  authorUid?: string;
+  fallbackName?: string;
+  username?: string;
+  onlyFirstName?: boolean;
+  className?: string;
+}) => {
+  const { db, profile, user } = useAeirmist();
+
+  const getCleanFallback = () => {
+    if (isValidName(fallbackName)) return fallbackName!.trim();
+    if (userId && profile && (userId === profile.id || userId === user?.uid)) {
+      return profile.displayName || profile.username || 'You';
+    }
+    if (userId && isValidName(profileNameCache[userId])) {
+      return profileNameCache[userId];
+    }
+    if (authorUid && isValidName(profileNameCache[authorUid])) {
+      return profileNameCache[authorUid];
+    }
+    if (isValidName(username)) return username!.trim();
+    return '';
+  };
+
+  const [liveName, setLiveName] = useState<string>(() => getCleanFallback());
+
+  useEffect(() => {
+    const clean = getCleanFallback();
+    if (clean) setLiveName(clean);
+  }, [fallbackName, username, userId, authorUid]);
+
+  useEffect(() => {
+    if (!db) return;
+    const targetIds = [userId, authorUid].filter(Boolean) as string[];
+    if (targetIds.length === 0) return;
+
+    for (const id of targetIds) {
+      if (isValidName(profileNameCache[id])) {
+        setLiveName(profileNameCache[id]);
+        return;
+      }
+    }
+
+    const unsubs: (() => void)[] = [];
+
+    targetIds.forEach(id => {
+      const unsub = onSnapshot(doc(db, 'profiles', id), (docSnap) => {
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          const name = data?.displayName || data?.username || data?.name;
+          if (isValidName(name)) {
+            const cleanName = name.trim();
+            profileNameCache[id] = cleanName;
+            if (userId) profileNameCache[userId] = cleanName;
+            if (authorUid) profileNameCache[authorUid] = cleanName;
+            setLiveName(cleanName);
+            return;
+          }
+        }
+
+        const altId = id.startsWith('profile_') ? id.replace('profile_', '') : `profile_${id}`;
+        getDoc(doc(db, 'profiles', altId)).then(altSnap => {
+          if (altSnap.exists()) {
+            const altData = altSnap.data();
+            const altName = altData?.displayName || altData?.username || altData?.name;
+            if (isValidName(altName)) {
+              const cleanName = altName.trim();
+              profileNameCache[id] = cleanName;
+              if (userId) profileNameCache[userId] = cleanName;
+              if (authorUid) profileNameCache[authorUid] = cleanName;
+              setLiveName(cleanName);
+            }
+          }
+        }).catch(() => {});
+      }, (err) => {
+        logger.warn("Live note author name error:", err);
+      });
+
+      unsubs.push(unsub);
+    });
+
+    return () => {
+      unsubs.forEach(u => u());
+    };
+  }, [db, userId, authorUid]);
+
+  const raw = liveName || getCleanFallback() || (username ? `@${username}` : '') || 'User';
+  const displayText = onlyFirstName ? (getFirstName(raw) || raw.split(/\s+/)[0] || 'User') : raw;
+
+  return <span className={className}>{displayText}</span>;
 };
 
 export const NotesSystem = ({ chats, onChatSelect, onReplyNote }: { chats: any[], onChatSelect?: (chatId: string) => void, onReplyNote?: (chatId: string, noteText: string, authorName: string) => void }) => {
@@ -378,9 +499,10 @@ export const NotesSystem = ({ chats, onChatSelect, onReplyNote }: { chats: any[]
                       chat.participants?.find((id: string) => id !== profile?.id) || 
                       (typeof chat.id === 'string' ? chat.id.replace(profile?.id || '', '').replace('_', '') : '');
       if (otherId && typeof otherId === 'string' && otherId.trim() && otherId !== profile?.id) {
+        const cleanChatName = isValidName(chat.name) ? chat.name : (isValidName(chat.displayName) ? chat.displayName : (chat.username || 'User'));
         map.set(otherId, {
           id: otherId,
-          name: chat.name || chat.displayName || 'User',
+          name: cleanChatName,
           photo: chat.photo || chat.photoURL,
           username: chat.username || ''
         });
@@ -417,9 +539,15 @@ export const NotesSystem = ({ chats, onChatSelect, onReplyNote }: { chats: any[]
       const matchingChat = (chats || []).find(c => {
         return c.profileIds?.includes(otherId) || c.participants?.includes(otherId) || c.id?.includes(otherId);
       });
+      const resolvedName = isValidName(friendNote.userName)
+        ? friendNote.userName
+        : (matchingChat && isValidName(matchingChat.name)
+            ? matchingChat.name
+            : (profileNameCache[otherId] || friendNote.username || 'User'));
+
       const chat = matchingChat || {
         id: `direct_${profile?.id}_${otherId}`,
-        name: friendNote.userName || 'User',
+        name: resolvedName,
         photo: friendNote.userAvatar,
         otherParticipantId: otherId,
         profileIds: [profile?.id, otherId],
@@ -430,9 +558,9 @@ export const NotesSystem = ({ chats, onChatSelect, onReplyNote }: { chats: any[]
       items.push({
         id: friendNote.id || otherId,
         userId: otherId,
-        name: friendNote.userName || chat.name || 'User',
+        name: resolvedName,
         photo: friendNote.userAvatar || chat.photo,
-        username: chat.username,
+        username: chat.username || friendNote.username,
         hasNote: true,
         note: friendNote,
         isOnline: !!onlineUsers?.has?.(otherId),
@@ -451,9 +579,15 @@ export const NotesSystem = ({ chats, onChatSelect, onReplyNote }: { chats: any[]
       const matchingChat = (chats || []).find(c => {
         return c.profileIds?.includes(cand.id) || c.participants?.includes(cand.id) || c.id?.includes(cand.id);
       });
+      const candName = isValidName(cand.name)
+        ? cand.name
+        : (matchingChat && isValidName(matchingChat.name)
+            ? matchingChat.name
+            : (cand.username || 'User'));
+
       const chat = matchingChat || {
         id: `direct_${profile?.id}_${cand.id}`,
-        name: cand.name || 'User',
+        name: candName,
         photo: cand.photo,
         otherParticipantId: cand.id,
         profileIds: [profile?.id, cand.id],
@@ -463,7 +597,7 @@ export const NotesSystem = ({ chats, onChatSelect, onReplyNote }: { chats: any[]
       items.push({
         id: cand.id,
         userId: cand.id,
-        name: cand.name,
+        name: candName,
         photo: cand.photo,
         username: cand.username,
         hasNote: false,
@@ -1029,9 +1163,14 @@ export const NotesSystem = ({ chats, onChatSelect, onReplyNote }: { chats: any[]
                   )}
                 </div>
 
-                <span className="text-[10px] text-white/50 font-black uppercase tracking-[0.1em] truncate w-full text-center mt-2">
-                  {(chat.name || item.name || 'User').split(' ')[0]}
-                </span>
+                <LiveNoteAuthorName
+                  userId={item.userId || chat.otherParticipantId}
+                  authorUid={friendNote?.authorUid}
+                  fallbackName={isValidName(friendNote?.userName) ? friendNote.userName : (isValidName(item.name) ? item.name : (isValidName(chat?.name) ? chat.name : ''))}
+                  username={item.username || chat?.username}
+                  onlyFirstName={true}
+                  className="text-[10px] text-white/50 font-black uppercase tracking-[0.1em] truncate w-full text-center mt-2 block"
+                />
               </div>
             </motion.div>
           );
@@ -1383,8 +1522,13 @@ export const NotesSystem = ({ chats, onChatSelect, onReplyNote }: { chats: any[]
         {selectedFriendNote && (() => {
           const friendNote = selectedFriendNote.note;
           const chat = selectedFriendNote.chat;
-          const authorName = chat.name || friendNote.userName || 'User';
-          const authorFirstName = authorName.split(' ')[0] || 'User';
+          const authorName = (isValidName(friendNote.userName) ? friendNote.userName : '') || 
+                             (isValidName(chat.name) ? chat.name : '') || 
+                             profileNameCache[friendNote.authorId] || 
+                             friendNote.username || 
+                             chat.username || 
+                             'User';
+          const authorFirstName = getFirstName(authorName) || authorName.split(/\s+/)[0] || 'User';
           const isOnline = !!onlineUsers?.has?.(friendNote.authorId);
 
           const parts = friendNote.music ? friendNote.music.split(' - ') : [];
@@ -1521,7 +1665,13 @@ export const NotesSystem = ({ chats, onChatSelect, onReplyNote }: { chats: any[]
 
                 {/* Author Name & Time */}
                 <h3 className="text-sm font-semibold text-white truncate max-w-[240px]">
-                  {authorName}
+                  <LiveNoteAuthorName
+                    userId={friendNote.authorId || chat.otherParticipantId}
+                    authorUid={friendNote.authorUid}
+                    fallbackName={authorName}
+                    username={friendNote.username || chat.username}
+                    onlyFirstName={false}
+                  />
                 </h3>
                 <p className="text-[11px] text-neutral-400 mt-0.5">
                   {getRelativeTime(friendNote.createdAt)} ago
@@ -1545,19 +1695,23 @@ export const NotesSystem = ({ chats, onChatSelect, onReplyNote }: { chats: any[]
                   onSubmit={async (e) => {
                     e.preventDefault();
                     if (!replyText.trim() || !selectedFriendNote) return;
+                    const effectiveAuthorName = (isValidName(profileNameCache[friendNote.authorId]) ? profileNameCache[friendNote.authorId] : '') || 
+                                                (isValidName(authorName) ? authorName : '') || 
+                                                getFirstName(authorName) || 
+                                                'User';
                     const noteQuote = friendNote.content || friendNote.music || 'Note';
                     const messageBody = `Replying to note: "${noteQuote}"\n${replyText.trim()}`;
                     try {
                       if (sendMessage) {
                         await sendMessage(chat.id, messageBody, 'text', undefined, {
                           replyTo: {
-                            text: `${authorName}'s Note: "${noteQuote}"`,
-                            senderName: authorName
+                            text: `${effectiveAuthorName}'s Note: "${noteQuote}"`,
+                            senderName: effectiveAuthorName
                           }
                         });
-                        addToast?.({ title: "Reply Sent", message: `Sent to ${authorName}`, type: "success" });
+                        addToast?.({ title: "Reply Sent", message: `Sent to ${effectiveAuthorName}`, type: "success" });
                       } else {
-                        onReplyNote?.(chat.id, noteQuote, authorName);
+                        onReplyNote?.(chat.id, noteQuote, effectiveAuthorName);
                       }
                       setReplyText('');
                       setSelectedFriendNote(null);
@@ -1589,7 +1743,11 @@ export const NotesSystem = ({ chats, onChatSelect, onReplyNote }: { chats: any[]
                 <div className="flex items-center justify-between w-full mt-3 px-2 text-xs text-neutral-400">
                   <button 
                     onClick={() => {
-                      onReplyNote?.(chat.id, friendNote.content || friendNote.music || '', authorName);
+                      const effectiveAuthorName = (isValidName(profileNameCache[friendNote.authorId]) ? profileNameCache[friendNote.authorId] : '') || 
+                                                  (isValidName(authorName) ? authorName : '') || 
+                                                  getFirstName(authorName) || 
+                                                  'User';
+                      onReplyNote?.(chat.id, friendNote.content || friendNote.music || '', effectiveAuthorName);
                       setSelectedFriendNote(null);
                     }}
                     className="hover:text-white transition-colors flex items-center gap-1.5 py-1"

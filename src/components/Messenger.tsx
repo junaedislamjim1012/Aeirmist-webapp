@@ -732,12 +732,19 @@ const Messenger = ({ initialRecipient, onUserClick }: { initialRecipient?: any, 
 
         const calculatedActivityMs = getChatActivityMs(data);
 
+        const rawDisplayName = details?.displayName;
+        const isNameValid = rawDisplayName && typeof rawDisplayName === 'string' && 
+          rawDisplayName.trim() !== '' && 
+          rawDisplayName.toLowerCase() !== 'unknown' && 
+          rawDisplayName.toLowerCase() !== 'unknown user';
+        const cleanDisplayName = isNameValid ? rawDisplayName.trim() : (details?.username || 'Aeirmist User');
+
         return {
           ...data,
           id: data.id,
           otherParticipantId,
           otherParticipantUid,
-          name: (data.isGroup || data.type === 'group') ? (data.groupName || data.name || 'Group Chat') : (details.displayName || 'Aeirmist User'),
+          name: (data.isGroup || data.type === 'group') ? (data.groupName || data.name || 'Group Chat') : cleanDisplayName,
           photo: (data.isGroup || data.type === 'group') ? getAvatarUrl(data.groupPhotoURL || data.photo) : getAvatarUrl(details.photoURL),
           rawLastMessage: rawLastMsg,
           lastMessage: displayLastMsg,
@@ -1886,11 +1893,16 @@ const Messenger = ({ initialRecipient, onUserClick }: { initialRecipient?: any, 
                 <NotesSystem 
                   chats={chats} 
                   onReplyNote={(chatId, noteText, authorName) => {
+                    const isAuthorValid = authorName && typeof authorName === 'string' && 
+                      authorName.trim() !== '' && 
+                      authorName.toLowerCase() !== 'unknown' && 
+                      authorName.toLowerCase() !== 'unknown user';
+                    const cleanAuthor = isAuthorValid ? authorName.trim() : 'User';
                     setActiveChatId(chatId);
                     setPendingNoteReply({
                       chatId,
-                      text: `${authorName}'s Note: "${noteText}"`,
-                      authorName
+                      text: `${cleanAuthor}'s Note: "${noteText}"`,
+                      authorName: cleanAuthor
                     });
                   }}
                 />

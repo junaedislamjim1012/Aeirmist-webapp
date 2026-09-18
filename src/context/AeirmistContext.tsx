@@ -107,6 +107,7 @@ import { voiceService } from '../services/VoiceService';
 import { REWARDS, getRankInfo } from '../lib/aeirmistRanks';
 import { analytics } from '../services/AnalyticsService';
 import { followRecommService } from '../services/FollowRecommendationService';
+import { handleNotificationPermissionFlow } from '../utils/nativeSettings';
 import { logger } from '@/src/utils/logger';
 
 
@@ -5631,6 +5632,13 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const requestPermission = async (type: any) => {
+    if (type === 'notifications') {
+      // User requested: Remove intermediate modal UI.
+      // Phone: direct to device settings to take permission.
+      // Desktop: directly request browser notification permission.
+      const granted = await handleNotificationPermissionFlow(addToast);
+      return granted;
+    }
     if (permissions[type]?.status === 'granted') {
       return true;
     }

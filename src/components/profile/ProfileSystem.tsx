@@ -31,6 +31,7 @@ import { usePostAnalytics } from '../../hooks/usePostAnalytics';
 import { postAnalytics } from '../../services/PostAnalyticsService';
 const InsightsDashboard = React.lazy(() => import('../analytics/InsightsDashboard').then(m => ({ default: m.InsightsDashboard })));
 import { CreatorTier, TIER_THRESHOLDS } from '../../types/economy';
+import { useBackHandler } from '../../utils/backNavigation';
 import { 
   Settings, 
   Share2, 
@@ -298,6 +299,74 @@ const ProfileSystem = ({ targetProfile, onMessageClick, onEditProfile, onUserCli
       // ignore
     }
   };
+
+  // Intercept back actions for Profile modals, sheets, and sub-views
+  useBackHandler(() => {
+    if (showAvatarMenu) {
+      setShowAvatarMenu(false);
+      return true;
+    }
+    if (followListType) {
+      setFollowListType(null);
+      return true;
+    }
+    if (isEditProfileModalOpen) {
+      setIsEditProfileModalOpen(false);
+      return true;
+    }
+    if (isEditingBio) {
+      setIsEditingBio(false);
+      return true;
+    }
+    if (isStoryArchiveOpen) {
+      setIsStoryArchiveOpen(false);
+      return true;
+    }
+    if (isRankDetailModalOpen) {
+      setIsRankDetailModalOpen(false);
+      return true;
+    }
+    if (creatorStudioOpen) {
+      setCreatorStudioOpen(false);
+      return true;
+    }
+    if (isNGLDashboardOpen || isNGLComposerOpen) {
+      setIsNGLDashboardOpen(false);
+      setIsNGLComposerOpen(false);
+      return true;
+    }
+    if (isNoteModalOpen) {
+      setIsNoteModalOpen(false);
+      return true;
+    }
+    if (isMutualModalOpen) {
+      setIsMutualModalOpen(false);
+      return true;
+    }
+    if (isMenuOpen) {
+      setIsMenuOpen(false);
+      return true;
+    }
+    if (isAccountSwitcherOpen) {
+      setIsAccountSwitcherOpen(false);
+      return true;
+    }
+    return false;
+  }, true, 100, [
+    showAvatarMenu,
+    followListType,
+    isEditProfileModalOpen,
+    isEditingBio,
+    isStoryArchiveOpen,
+    isRankDetailModalOpen,
+    creatorStudioOpen,
+    isNGLDashboardOpen,
+    isNGLComposerOpen,
+    isNoteModalOpen,
+    isMutualModalOpen,
+    isMenuOpen,
+    isAccountSwitcherOpen
+  ]);
 
   // Sync temp states when displayUser changes or when modal opens
   React.useEffect(() => {

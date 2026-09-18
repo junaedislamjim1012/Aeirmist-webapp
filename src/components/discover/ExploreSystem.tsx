@@ -90,6 +90,7 @@ import { MarketplaceCart, CartItem } from './MarketplaceCart';
 import { parseNaturalLanguageQuery, filterProductsByNlp } from './MarketplaceSearchParser';
 import { MarketplaceWorldMap } from './MarketplaceWorldMap';
 import { logger } from '@/src/utils/logger';
+import { useBackHandler } from '../../utils/backNavigation';
 
 
 // Component mapping for Category Icons to maintain a simple clean visual design
@@ -233,6 +234,49 @@ export const ExploreSystem: React.FC<{
       onProductChange?.(selectedProductDetail?.id || null);
     }
   }, [selectedProductDetail?.id]);
+
+  // Intercept back actions for Explore overlays, cart, product detail, and store page
+  useBackHandler(() => {
+    if (showCartDrawer) {
+      setShowCartDrawer(false);
+      return true;
+    }
+    if (selectedOrderToTrack) {
+      setSelectedOrderToTrack(null);
+      return true;
+    }
+    if (refundModalOpen) {
+      setRefundModalOpen(false);
+      return true;
+    }
+    if (showWishlistCollections) {
+      setShowWishlistCollections(false);
+      return true;
+    }
+    if (viewStoresMap) {
+      setViewStoresMap(false);
+      return true;
+    }
+    if (selectedProductDetail) {
+      setSelectedProductDetail(null);
+      onProductChange?.(null);
+      return true;
+    }
+    if (selectedStorePage) {
+      setSelectedStorePage(null);
+      onStoreChange?.(null);
+      return true;
+    }
+    return false;
+  }, true, 60, [
+    showCartDrawer,
+    selectedOrderToTrack,
+    refundModalOpen,
+    showWishlistCollections,
+    viewStoresMap,
+    selectedProductDetail,
+    selectedStorePage
+  ]);
 
   // Sync state managers with localStorage
   useEffect(() => {

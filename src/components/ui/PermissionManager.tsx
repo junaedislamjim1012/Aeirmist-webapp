@@ -142,7 +142,8 @@ export const PermissionManager: React.FC<PermissionManagerProps> = ({
   const { addToast } = useAeirmist();
   const meta = PERMISSION_CONFIG[type] || PERMISSION_CONFIG.camera;
 
-  if (!isOpen) return null;
+  // Remove intermediate modal UI for notifications as requested by user
+  if (!isOpen || type === 'notifications') return null;
 
   return (
     <AnimatePresence>

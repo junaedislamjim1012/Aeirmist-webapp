@@ -88,6 +88,7 @@ import { mediaService, MediaQuality } from '../services/MediaService';
 import { messagingService } from '../modules/messaging/MessagingService';
 import { aeirmistCall } from '../modules/calls/CallService';
 import { logger } from '@/src/utils/logger';
+import { useBackHandler } from '../utils/backNavigation';
 
 export const getChatActivityMs = (chat: any): number => {
   if (!chat) return 0;
@@ -581,6 +582,72 @@ const Messenger = ({ initialRecipient, onUserClick }: { initialRecipient?: any, 
     );
     setForwardingMessage(null);
   };
+
+  // Intercept back actions for Messenger modals, search, views, and mobile active chat
+  useBackHandler(() => {
+    if (contextMenu) {
+      setContextMenu(null);
+      return true;
+    }
+    if (forwardingMessage) {
+      setForwardingMessage(null);
+      return true;
+    }
+    if (isSettingsOpen) {
+      setIsSettingsOpen(false);
+      return true;
+    }
+    if (isAccountSwitcherOpen) {
+      setIsAccountSwitcherOpen(false);
+      return true;
+    }
+    if (isGroupCreationOpen) {
+      setIsGroupCreationOpen(false);
+      return true;
+    }
+    if (isInfoOpen) {
+      setIsInfoOpen(false);
+      return true;
+    }
+    if (vaultState.isOpen) {
+      setVaultState(v => ({ ...v, isOpen: false, activeVaultChatId: null }));
+      return true;
+    }
+    if (viewingProfileInSearch) {
+      setViewingProfileInSearch(null);
+      return true;
+    }
+    if (isSearchFocused) {
+      setIsSearchFocused(false);
+      return true;
+    }
+    if (view !== 'chats') {
+      setView('chats');
+      return true;
+    }
+    // Mobile active chat view: return to conversations list
+    if (!isMobileList || activeChatId) {
+      setIsMobileList(true);
+      setActiveChatId(null);
+      setTempChat(null);
+      setIsNavHidden(false);
+      return true;
+    }
+    return false;
+  }, true, 80, [
+    contextMenu,
+    forwardingMessage,
+    isSettingsOpen,
+    isAccountSwitcherOpen,
+    isGroupCreationOpen,
+    isInfoOpen,
+    vaultState.isOpen,
+    viewingProfileInSearch,
+    isSearchFocused,
+    view,
+    isMobileList,
+    activeChatId
+  ]);
 
   // Global chats filtering logic - strictly mutually exclusive to prevent duplicated inboxes
   const mainChats = useMemo(() => {
@@ -2346,6 +2413,27 @@ const ChatWindow = ({
     if (otherProfile.isDeleted === true || otherProfile.status === 'deleted') return true;
     return false;
   }, [isPrivateSpace, isGroupChat, chat.otherParticipantId, otherProfileLoaded, otherProfile]);
+
+  // Intercept back for overlays inside active chat
+  useBackHandler(() => {
+    if (expandedImage) {
+      setExpandedImage(null);
+      return true;
+    }
+    if (isWallpaperCustomizerOpen) {
+      setIsWallpaperCustomizerOpen(false);
+      return true;
+    }
+    if (replyingTo) {
+      setReplyingTo(null);
+      return true;
+    }
+    if (editingMessage) {
+      setEditingMessage(null);
+      return true;
+    }
+    return false;
+  }, true, 90, [expandedImage, isWallpaperCustomizerOpen, replyingTo, editingMessage]);
 
   useEffect(() => {
     const otherId = chat.otherParticipantId || chat.profileIds?.find((id: string) => id !== profile?.id);

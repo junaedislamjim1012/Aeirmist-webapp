@@ -108,6 +108,7 @@ import LanguagesSettings from './sections/LanguagesSettings';
 import DeveloperSettings from './sections/DeveloperSettings';
 import { VerificationSettings } from './sections/VerificationSettings';
 import { logger } from '@/src/utils/logger';
+import { useBackHandler } from '../../utils/backNavigation';
 
 
 type SettingsTab = 
@@ -236,6 +237,48 @@ const SettingsSystem: React.FC<SettingsSystemProps> = ({ initialSection, onSecti
   const [deleteChoice, setDeleteChoice] = useState<'deactivate' | 'delete'>('deactivate');
 
   const [copied, setCopied] = useState(false);
+
+  // Intercept back actions for settings dialogs and mobile sub-sections
+  useBackHandler(() => {
+    if (installModalOpen) {
+      setInstallModalOpen(false);
+      return true;
+    }
+    if (showPreview) {
+      setShowPreview(false);
+      return true;
+    }
+    if (editingImage) {
+      setEditingImage(null);
+      return true;
+    }
+    if (showDeactivateConfirm) {
+      setShowDeactivateConfirm(false);
+      return true;
+    }
+    if (showDeleteConfirm) {
+      setShowDeleteConfirm(false);
+      return true;
+    }
+    if (accountSubView !== 'main') {
+      setAccountSubView('main');
+      return true;
+    }
+    // On mobile / tablet screens, if inside a section, back returns to the Settings root index
+    if (activeTab !== null && typeof window !== 'undefined' && window.innerWidth < 1024) {
+      handleSelectTab(null);
+      return true;
+    }
+    return false;
+  }, true, 70, [
+    installModalOpen,
+    showPreview,
+    editingImage,
+    showDeactivateConfirm,
+    showDeleteConfirm,
+    accountSubView,
+    activeTab
+  ]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const bannerInputRef = useRef<HTMLInputElement>(null);

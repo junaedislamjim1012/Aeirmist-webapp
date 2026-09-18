@@ -25,6 +25,7 @@ import { ReportProvider } from './components/reporting/ReportContext';
 import { logger } from '@/src/utils/logger';
 import { PostDetailView } from './components/feed/PostDetailView';
 import { PermissionManager } from './components/ui/PermissionManager';
+import { backNav } from './utils/backNavigation';
 import { ResonanceTracker } from './components/ResonanceTracker';
 import { SEO } from './components/ui/SEO';
 import { analytics } from './services/AnalyticsService';
@@ -333,80 +334,86 @@ function AppContent() {
         const { App: CapApp } = await import('@capacitor/app');
         if (!isMounted) return;
 
-        backListener = await CapApp.addListener('backButton', ({ canGoBack }: any) => {
+        backListener = await CapApp.addListener('backButton', () => {
+          // 1. Top Priority: Check if any registered component handler (modal, sheet, active chat, etc.) intercepts back
+          if (backNav.dispatch()) {
+            return;
+          }
+
           const s = navStateRef.current;
 
-          // 1. Stories open
+          // 2. Stories open
           if (s.storyState?.activeStoryGroup || s.storyState?.isStudioOpen || s.storyState?.isCreatingNote) {
             setStoryState({ activeStoryGroup: null, isStudioOpen: false, isCreatingNote: false });
             window.dispatchEvent(new CustomEvent('aeirmist-story-close'));
             return;
           }
 
-          // 2. Post detail modal is open
+          // 3. Post detail modal is open
           if (s.viewingPostId) {
             setViewingPostId(null);
             return;
           }
 
-          // 3. Video modal / detail is open
+          // 4. Video modal / detail is open
           if (s.viewingVideoId) {
             setViewingVideoId(null);
             return;
           }
 
-          // 4. Create Post studio is open
+          // 5. Create Post studio is open
           if (s.isPosting) {
             setIsPosting(false);
             return;
           }
 
-          // 5. Notification Center is open
+          // 6. Notification Center is open
           if (s.isNotificationsOpen) {
             setIsNotificationsOpen(false);
             return;
           }
 
-          // 6. Account switcher is open
+          // 7. Account switcher is open
           if (s.isAccountSwitcherOpen) {
             setIsAccountSwitcherOpen(false);
             return;
           }
 
-          // 7. Camera is open
+          // 8. Camera is open
           if (s.cameraConfig?.isOpen) {
             setCameraConfig(null);
             return;
           }
 
-          // 8. Settings sub-section is open
+          // 9. Settings sub-section is open
           if (s.settingsSection) {
             setSettingsSection(null);
             return;
           }
 
-          // 9. Viewing a store or product
+          // 10. Viewing a store or product
           if (s.viewingStoreId || s.viewingProductId) {
             setViewingStoreId(null);
             setViewingProductId(null);
             return;
           }
 
-          // 10. Specific chat in Messenger
+          // 11. Specific chat in Messenger
           if (s.messageRecipient) {
             setMessageRecipient(null);
             return;
           }
 
-          // 11. Viewing another user's profile
+          // 12. Viewing another user's profile -> return to previous screen/tab
           if (s.viewingProfile) {
             setViewingProfile(null);
-            return;
-          }
-
-          // 12. If we have browser history entries created by app navigation
-          if (window.history.length > 1 && window.history.state?._appNav) {
-            window.history.back();
+            if (tabHistoryStackRef.current.length > 1) {
+              tabHistoryStackRef.current.pop();
+              const previousTab = tabHistoryStackRef.current[tabHistoryStackRef.current.length - 1] || 'feed';
+              setActiveTab(previousTab);
+            } else {
+              setActiveTab('feed');
+            }
             return;
           }
 
@@ -863,7 +870,6 @@ function AppContent() {
   // Sync state changes to window.history and browser URL
   useEffect(() => {
     if (isPoppingRef.current) {
-      isPoppingRef.current = false;
       return;
     }
 
@@ -903,23 +909,11 @@ function AppContent() {
       return;
     }
 
-    const isDiff = !hState || 
-      hState.activeTab !== activeTab ||
-      JSON.stringify(hState.viewingProfile) !== JSON.stringify(viewingProfile) ||
-      hState.viewingPostId !== viewingPostId ||
-      hState.viewingVideoId !== viewingVideoId ||
-      hState.viewingStoreId !== viewingStoreId ||
-      hState.viewingProductId !== viewingProductId ||
-      JSON.stringify(hState.messageRecipient) !== JSON.stringify(messageRecipient) ||
-      hState.isPosting !== isPosting ||
-      hState.isNotificationsOpen !== isNotificationsOpen ||
-      hState.isAccountSwitcherOpen !== isAccountSwitcherOpen ||
-      hState.settingsSection !== settingsSection ||
-      JSON.stringify(hState.storyState) !== JSON.stringify(storyState);
-
-    if (isDiff) {
+    // Push state ONLY when the target URL pathname changes!
+    // If the path is identical, use replaceState to prevent duplicate history loops.
+    if (window.location.pathname !== targetUrl) {
       window.history.pushState(stateToPush, '', targetUrl);
-    } else if (window.location.pathname !== targetUrl) {
+    } else {
       window.history.replaceState(stateToPush, '', targetUrl);
     }
   }, [
@@ -966,10 +960,12 @@ function AppContent() {
           tabHistoryStackRef.current.push(restoredTab);
         }
         
-        // Reset popping state asynchronously to accommodate React state update scheduling
-        setTimeout(() => {
-          isPoppingRef.current = false;
-        }, 50);
+        // Reset popping state asynchronously after all React batching completes
+        requestAnimationFrame(() => {
+          setTimeout(() => {
+            isPoppingRef.current = false;
+          }, 100);
+        });
       } else {
         // Fallback popstate if state doesn't have _appNav (e.g. direct url change)
         const pathInit = getInitialStateFromPath(window.location.pathname);
@@ -1838,7 +1834,7 @@ function AppContent() {
 
           
           <PermissionManager
-            isOpen={!!pendingPermission}
+            isOpen={!!pendingPermission && pendingPermission !== 'notifications'}
             type={pendingPermission}
             onClose={() => setPendingPermission(null)}
             status={permissions[pendingPermission]?.status}

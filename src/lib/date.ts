@@ -178,37 +178,79 @@ export const formatActiveStatus = (isOnline: boolean, lastSeen: any, hideExactTi
 };
 
 /**
- * Meta (Instagram / Messenger / WhatsApp) styled inbox timestamp formatter
- * e.g. "now", "2m", "5h", "Yesterday", "Wed", "16 Sep"
+ * Canonical conversation time formatter for Aeirmist inbox
+ * - Today: 7:42 PM (12-hour format)
+ * - Yesterday: Yesterday
+ * - Within current week: weekday (e.g. Tuesday)
+ * - Older: short date (e.g. 12 Mar, or 12 Mar 2024 if different year)
+ * Safe fallback, never crashes.
  */
-export const formatMetaInboxTimestamp = (timestamp: any): string => {
+export const formatConversationTime = (timestamp: any): string => {
   if (!timestamp) return '';
+
+  // Extract nested timestamp if an object containing timestamp fields was passed
+  if (
+    typeof timestamp === 'object' &&
+    !(timestamp instanceof Date) &&
+    !(timestamp instanceof Timestamp) &&
+    typeof timestamp.toMillis !== 'function' &&
+    typeof timestamp.toDate !== 'function'
+  ) {
+    if (timestamp.latestMessageAt) timestamp = timestamp.latestMessageAt;
+    else if (timestamp.updatedAt) timestamp = timestamp.updatedAt;
+    else if (timestamp.timestamp) timestamp = timestamp.timestamp;
+    else if (timestamp.createdAt) timestamp = timestamp.createdAt;
+  }
+
   const date = toDateSafe(timestamp);
   if (!date) return '';
 
   const now = new Date();
-  const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
   
-  if (diffInSeconds < 60) return 'now';
-  if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m`;
-  if (diffInSeconds < 86400 && date.getDate() === now.getDate() && date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear()) {
+  // Guard against slight future clock skew (< 5 min)
+  if (date.getTime() > now.getTime()) {
     return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true });
   }
-  
-  const yesterday = new Date(now);
-  yesterday.setDate(now.getDate() - 1);
-  if (date.toDateString() === yesterday.toDateString()) {
+
+  // Today: same calendar day in local time
+  const isToday = 
+    date.getDate() === now.getDate() &&
+    date.getMonth() === now.getMonth() &&
+    date.getFullYear() === now.getFullYear();
+
+  if (isToday) {
+    return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true });
+  }
+
+  // Yesterday: previous calendar day in local time
+  const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+  const isYesterday = 
+    date.getDate() === yesterday.getDate() &&
+    date.getMonth() === yesterday.getMonth() &&
+    date.getFullYear() === yesterday.getFullYear();
+
+  if (isYesterday) {
     return 'Yesterday';
   }
 
-  const diffInDays = Math.floor(diffInSeconds / 86400);
+  // Within current week (< 7 days)
+  const diffInMs = now.getTime() - date.getTime();
+  const diffInDays = diffInMs / (1000 * 60 * 60 * 24);
   if (diffInDays < 7) {
-    return date.toLocaleDateString([], { weekday: 'short' });
+    return date.toLocaleDateString([], { weekday: 'long' });
   }
 
-  if (date.getFullYear() === now.getFullYear()) {
-    return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+  // Older: short date e.g. "12 Mar". If different year, "12 Mar 2024"
+  const isSameYear = date.getFullYear() === now.getFullYear();
+  if (isSameYear) {
+    return date.toLocaleDateString([], { day: 'numeric', month: 'short' });
   }
 
-  return date.toLocaleDateString([], { month: 'short', day: 'numeric', year: '2-digit' });
+  return date.toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' });
 };
+
+/**
+ * Meta styled inbox timestamp formatter (aliases canonical formatConversationTime)
+ */
+export const formatMetaInboxTimestamp = formatConversationTime;
+

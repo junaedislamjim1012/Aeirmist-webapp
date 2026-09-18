@@ -214,6 +214,7 @@ function AppContent() {
     isSetup, 
     isConnecting, 
     connectionError, 
+    isOffline,
     needsUsername, 
     profile, 
     setNeedsUsername, 
@@ -256,6 +257,7 @@ function AppContent() {
   const [isAccountSwitcherOpen, setIsAccountSwitcherOpen] = useState(false);
   const [lastMainTab, setLastMainTab] = useState<Tab>('feed');
   const [showSafeExit, setShowSafeExit] = useState(false);
+  const [networkWarningText, setNetworkWarningText] = useState<string | null>(null);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [showSplash, setShowSplash] = useState(true);
 
@@ -268,13 +270,24 @@ function AppContent() {
   }, [user?.uid]);
 
   useEffect(() => {
-    if (loading || (user && !profile && !needsUsername)) {
-      const timer = setTimeout(() => setShowSafeExit(true), 6000);
-      return () => clearTimeout(timer);
-    } else {
-      setShowSafeExit(false);
+    // Only show safe exit if genuinely offline or real connection error
+    const isActuallyOffline = isOffline || (typeof navigator !== 'undefined' && !navigator.onLine);
+    if (isActuallyOffline) {
+      setNetworkWarningText('No Internet Connection');
+      setShowSafeExit(true);
+      return;
     }
-  }, [loading, user, profile, needsUsername]);
+
+    if (connectionError) {
+      setNetworkWarningText(connectionError.includes('Firebase') || connectionError.includes('network') ? 'Network Error' : 'Connection Error');
+      setShowSafeExit(true);
+      return;
+    }
+
+    // Normal loading, online auth initialization, or slow queries do NOT show connection warning
+    setShowSafeExit(false);
+    setNetworkWarningText(null);
+  }, [isOffline, connectionError]);
 
   // Native Android Hardware Back Button Integration & Navigation Stack
   const lastBackPressRef = useRef<number>(0);
@@ -1211,7 +1224,7 @@ function AppContent() {
             </div>
           </motion.div>
 
-          {/* Safe Exit controls if network is sluggish */}
+          {/* Safe Exit controls ONLY if actual network disconnect or connection error */}
           {showSafeExit && (
             <motion.div 
               initial={{ opacity: 0, scale: 0.9 }} 
@@ -1220,7 +1233,7 @@ function AppContent() {
             >
               <div className="flex items-center gap-2 text-aeirmist-magenta/60 justify-center">
                 <AlertCircle size={13} />
-                <span className="text-[8px] font-bold uppercase tracking-widest">Connection Sluggish</span>
+                <span className="text-[8px] font-bold uppercase tracking-widest">{networkWarningText || 'Connection Offline'}</span>
               </div>
               <button 
                 type="button"

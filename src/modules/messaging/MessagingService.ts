@@ -89,12 +89,13 @@ class MessagingService {
       const convSnap = await getDoc(convRef);
       if (convSnap.exists()) {
         const convData = convSnap.data();
-        if (convData.lastMessage?.messageId === messageId || !convData.lastMessage?.messageId) {
+        if (convData.lastMessage?.messageId === messageId || convData.latestMessageId === messageId || !convData.lastMessage?.messageId) {
           batch.update(convRef, {
             'lastMessage.text': 'Message Removed',
             'lastMessage.type': 'text',
             'lastMessage.mediaUrl': null,
-            'lastMessage.metadata.removed': true
+            'lastMessage.metadata.removed': true,
+            latestMessagePreview: 'Message Removed'
           });
         }
       }
@@ -116,10 +117,11 @@ class MessagingService {
     const convSnap = await getDoc(convRef);
     if (convSnap.exists()) {
       const convData = convSnap.data();
-      if (convData.lastMessage?.messageId === messageId || !convData.lastMessage?.messageId) {
+      if (convData.lastMessage?.messageId === messageId || convData.latestMessageId === messageId || !convData.lastMessage?.messageId) {
         batch.update(convRef, {
           'lastMessage.text': newText,
-          'lastMessage.metadata.edited': true
+          'lastMessage.metadata.edited': true,
+          latestMessagePreview: newText
         });
       }
     }
@@ -635,9 +637,9 @@ class MessagingService {
               const t0 = extractTimestampMs(chat.latestMessageAt);
               if (t0 > 0) return t0;
               const t1 = extractTimestampMs(chat.lastMessage?.timestamp || chat.lastMessage?.createdAt);
-              if (t1 > 0) return t1;
               const t2 = extractTimestampMs(chat.updatedAt);
-              if (t2 > 0) return t2;
+              const fallbackMs = Math.max(t1, t2);
+              if (fallbackMs > 0) return fallbackMs;
               const t3 = extractTimestampMs(chat.createdAt);
               if (t3 > 0) return t3;
               return 0;
@@ -688,9 +690,9 @@ class MessagingService {
         const t0 = extractTimestampMs(chat.latestMessageAt);
         if (t0 > 0) return t0;
         const t1 = extractTimestampMs(chat.lastMessage?.timestamp || chat.lastMessage?.createdAt);
-        if (t1 > 0) return t1;
         const t2 = extractTimestampMs(chat.updatedAt);
-        if (t2 > 0) return t2;
+        const fallbackMs = Math.max(t1, t2);
+        if (fallbackMs > 0) return fallbackMs;
         const t3 = extractTimestampMs(chat.createdAt);
         if (t3 > 0) return t3;
         if (chat.hasPendingWrites || chat.isOptimistic) return Date.now();

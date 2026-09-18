@@ -78,6 +78,7 @@ import {
   formatShortTimestamp, 
   formatActiveStatus, 
   formatDateSeparator, 
+  formatConversationTime,
   formatMetaInboxTimestamp,
   extractTimestampMs
 } from '../lib/date';
@@ -91,23 +92,33 @@ import { logger } from '@/src/utils/logger';
 export const getChatActivityMs = (chat: any): number => {
   if (!chat) return 0;
   
-  // 1. Optimistic bump check if write is pending
-  if (chat._optimisticBumpAt && (chat.isOptimistic || chat.hasPendingWrites)) {
-    return chat._optimisticBumpAt;
+  // 1. Optimistic bump check if write is pending or recently bumped (< 30s)
+  if (typeof chat._optimisticBumpAt === 'number' && chat._optimisticBumpAt > 0) {
+    if (chat.isOptimistic || chat.hasPendingWrites || (Date.now() - chat._optimisticBumpAt < 30000)) {
+      const tLatestServer = extractTimestampMs(chat.latestMessageAt);
+      if (tLatestServer > chat._optimisticBumpAt) {
+        return tLatestServer;
+      }
+      return chat._optimisticBumpAt;
+    }
   }
 
-  // 2. Extract from primary timestamp fields
+  // 2. Canonical single source: latestMessageAt
   const t0 = extractTimestampMs(chat.latestMessageAt);
   if (t0 > 0) return t0;
 
+  // 3. Fallbacks: lastMessage timestamp or updatedAt
   const t1 = extractTimestampMs(chat.lastMessage?.timestamp || chat.lastMessage?.createdAt || chat.rawLastMessage?.timestamp);
-  if (t1 > 0) return t1;
-
   const t2 = extractTimestampMs(chat.updatedAt);
-  if (t2 > 0) return t2;
+  const fallbackMs = Math.max(t1, t2);
+  if (fallbackMs > 0) return fallbackMs;
 
   const t3 = extractTimestampMs(chat.createdAt);
   if (t3 > 0) return t3;
+
+  if (typeof chat.latestMessageAtMs === 'number' && chat.latestMessageAtMs > 0) {
+    return chat.latestMessageAtMs;
+  }
 
   if (typeof chat.updatedAtMs === 'number' && chat.updatedAtMs > 0) {
     return chat.updatedAtMs;
@@ -127,8 +138,8 @@ export const sortChatsDeterministic = (chatsList: any[], activeProfileId?: strin
     if (pinA && !pinB) return -1;
     if (!pinA && pinB) return 1;
 
-    const timeA = a.latestMessageAtMs || a.updatedAtMs || getChatActivityMs(a);
-    const timeB = b.latestMessageAtMs || b.updatedAtMs || getChatActivityMs(b);
+    const timeA = getChatActivityMs(a);
+    const timeB = getChatActivityMs(b);
 
     if (timeB !== timeA) {
       return (timeB || 0) - (timeA || 0);
@@ -708,8 +719,10 @@ const Messenger = ({ initialRecipient, onUserClick }: { initialRecipient?: any, 
         } catch (e) {}
 
         const rawLastMsg = data.lastMessage;
-        const rawLastText = typeof rawLastMsg === 'string' ? rawLastMsg : (rawLastMsg?.text || ((data as any).lastMessageText || 'No messages yet'));
-        const lastSenderId = rawLastMsg?.senderId || data.lastMessageSenderId || (data as any).lastSenderId;
+        const rawLastText = typeof rawLastMsg === 'string' 
+          ? rawLastMsg 
+          : (data.latestMessagePreview || rawLastMsg?.text || ((data as any).lastMessageText || 'No messages yet'));
+        const lastSenderId = data.latestMessageSenderId || rawLastMsg?.senderId || (data as any).lastSenderId;
         const isSentByMe = !!(lastSenderId && (lastSenderId === profile.id || lastSenderId === user.uid));
 
         let displayLastMsg = rawLastText;
@@ -748,7 +761,7 @@ const Messenger = ({ initialRecipient, onUserClick }: { initialRecipient?: any, 
         const prevMap = new Map(prevChats.map(c => [c.id, c]));
         const merged = processedChats.map(chat => {
           const prev = prevMap.get(chat.id);
-          let activity = chat.latestMessageAtMs || chat.updatedAtMs || getChatActivityMs(chat);
+          let activity = getChatActivityMs(chat);
           // If prev state had an optimistic bump within the last 20 seconds and server has not yet written a newer timestamp
           if (prev?._optimisticBumpAt && (chat.hasPendingWrites || activity < prev._optimisticBumpAt)) {
             if (Date.now() - prev._optimisticBumpAt < 20000) {
@@ -763,7 +776,16 @@ const Messenger = ({ initialRecipient, onUserClick }: { initialRecipient?: any, 
           };
         });
 
-        return sortChatsDeterministic(merged, profile.id);
+        // Retain pending optimistic / newly created chats not yet present in server snapshot
+        const serverIds = new Set(processedChats.map(c => c.id));
+        const pendingChats = prevChats.filter(c => 
+          !serverIds.has(c.id) && 
+          (c.isOptimistic || c.hasPendingWrites || (c._optimisticBumpAt && Date.now() - c._optimisticBumpAt < 20000))
+        );
+
+        const allChats = [...merged, ...pendingChats];
+        const uniqueChats = Array.from(new Map(allChats.map(c => [c.id, c])).values());
+        return sortChatsDeterministic(uniqueChats, profile.id);
       });
     });
 
@@ -912,7 +934,8 @@ const Messenger = ({ initialRecipient, onUserClick }: { initialRecipient?: any, 
         updated.unshift(newEntry);
       }
 
-      return sortChatsDeterministic(updated, profile?.id);
+      const unique = Array.from(new Map(updated.map(c => [c.id, c])).values());
+      return sortChatsDeterministic(unique, profile?.id);
     });
   }, [profile?.id]);
 
@@ -1881,7 +1904,7 @@ const Messenger = ({ initialRecipient, onUserClick }: { initialRecipient?: any, 
                 const isOnline = !!onlineUsers?.has?.(chat.otherParticipantId);
                 const isSelected = currentChat?.id === chat.id;
                 const activityTimestamp = chat.latestMessageAtMs || chat.updatedAtMs || getChatActivityMs(chat);
-                const metaTime = formatMetaInboxTimestamp(activityTimestamp);
+                const metaTime = formatConversationTime(activityTimestamp) || (chat.createdAt ? formatConversationTime(chat.createdAt) : '');
 
                 return (
                   <div 
@@ -1913,7 +1936,7 @@ const Messenger = ({ initialRecipient, onUserClick }: { initialRecipient?: any, 
                     {/* Chat Info */}
                     <div className="flex-1 min-w-0 pr-1">
                       {/* Top Row: Name + Pin badge + Meta timestamp */}
-                      <div className="flex items-center justify-between gap-1.5">
+                      <div className="flex items-center justify-between gap-1.5 min-w-0">
                         <div className="flex items-center gap-1.5 min-w-0 flex-1">
                           <h3 className={`text-[14px] font-bold truncate ${chat.unread ? 'text-white' : 'text-white/90'}`}>
                             {chat.isGroup || chat.type === 'group' ? (chat.name || chat.groupName || 'Group Chat') : (chat.otherParticipantId === profile?.id ? 'My Space' : <LiveParticipantName participantId={chat.otherParticipantId} fallbackName={chat.name} chatId={chat.id} />)}
@@ -1922,9 +1945,13 @@ const Messenger = ({ initialRecipient, onUserClick }: { initialRecipient?: any, 
                             <Pin size={11} className="text-aeirmist-cyan shrink-0 rotate-45" />
                           )}
                         </div>
-                        {metaTime && (
-                          <span className={`text-[11px] shrink-0 font-medium ${chat.unread ? 'text-aeirmist-cyan font-bold' : 'text-white/40'}`}>
+                        {metaTime ? (
+                          <span className={`text-[11px] shrink-0 font-medium min-w-[50px] text-right whitespace-nowrap ${chat.unread ? 'text-aeirmist-cyan font-bold' : 'text-white/40'}`}>
                             {metaTime}
+                          </span>
+                        ) : (
+                          <span className="text-[11px] shrink-0 font-medium min-w-[50px] text-right text-transparent select-none">
+                            &nbsp;
                           </span>
                         )}
                       </div>
@@ -1932,7 +1959,7 @@ const Messenger = ({ initialRecipient, onUserClick }: { initialRecipient?: any, 
                       {/* Bottom Row: Last message preview + Unread badge */}
                       <div className="flex items-center justify-between gap-2 min-w-0 mt-0.5">
                         <p className={`text-[12px] truncate flex-1 min-w-0 ${chat.unread ? 'text-white font-semibold' : 'text-white/50'}`}>
-                          {chat.lastMessage}
+                          {chat.lastMessage || 'No messages yet'}
                         </p>
                         {chat.unread && (
                           <div className="w-2.5 h-2.5 rounded-full bg-aeirmist-cyan shadow-[0_0_10px_rgba(0,242,255,0.5)] shrink-0" />

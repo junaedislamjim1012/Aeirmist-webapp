@@ -9,30 +9,32 @@ const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 const dbId = firebaseConfig.firestoreDatabaseId === '(default)' ? undefined : firebaseConfig.firestoreDatabaseId;
 const db = getFirestore(app, dbId);
 
-async function deleteUserPosts(handle: string) {
-    const profilesRef = collection(db, 'profiles');
-    const q = query(profilesRef, where('username', '==', handle.toLowerCase().replace('@', '')));
-    const querySnapshot = await getDocs(q);
-    
-    if (querySnapshot.empty) {
-        logger.info('No user found with handle:', handle);
-        return;
-    }
-    
-    const userDoc = querySnapshot.docs[0];
-    const userId = userDoc.id;
-    logger.info('Found user ID:', userId);
-    
+async function cleanDeletedAccountPosts() {
+    console.log('🔍 Scanning posts collection for deleted account posts...');
     const postsRef = collection(db, 'posts');
-    const postsQuery = query(postsRef, where('authorId', '==', userId));
-    const postsSnapshot = await getDocs(postsQuery);
+    const postsSnapshot = await getDocs(postsRef);
+    console.log(`Found ${postsSnapshot.size} total posts.`);
     
-    logger.info('Found', postsSnapshot.size, 'posts to delete.');
-    
+    let count = 0;
     for (const postDoc of postsSnapshot.docs) {
-        await deleteDoc(doc(db, 'posts', postDoc.id));
-        logger.info('Deleted post:', postDoc.id);
+        const data = postDoc.data();
+        const isDeleted = Boolean(
+            data.isDeletedAuthor === true ||
+            data.scheduledForPurge === true ||
+            data.authorName === 'Aeirmist User' ||
+            data.userName === 'Aeirmist User' ||
+            data.author?.name === 'Aeirmist User' ||
+            data.author?.displayName === 'Aeirmist User'
+        );
+
+        if (isDeleted) {
+            console.log(`🗑️ Deleting post ${postDoc.id} (Author: ${data.authorName || data.userName || 'Unknown'})`);
+            await deleteDoc(doc(db, 'posts', postDoc.id));
+            count++;
+        }
     }
+    console.log(`✅ Cleanup complete: Deleted ${count} orphaned posts.`);
 }
 
-deleteUserPosts('VBJJJBBVJJJ');
+cleanDeletedAccountPosts().catch(console.error);
+

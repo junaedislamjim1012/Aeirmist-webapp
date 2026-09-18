@@ -704,10 +704,10 @@ export const GroupInfoPanel: React.FC<GroupInfoPanelProps> = ({ chat, onClose, o
                 const photoURL = getAvatarUrl(mem.photoURL);
                 const isVerified = mem.verified !== false && mem.isVerified !== false;
                 const isMutedMem = !!chat.mutedMembers?.[uid];
-                const isMemOnline = isSelfMem || (onlineUsers && (
-                  onlineUsers.has(uid) || 
-                  (mem.uid && onlineUsers.has(mem.uid)) || 
-                  (mem.id && onlineUsers.has(mem.id))
+                const isMemOnline = isSelfMem || (!!onlineUsers && (
+                  !!onlineUsers?.has?.(uid) || 
+                  (!!mem.uid && !!onlineUsers?.has?.(mem.uid)) || 
+                  (!!mem.id && !!onlineUsers?.has?.(mem.id))
                 ));
 
                 return (

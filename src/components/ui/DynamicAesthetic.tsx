@@ -158,106 +158,114 @@ const DigitalLines: React.FC<{ color: string }> = ({ color }) => (
   </svg>
 );
 
-const MatrixStream: React.FC<{ color: string }> = ({ color }) => (
-  <div className="absolute inset-0 flex justify-between px-12 opacity-20 pointer-events-none">
-    {[...Array(20)].map((_, i) => (
-      <motion.div
+const MatrixStream: React.FC<{ color: string }> = React.memo(({ color }) => (
+  <div className="absolute inset-0 flex justify-between px-12 opacity-20 pointer-events-none overflow-hidden">
+    {[...Array(8)].map((_, i) => (
+      <div
         key={i}
-        animate={{ y: ['-100%', '200%'] }}
-        transition={{ duration: 5 + Math.random() * 10, repeat: Infinity, ease: "linear", delay: Math.random() * 5 }}
-        className="text-[10px] font-mono leading-none flex flex-col items-center"
-        style={{ color }}
+        className="text-[10px] font-mono leading-none flex flex-col items-center animate-scan-slow"
+        style={{ color, animationDelay: `${i * 0.8}s` }}
       >
-        {[...Array(30)].map((_, j) => (
-          <span key={j} className="opacity-40">{Math.random() > 0.5 ? '1' : '0'}</span>
+        {[...Array(15)].map((_, j) => (
+          <span key={j} className="opacity-40">{j % 2 === 0 ? '1' : '0'}</span>
         ))}
-      </motion.div>
+      </div>
     ))}
   </div>
-);
+));
 
-const Stars: React.FC = () => (
-  <div className="absolute inset-0 pointer-events-none">
-    {[...Array(100)].map((_, i) => (
-      <motion.div
-        key={i}
-        initial={{ opacity: Math.random() }}
-        animate={{ opacity: [0.1, 1, 0.1] }}
-        transition={{ duration: 2 + Math.random() * 4, repeat: Infinity }}
-        className="absolute w-[1px] h-[1px] bg-white rounded-full"
-        style={{
-          top: `${Math.random() * 100}%`,
-          left: `${Math.random() * 100}%`,
-        }}
-      />
-    ))}
-  </div>
-);
+const Stars: React.FC = React.memo(() => {
+  const starsList = React.useMemo(() => {
+    return [...Array(30)].map((_, i) => ({
+      id: i,
+      top: `${(i * 17) % 100}%`,
+      left: `${(i * 31) % 100}%`,
+      duration: `${3 + (i % 4)}s`,
+      delay: `${(i % 3) * 0.7}s`
+    }));
+  }, []);
 
-const FloatingEmbers: React.FC<{ color: string }> = ({ color }) => (
+  return (
+    <div className="absolute inset-0 pointer-events-none">
+      {starsList.map((star) => (
+        <div
+          key={star.id}
+          className="absolute w-[1.5px] h-[1.5px] bg-white rounded-full animate-pulse"
+          style={{
+            top: star.top,
+            left: star.left,
+            animationDuration: star.duration,
+            animationDelay: star.delay
+          }}
+        />
+      ))}
+    </div>
+  );
+});
+
+const FloatingEmbers: React.FC<{ color: string }> = React.memo(({ color }) => (
   <div className="absolute inset-0 pointer-events-none">
-    {[...Array(30)].map((_, i) => (
-      <motion.div
+    {[...Array(10)].map((_, i) => (
+      <div
         key={i}
-        animate={{ 
-          y: [-20, -100 - Math.random() * 200],
-          x: [0, (Math.random() - 0.5) * 100],
-          opacity: [0, 1, 0]
-        }}
-        transition={{ duration: 5 + Math.random() * 10, repeat: Infinity, ease: "easeOut", delay: Math.random() * 10 }}
-        className="absolute w-1 h-1 rounded-full blur-[1px]"
+        className="absolute w-1 h-1 rounded-full blur-[1px] animate-float"
         style={{
           backgroundColor: color,
-          bottom: '0%',
-          left: `${Math.random() * 100}%`,
+          bottom: `${(i * 10) % 80}%`,
+          left: `${(i * 13) % 95}%`,
+          animationDuration: `${5 + (i % 5)}s`,
+          animationDelay: `${i * 0.5}s`
         }}
       />
     ))}
   </div>
-);
+));
 
-const MessageCircles: React.FC<{ color: string }> = ({ color }) => (
+const MessageCircles: React.FC<{ color: string }> = React.memo(({ color }) => (
   <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-    {[...Array(3)].map((_, i) => (
-      <motion.div
+    {[...Array(2)].map((_, i) => (
+      <div
         key={i}
-        animate={{ 
-          scale: [0.5, 2.5],
-          opacity: [0.2, 0]
-        }}
-        transition={{ duration: 4, repeat: Infinity, ease: "easeOut", delay: i * 1.3 }}
-        className="absolute w-[40dvh] h-[40dvh] rounded-full border border-dashed"
-        style={{ borderColor: color, opacity: 0.1 }}
+        className="absolute w-[40dvh] h-[40dvh] rounded-full border border-dashed animate-pulse-glow"
+        style={{ borderColor: color, opacity: 0.1, animationDelay: `${i * 1.5}s` }}
       />
     ))}
   </div>
-);
+));
 
-const Particles: React.FC<{ color: string }> = ({ color }) => (
-  <div className="absolute inset-0 pointer-events-none">
-    {[...Array(50)].map((_, i) => (
-      <motion.div
-        key={i}
-        animate={{ 
-          x: [Math.random() * 100 + '%', Math.random() * 100 + '%'],
-          y: [Math.random() * 100 + '%', Math.random() * 100 + '%'],
-          opacity: [0.1, 0.3, 0.1]
-        }}
-        transition={{ duration: 10 + Math.random() * 20, repeat: Infinity, ease: "linear" }}
-        className="absolute w-1.5 h-1.5 rounded-full blur-[2px]"
-        style={{ backgroundColor: color }}
-      />
-    ))}
-  </div>
-);
+const Particles: React.FC<{ color: string }> = React.memo(({ color }) => {
+  const particlesList = React.useMemo(() => {
+    return [...Array(15)].map((_, i) => ({
+      id: i,
+      top: `${(i * 23) % 90}%`,
+      left: `${(i * 29) % 90}%`,
+      duration: `${6 + (i % 6)}s`
+    }));
+  }, []);
 
-const Nebula: React.FC<{ color: string }> = ({ color }) => (
+  return (
+    <div className="absolute inset-0 pointer-events-none">
+      {particlesList.map((p) => (
+        <div
+          key={p.id}
+          className="absolute w-1.5 h-1.5 rounded-full blur-[1px] animate-pulse"
+          style={{ 
+            backgroundColor: color,
+            top: p.top,
+            left: p.left,
+            animationDuration: p.duration
+          }}
+        />
+      ))}
+    </div>
+  );
+});
+
+const Nebula: React.FC<{ color: string }> = React.memo(({ color }) => (
   <div className="absolute inset-0 pointer-events-none overflow-hidden">
-    <motion.div 
-      animate={{ rotate: 360 }}
-      transition={{ duration: 60, repeat: Infinity, ease: "linear" }}
-      className="absolute top-[-50%] left-[-50%] w-[200%] h-[200%] opacity-20 blur-[100px]"
+    <div 
+      className="absolute top-[-50%] left-[-50%] w-[200%] h-[200%] opacity-20 blur-[80px] animate-spin-slow"
       style={{ backgroundImage: `conic-gradient(from 0deg, transparent, ${color}33, transparent, ${color}22, transparent)` }}
     />
   </div>
-);
+));

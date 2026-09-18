@@ -56,6 +56,11 @@ export class ErrorBoundary extends React.Component<Props, State> {
             <div>
               <h3 className="text-sm font-bold uppercase tracking-wider text-white">Section Sync Interrupted</h3>
               <p className="text-[11px] text-white/40 mt-1 max-w-sm">This section encountered a temporary issue. Click below to recover.</p>
+              {this.state.error && (
+                <div className="mt-3 p-2.5 rounded-xl bg-black/40 border border-white/5 font-mono text-[10px] text-aeirmist-magenta/80 max-w-md break-all select-all text-left">
+                  {this.state.error?.message || String(this.state.error)}
+                </div>
+              )}
             </div>
             <button 
               onClick={this.handleReset}

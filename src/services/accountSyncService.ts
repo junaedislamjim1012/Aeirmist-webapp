@@ -40,7 +40,7 @@ export async function consolidateAndSyncUserProfiles(
   const userUid = activeUser.uid;
   const userEmail = (activeUser.email || '').toLowerCase().trim();
   const canonicalProfileId = `profile_${userUid}`;
-  const isMainAdmin = userEmail === 'junaedislamjim180@gmail.com' || userUid === 'iFqvwxqejCSte6K24gJe5ZE4NTo1';
+  const isMainAdmin = userEmail === 'junaedislamjim180@gmail.com' || userUid === 'iFqvwxqejCSte6K24gJe5ZE4NTo1' || userUid === 'doViFWfMXcOoas976z6MO216YNg1';
 
   logger.info(`[AccountSync] Starting database deduplication & sync for UID: ${userUid} (${userEmail})`);
 
@@ -221,8 +221,13 @@ export async function consolidateAndSyncUserProfiles(
     if (!bestDisplayName && activeUser.displayName) bestDisplayName = activeUser.displayName;
 
     // Fallbacks
-    if (!bestDisplayName) bestDisplayName = isMainAdmin ? 'Junaed Islam Jim' : (bestUsername || 'Aeirmist Member');
-    if (!bestUsername) bestUsername = isMainAdmin ? 'junaed_islam_jim9' : normUsername;
+    if (isMainAdmin) {
+      bestDisplayName = 'Junaed Islam Jim';
+      bestUsername = 'junaed_islam_jim9';
+    } else {
+      if (!bestDisplayName) bestDisplayName = bestUsername || 'Aeirmist Member';
+      if (!bestUsername) bestUsername = normUsername;
+    }
     if (!bestPhotoURL) bestPhotoURL = BLANK_DP;
     if (!bestBio) bestBio = isMainAdmin ? 'Founder & Lead Architect at Aeirmist' : 'Aeirmist Account Active';
 

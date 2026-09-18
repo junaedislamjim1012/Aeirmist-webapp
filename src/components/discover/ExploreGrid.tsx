@@ -33,6 +33,16 @@ export const ExploreGrid: React.FC<ExploreGridProps> = ({ category, onUserClick 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const fetchedItems = snapshot.docs.map(doc => {
         const data = doc.data();
+        const isDeleted = Boolean(
+          data.isDeletedAuthor ||
+          data.scheduledForPurge ||
+          data.isDeleted ||
+          data.hidden ||
+          data.authorName === 'Aeirmist User' ||
+          data.userName === 'Aeirmist User' ||
+          data.author?.name === 'Aeirmist User'
+        );
+        if (isDeleted) return null;
         return {
           id: doc.id,
           type: data.mediaType || 'image',
@@ -44,7 +54,7 @@ export const ExploreGrid: React.FC<ExploreGridProps> = ({ category, onUserClick 
           authorId: data.authorId || data.userId || '',
           authorAvatar: getAvatarUrl(data.author?.photoURL || data.userAvatar || '', data.author?.username || data.userName || 'Anonymous')
         };
-      });
+      }).filter(Boolean) as any[];
       setItems(fetchedItems);
       setLoading(false);
     }, (error) => {

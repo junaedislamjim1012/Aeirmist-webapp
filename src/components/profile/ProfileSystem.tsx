@@ -41,6 +41,7 @@ import {
   MessageSquare, 
   ShieldCheck, 
   UserPlus, 
+  UserMinus,
   Zap, 
   Activity, 
   Clock, 
@@ -116,6 +117,10 @@ const ProfileSystem = ({ targetProfile, onMessageClick, onEditProfile, onUserCli
     user, 
     profile, 
     toggleFollow, 
+    removeFollower,
+    recalculateFollowCounts,
+    getFollowers,
+    getFollowing,
     isFollowing: checkIsFollowing, 
     isFollowPending,
     updateProfile, 
@@ -178,6 +183,12 @@ const ProfileSystem = ({ targetProfile, onMessageClick, onEditProfile, onUserCli
 
     setLiveTargetProfile(null);
   }, [db, targetProfile?.id, targetProfile?.username, profile?.id]);
+
+  useEffect(() => {
+    if (isOwnProfile && profile?.id) {
+      recalculateFollowCounts(profile.id);
+    }
+  }, [isOwnProfile, profile?.id]);
 
   const isFollowingUser = targetProfile ? checkIsFollowing(targetProfile.id) : false;
   const isMessageLocked = false;
@@ -901,8 +912,6 @@ const ProfileSystem = ({ targetProfile, onMessageClick, onEditProfile, onUserCli
     setHighlightManagerState({ mode: 'create' });
   };
   
-  const { getFollowers, getFollowing } = useAeirmist();
-  
   const handleShowFollowList = async (type: 'followers' | 'following') => {
     if (!displayUser?.id) return;
     setFollowListType(type);
@@ -912,10 +921,22 @@ const ProfileSystem = ({ targetProfile, onMessageClick, onEditProfile, onUserCli
         ? await getFollowers(displayUser.id)
         : await getFollowing(displayUser.id);
       setFollowListData(data);
+      if (isOwnProfile && profile?.id) {
+        recalculateFollowCounts(profile.id);
+      }
     } catch (err) {
       console.error(`Failed to fetch ${type}`, err);
     } finally {
       setLoadingFollowList(false);
+    }
+  };
+
+  const handleRemoveFollower = async (followerId: string) => {
+    try {
+      await removeFollower(followerId);
+      setFollowListData(prev => prev.filter(p => p.id !== followerId));
+    } catch (e) {
+      console.error("Failed to remove follower", e);
     }
   };
 
@@ -2716,41 +2737,91 @@ const ProfileSystem = ({ targetProfile, onMessageClick, onEditProfile, onUserCli
         )}
       </AnimatePresence>
 
-      {/* Follow List Modal */}
+      {/* Follow List Modal (Instagram Style) */}
       <AnimatePresence>
         {followListType && (
           <div className="fixed inset-0 z-[150] flex items-center justify-center p-4">
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => { setFollowListType(null); setFollowListSearchFilter(''); }} className="absolute inset-0 bg-black/90 backdrop-blur-2xl" />
             <motion.div 
-              initial={{ scale: 0.9, opacity: 0, y: 20 }} 
+              initial={{ opacity: 0 }} 
+              animate={{ opacity: 1 }} 
+              exit={{ opacity: 0 }} 
+              onClick={() => { setFollowListType(null); setFollowListSearchFilter(''); }} 
+              className="absolute inset-0 bg-black/85 backdrop-blur-xl" 
+            />
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0, y: 15 }} 
               animate={{ scale: 1, opacity: 1, y: 0 }} 
-              exit={{ scale: 0.9, opacity: 0, y: 20 }} 
-              className="relative z-10 w-full max-w-sm max-h-[85vh] bg-[#0a0a0a] border border-white/10 rounded-[2.5rem] p-6 flex flex-col overflow-hidden shadow-2xl"
+              exit={{ scale: 0.95, opacity: 0, y: 15 }} 
+              transition={{ type: "spring", stiffness: 350, damping: 28 }}
+              className="relative z-10 w-full max-w-md max-h-[85vh] bg-[#121214] border border-white/10 rounded-[2rem] flex flex-col overflow-hidden shadow-[0_20px_50px_rgba(0,0,0,0.8)]"
             >
-              <div className="flex items-center justify-between mb-4 shrink-0">
-                <h3 className="text-[10px] font-black uppercase tracking-[0.4em] text-white/40">{followListType} Connections</h3>
-                <button onClick={() => { setFollowListType(null); setFollowListSearchFilter(''); }} className="p-1 rounded-lg text-white/40 hover:text-white hover:bg-white/10">
-                  <X size={16} />
-                </button>
+              {/* Header with Close and Tabs */}
+              <div className="p-5 pb-3 shrink-0 border-b border-white/5">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-sm font-black uppercase tracking-wider text-white">
+                    {displayUser?.displayName || displayUser?.username || 'Connections'}
+                  </h3>
+                  <button 
+                    onClick={() => { setFollowListType(null); setFollowListSearchFilter(''); }} 
+                    className="p-1.5 rounded-full text-white/50 hover:text-white hover:bg-white/10 transition-colors"
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+
+                {/* Tab Switcher: Followers vs Following */}
+                <div className="flex items-center gap-2 p-1 bg-white/[0.04] rounded-xl border border-white/5">
+                  <button
+                    onClick={() => handleShowFollowList('followers')}
+                    className={`flex-1 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
+                      followListType === 'followers'
+                        ? 'bg-white/10 text-white shadow-sm'
+                        : 'text-white/40 hover:text-white/70'
+                    }`}
+                  >
+                    Followers ({Array.isArray(displayUser?.social?.followers) ? displayUser.social.followers.length : (displayUser?.followersCount || 0)})
+                  </button>
+                  <button
+                    onClick={() => handleShowFollowList('following')}
+                    className={`flex-1 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
+                      followListType === 'following'
+                        ? 'bg-white/10 text-white shadow-sm'
+                        : 'text-white/40 hover:text-white/70'
+                    }`}
+                  >
+                    Following ({Array.isArray(displayUser?.social?.following) ? displayUser.social.following.length : (displayUser?.followingCount || 0)})
+                  </button>
+                </div>
               </div>
 
               {/* Search Filter Bar */}
-              <div className="relative mb-4 shrink-0">
-                <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-white/30" />
-                <input 
-                  type="text" 
-                  placeholder="Search connections..." 
-                  value={followListSearchFilter} 
-                  onChange={(e) => setFollowListSearchFilter(e.target.value)}
-                  className="w-full bg-white/5 border border-white/10 rounded-xl pl-9 pr-4 py-2.5 text-xs text-white placeholder-white/30 outline-none focus:border-aeirmist-cyan transition-all font-sans"
-                />
+              <div className="px-5 py-3 shrink-0">
+                <div className="relative">
+                  <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-white/30" />
+                  <input 
+                    type="text" 
+                    placeholder="Search..." 
+                    value={followListSearchFilter} 
+                    onChange={(e) => setFollowListSearchFilter(e.target.value)}
+                    className="w-full bg-white/[0.04] border border-white/10 rounded-xl pl-9 pr-8 py-2 text-xs text-white placeholder-white/30 outline-none focus:border-aeirmist-cyan transition-all font-sans"
+                  />
+                  {followListSearchFilter && (
+                    <button 
+                      onClick={() => setFollowListSearchFilter('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-white/40 hover:text-white"
+                    >
+                      <X size={12} />
+                    </button>
+                  )}
+                </div>
               </div>
               
-              <div className="flex-1 overflow-y-auto pr-1 space-y-3 scrollbar-hide">
+              {/* User List */}
+              <div className="flex-1 overflow-y-auto px-5 py-2 space-y-2.5 scrollbar-hide">
                 {loadingFollowList ? (
-                   <div className="flex flex-col items-center justify-center py-16 gap-3 opacity-30">
+                   <div className="flex flex-col items-center justify-center py-20 gap-3 opacity-40">
                       <Loader2 className="animate-spin text-aeirmist-cyan" size={24} />
-                      <span className="text-[8px] font-black uppercase tracking-widest font-mono">Querying Connections...</span>
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-white/60">Loading list...</span>
                    </div>
                 ) : (() => {
                   const filtered = followListData.filter(p => 
@@ -2759,43 +2830,88 @@ const ProfileSystem = ({ targetProfile, onMessageClick, onEditProfile, onUserCli
                     p.displayName?.toLowerCase().includes(followListSearchFilter.toLowerCase())
                   );
                   return filtered.length > 0 ? (
-                    filtered.map(p => (
-                      <div 
-                        key={p.id} 
-                        className="flex items-center gap-3 p-3 bg-white/[0.02] border border-white/5 rounded-2xl group hover:border-aeirmist-cyan/30 transition-all cursor-pointer"
-                        onClick={() => {
-                          onUserClick?.(p);
-                          setFollowListType(null);
-                          setFollowListSearchFilter('');
-                        }}
-                      >
-                         <div className="w-10 h-10 rounded-xl border border-white/10 p-0.5 overflow-hidden shrink-0">
-                            <img src={getAvatarUrl(p.photoURL)} className="w-full h-full object-cover rounded-[0.5rem]" alt="" />
-                         </div>
-                         <div className="flex-1 min-w-0">
-                            <p className="text-xs font-black flex items-center gap-1">@{p.username}{p.isVerified && <ShieldCheck size={10} className="text-aeirmist-cyan shrink-0" />}</p>
-                            <p className="text-[9px] text-white/40 font-bold uppercase tracking-wider truncate">{p.displayName}</p>
-                         </div>
-                         <button className="p-2 text-aeirmist-cyan hover:bg-aeirmist-cyan/10 rounded-lg transition-all">
-                           <ExternalLink size={14} />
-                         </button>
-                      </div>
-                    ))
+                    filtered.map(p => {
+                      const isSelf = p.id === profile?.id;
+                      const isFollowingUser = checkIsFollowing(p.id);
+                      const isPending = isFollowPending(p.id);
+
+                      return (
+                        <div 
+                          key={p.id} 
+                          className="flex items-center gap-3 p-2.5 bg-white/[0.02] border border-white/5 rounded-2xl hover:bg-white/[0.05] hover:border-white/10 transition-all cursor-pointer group"
+                          onClick={() => {
+                            onUserClick?.(p);
+                            setFollowListType(null);
+                            setFollowListSearchFilter('');
+                          }}
+                        >
+                           <div className="w-11 h-11 rounded-full border border-white/10 overflow-hidden shrink-0 p-0.5">
+                              <img src={getAvatarUrl(p.photoURL)} className="w-full h-full object-cover rounded-full" alt="" />
+                           </div>
+                           <div className="flex-1 min-w-0">
+                              <p className="text-xs font-bold text-white flex items-center gap-1 truncate">
+                                {p.displayName || p.username}
+                                {p.isVerified && <ShieldCheck size={12} className="text-aeirmist-cyan shrink-0" />}
+                              </p>
+                              <p className="text-[10px] text-white/40 font-medium truncate">@{p.username || 'user'}</p>
+                           </div>
+
+                           {/* Action Buttons */}
+                           <div className="shrink-0 flex items-center" onClick={(e) => e.stopPropagation()}>
+                             {isOwnProfile && followListType === 'followers' ? (
+                               <button 
+                                 onClick={() => handleRemoveFollower(p.id)}
+                                 className="px-3.5 py-1.5 rounded-xl bg-white/10 hover:bg-red-500/20 hover:border-red-500/40 text-xs font-bold text-white/80 hover:text-red-400 border border-white/10 transition-all cursor-pointer"
+                               >
+                                 Remove
+                               </button>
+                             ) : isSelf ? (
+                               <span className="text-[10px] font-bold text-white/30 uppercase tracking-wider px-2">You</span>
+                             ) : isFollowingUser ? (
+                               <button 
+                                 onClick={() => toggleFollow(p.id, p)}
+                                 className="px-3.5 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-xs font-bold text-white border border-white/10 transition-all cursor-pointer"
+                               >
+                                 Following
+                               </button>
+                             ) : isPending ? (
+                               <button 
+                                 onClick={() => toggleFollow(p.id, p)}
+                                 className="px-3.5 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-xs font-bold text-white/50 border border-white/5 transition-all cursor-pointer"
+                               >
+                                 Requested
+                               </button>
+                             ) : (
+                               <button 
+                                 onClick={() => toggleFollow(p.id, p)}
+                                 className="px-4 py-1.5 rounded-xl bg-gradient-to-r from-aeirmist-cyan to-blue-500 text-black text-xs font-bold shadow-[0_0_15px_rgba(0,204,255,0.25)] hover:opacity-90 active:scale-95 transition-all cursor-pointer"
+                               >
+                                 Follow
+                               </button>
+                             )}
+                           </div>
+                        </div>
+                      );
+                    })
                   ) : (
-                    <div className="flex flex-col items-center justify-center py-16 opacity-20">
-                      <Ghost size={40} className="mb-3" />
-                      <span className="text-[8px] font-black uppercase tracking-[0.4em] font-mono">No nodes match filter</span>
+                    <div className="flex flex-col items-center justify-center py-20 opacity-30 text-center">
+                      <Ghost size={36} className="mb-2 text-white/40" />
+                      <span className="text-xs font-bold text-white/60">
+                        {followListSearchFilter ? 'No users found' : `No ${followListType} yet`}
+                      </span>
                     </div>
                   );
                 })()}
               </div>
               
-              <button 
-                onClick={() => { setFollowListType(null); setFollowListSearchFilter(''); }} 
-                className="mt-4 w-full py-3 text-[10px] font-black uppercase tracking-widest text-white/30 hover:text-white transition-all shrink-0 border-t border-white/5"
-              >
-                Dismiss
-              </button>
+              <div className="p-3 border-t border-white/5 shrink-0">
+                <button 
+                  onClick={() => { setFollowListType(null); setFollowListSearchFilter(''); }} 
+                  className="w-full py-2.5 text-xs font-bold uppercase tracking-wider text-white/40 hover:text-white transition-all rounded-xl hover:bg-white/5"
+                >
+                  Close
+                </button>
+              </div>
             </motion.div>
           </div>
         )}

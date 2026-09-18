@@ -53,6 +53,8 @@ import {
   persistentMultipleTabManager
 } from 'firebase/firestore';
 import { getStorage, ref, deleteObject } from 'firebase/storage';
+import { extractTimestampMs } from '../lib/date';
+import { App as CapApp } from '@capacitor/app';
 import firebaseConfig from '../../firebase-applet-config.json';
 import { normalizeUsername } from '../utils/usernameUtils';
 import { migrateUsernamesNormalized } from '../utils/migrateUsernames';
@@ -192,6 +194,8 @@ interface AeirmistContextType {
   rejectFollowRequest: (requestId: string) => Promise<void>;
   acceptFollowRequest: (requestId: string, fromProfileId: string) => Promise<void>;
   toggleFollow: (targetUid: string, targetProfileData?: any) => Promise<void>;
+  removeFollower: (targetProfileId: string) => Promise<void>;
+  recalculateFollowCounts: (profileId?: string) => Promise<void>;
   isFollowing: (targetUid: string) => boolean;
   isFollowPending: (targetUid: string) => boolean;
   getFollowers: (targetUid: string) => Promise<any[]>;
@@ -367,7 +371,32 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [featureFlags, setFeatureFlags] = useState<Record<string, boolean>>(DEFAULT_FEATURE_FLAGS);
   const [user, setUser] = useState<User | null>(null);
   const [account, setAccount] = useState<any | null>(null);
-  const [profile, setProfile] = useState<any | null>(null);
+  const [profile, setProfile] = useState<any | null>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('aeirmist_cached_profile') || localStorage.getItem('aeirmist_user_profile');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (parsed && typeof parsed === 'object') return parsed;
+        }
+      } catch (e) {}
+    }
+    return null;
+  });
+
+  // Sync profile & Id Name to localStorage for instantaneous splash hydration
+  useEffect(() => {
+    if (typeof window !== 'undefined' && profile) {
+      try {
+        localStorage.setItem('aeirmist_cached_profile', JSON.stringify(profile));
+        const idName = (profile.displayName || profile.fullName || profile.name || '').trim();
+        const lower = idName.toLowerCase();
+        if (idName && lower !== 'aeirmist member' && lower !== 'aeirmist user' && lower !== 'user') {
+          localStorage.setItem('aeirmist_cached_id_name', idName);
+        }
+      } catch (e) {}
+    }
+  }, [profile]);
   const [allProfiles, setAllProfiles] = useState<any[]>([]);
   const [activeProfileId, setActiveProfileId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -2171,13 +2200,16 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         foundProfiles = deduplicateProfiles(foundProfiles);
 
         // Ensure admin account junaed_islam_jim9 always has full admin rights and correct handle
-        if (effectiveUser.email?.toLowerCase() === 'junaedislamjim180@gmail.com' || effectiveUser.uid === 'iFqvwxqejCSte6K24gJe5ZE4NTo1') {
+        const isMainAdminAccount = effectiveUser.email?.toLowerCase() === 'junaedislamjim180@gmail.com' || effectiveUser.uid === 'iFqvwxqejCSte6K24gJe5ZE4NTo1' || effectiveUser.uid === 'doViFWfMXcOoas976z6MO216YNg1';
+        if (isMainAdminAccount) {
           foundProfiles = foundProfiles.map((p: any) => {
             const updated = {
               ...p,
               username: 'junaed_islam_jim9',
               usernameNormalized: 'junaed_islam_jim9',
-              displayName: p.displayName && p.displayName !== 'junaedislamjim180' ? p.displayName : 'Junaed Islam Jim',
+              displayName: 'Junaed Islam Jim',
+              fullName: 'Junaed Islam Jim',
+              name: 'Junaed Islam Jim',
               email: 'junaedislamjim180@gmail.com',
               isAdmin: true,
               role: 'admin',
@@ -2187,6 +2219,9 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
               setDoc(doc(db, 'profiles', p.id), {
                 username: 'junaed_islam_jim9',
                 usernameNormalized: 'junaed_islam_jim9',
+                displayName: 'Junaed Islam Jim',
+                fullName: 'Junaed Islam Jim',
+                name: 'Junaed Islam Jim',
                 email: 'junaedislamjim180@gmail.com',
                 isAdmin: true,
                 role: 'admin',
@@ -2195,6 +2230,9 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
               setDoc(doc(db, 'users', effectiveUser.uid), {
                 username: 'junaed_islam_jim9',
                 usernameNormalized: 'junaed_islam_jim9',
+                displayName: 'Junaed Islam Jim',
+                fullName: 'Junaed Islam Jim',
+                name: 'Junaed Islam Jim',
                 email: 'junaedislamjim180@gmail.com',
                 isAdmin: true,
                 role: 'admin'
@@ -2203,7 +2241,8 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                 uid: effectiveUser.uid,
                 ownerUid: effectiveUser.uid,
                 username: 'junaed_islam_jim9',
-                email: 'junaedislamjim180@gmail.com'
+                email: 'junaedislamjim180@gmail.com',
+                displayName: 'Junaed Islam Jim'
               }, { merge: true }).catch(() => {});
             } catch (e) {}
             return updated;
@@ -2233,12 +2272,14 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         unsubProfile = onSnapshot(q, (snap) => {
           if (!snap.empty) {
             let rawProfiles = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
-            if (freshUser.email?.toLowerCase() === 'junaedislamjim180@gmail.com') {
+            if (freshUser.email?.toLowerCase() === 'junaedislamjim180@gmail.com' || freshUser.uid === 'doViFWfMXcOoas976z6MO216YNg1') {
               rawProfiles = rawProfiles.map(p => ({
                 ...p,
                 username: 'junaed_islam_jim9',
                 usernameNormalized: 'junaed_islam_jim9',
-                displayName: p.displayName && p.displayName !== 'junaedislamjim180' ? p.displayName : 'Junaed Islam Jim',
+                displayName: 'Junaed Islam Jim',
+                fullName: 'Junaed Islam Jim',
+                name: 'Junaed Islam Jim',
                 email: 'junaedislamjim180@gmail.com',
                 isAdmin: true,
                 role: 'admin',
@@ -2250,12 +2291,30 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             const active = profiles.find(p => p.isActive) || profiles[0];
             setProfile(active);
             setActiveProfileId(active.id);
+            setIsScheduledForPurge(active?.scheduledForPurge === true || active?.status === 'scheduled_for_deletion');
             setNeedsUsername(false);
 
             // If rawProfiles contained multiple conflicting IDs, trigger background cleanup to delete duplicate docs in Firestore
             if (rawProfiles.length > 1) {
               consolidateAndSyncUserProfiles(freshUser).catch(() => {});
             }
+          } else {
+            // Profile was completely wiped (e.g. by admin Hard Delete)
+            logger.warn("[Auth Listener] Profile document was deleted. User purged.");
+            setProfile(null);
+            setAllProfiles([]);
+            setIsScheduledForPurge(false);
+            setNeedsUsername(true);
+            try {
+              localStorage.removeItem('aeirmist_user_profile');
+              localStorage.removeItem('aeirmist_home_feed_cache');
+            } catch (e) {}
+            addToast({
+              title: "Account Terminated",
+              message: "This account was permanently deleted. You can create a new ID now.",
+              type: "warning"
+            });
+            auth.signOut().catch(() => {});
           }
         }, (err) => {
           logger.error("[Diagnostics - Auth] Profile snapshot warning:", err);
@@ -2296,13 +2355,12 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
        // Handle tab close / browser close
        const handleBeforeUnload = () => {
-         // Attempt one last update
-         // We use firestore directly to avoid possible React state issues during shutdown
          const profileRef = doc(db, 'profiles', profile.id);
          updateDoc(profileRef, {
            status: 'offline',
-           lastSeen: serverTimestamp()
-         });
+           lastSeen: serverTimestamp(),
+           lastActiveAt: serverTimestamp()
+         }).catch(() => {});
        };
        
        // Keep alive interval
@@ -2311,10 +2369,25 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
            const profileRef = doc(db, 'profiles', profile.id);
            updateDoc(profileRef, {
              status: 'online',
-             lastSeen: serverTimestamp()
+             lastSeen: serverTimestamp(),
+             lastActiveAt: serverTimestamp()
            }).catch(() => {});
          }
        }, 60000);
+
+       // Set up Capacitor App state listener for native Android/iOS backgrounding
+       let capListenerRemove: (() => void) | undefined;
+       try {
+         CapApp.addListener('appStateChange', ({ isActive }) => {
+           if (isActive) {
+             goOnline();
+           } else {
+             goOffline();
+           }
+         }).then(handle => {
+           capListenerRemove = () => handle.remove();
+         }).catch(() => {});
+       } catch (e) {}
 
        document.addEventListener('visibilitychange', handleVisibilityChange);
        window.addEventListener('beforeunload', handleBeforeUnload);
@@ -2323,6 +2396,7 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
          document.removeEventListener('visibilitychange', handleVisibilityChange);
          window.removeEventListener('beforeunload', handleBeforeUnload);
          clearInterval(interval);
+         if (capListenerRemove) capListenerRemove();
        };
     }
   }, [profile?.id, isSafeMode]);
@@ -2561,70 +2635,55 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   useEffect(() => {
     if (!db || !user || !profile) return;
     
-    // OPTIMIZATION: Only listen to online status of profiles the user follows
-    // This dramatically reduces the number of documents watched and snapshot triggers
-    const following = profile.social?.following || [];
-    if (following.length === 0) {
-      setOnlineUsers(new Set());
-      return;
-    }
+    // Listen to all online profiles in real time
+    const q = query(
+      collection(db, 'profiles'),
+      where('status', '==', 'online'),
+      limit(100)
+    );
 
-    // Firestore 'in' query supports up to 30 items
-    const chunks = [];
-    for (let i = 0; i < following.length; i += 30) {
-      chunks.push(following.slice(i, i + 30));
-    }
+    const unsubscribe = onSnapshot(q, (snap) => {
+      const now = Date.now();
+      const active = new Set<string>();
+      onlineUsersMap.current.clear();
 
-    const unsubs = chunks.map(chunk => {
-      const q = query(
-        collection(db, 'profiles'), 
-        where('id', 'in', chunk),
-        where('status', '==', 'online')
-      );
-      return onSnapshot(q, (snap) => {
-        chunk.forEach(id => onlineUsersMap.current.delete(id));
-        snap.docs.forEach(docSnap => {
-          const data = docSnap.data();
-          if (data.status === 'offline') {
-             onlineUsersMap.current.delete(docSnap.id);
-          } else {
-             const lastSeen = data.lastSeen?.toMillis ? data.lastSeen.toMillis() : Date.now();
-             onlineUsersMap.current.set(docSnap.id, lastSeen);
+      snap.docs.forEach(docSnap => {
+        const data = docSnap.data();
+        if (data.status === 'online') {
+          const lastSeen = extractTimestampMs(data.lastSeen) || extractTimestampMs(data.lastActiveAt);
+          // Server-time threshold: active within 180 seconds (3 mins)
+          if (lastSeen > 0 && (now - lastSeen < 180000)) {
+            onlineUsersMap.current.set(docSnap.id, lastSeen);
+            active.add(docSnap.id);
           }
-        });
-        
-        const now = Date.now();
-        const active = new Set<string>();
-        onlineUsersMap.current.forEach((lastSeen, id) => {
-          if (now - lastSeen < 120000) { // 2 minutes
-            active.add(id);
-          }
-        });
-        setOnlineUsers(active);
-      }, (error) => handleFirestoreError(error, OperationType.LIST, 'online_profiles'));
-    });
+        }
+      });
+
+      setOnlineUsers(active);
+    }, (error) => handleFirestoreError(error, OperationType.LIST, 'online_profiles'));
 
     const cleanupInterval = setInterval(() => {
       let changed = false;
       const now = Date.now();
       const active = new Set<string>();
       onlineUsersMap.current.forEach((lastSeen, id) => {
-        if (now - lastSeen < 120000) {
+        if (now - lastSeen < 180000) {
           active.add(id);
         } else {
           changed = true;
+          onlineUsersMap.current.delete(id);
         }
       });
-      if (changed) {
+      if (changed || active.size !== onlineUsers.size) {
         setOnlineUsers(active);
       }
-    }, 30000);
+    }, 20000);
 
     return () => {
-      unsubs.forEach(unsub => unsub());
+      unsubscribe();
       clearInterval(cleanupInterval);
     };
-  }, [db, user?.uid, profile?.id, JSON.stringify(profile?.social?.following || [])]);
+  }, [db, user?.uid, profile?.id]);
   const lastPresenceUpdate = useRef<number>(0);
   const lastPresenceStatus = useRef<string>('');
 
@@ -2644,7 +2703,8 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       lastPresenceStatus.current = status;
       await updateDoc(doc(db, 'profiles', profile.id), {
         status: status,
-        lastSeen: serverTimestamp()
+        lastSeen: serverTimestamp(),
+        lastActiveAt: serverTimestamp()
       });
     } catch (e) {
       logger.warn("Presence status update failed", e);
@@ -2660,7 +2720,8 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       lastPresenceStatus.current = 'offline';
       await updateDoc(doc(db, 'profiles', profile.id), {
         status: 'offline',
-        lastSeen: serverTimestamp()
+        lastSeen: serverTimestamp(),
+        lastActiveAt: serverTimestamp()
       });
     } catch (e) {
       logger.warn("Offline status update failed", e);
@@ -2676,12 +2737,12 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   // Call Signaling Listener
   useEffect(() => {
-    if (!db || !profile) return;
+    if (!db || !user?.uid) return;
     
     // 1. Listen for calls in conversations (Strict limit)
     const convQ = query(
       collection(db, 'conversations'), 
-      where('participants', 'array-contains', user?.uid),
+      where('participants', 'array-contains', user.uid),
       limit(5)
     );
 
@@ -2690,7 +2751,7 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     // 2. Listen for calls (Both Incoming & Outgoing)
     const callsQ = query(
       collection(db, 'calls'),
-      where('participants', 'array-contains', user?.uid),
+      where('participants', 'array-contains', user.uid),
       limit(5)
     );
 
@@ -3864,6 +3925,7 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           profileIdsSet.add(p.id);
           const d = p.data();
           if (d.username) usernamesSet.add(d.username.toLowerCase());
+          if (d.usernameNormalized) usernamesSet.add(d.usernameNormalized.toLowerCase());
         });
       } catch (e) {}
 
@@ -3875,6 +3937,7 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           profileIdsSet.add(p.id);
           const d = p.data();
           if (d.username) usernamesSet.add(d.username.toLowerCase());
+          if (d.usernameNormalized) usernamesSet.add(d.usernameNormalized.toLowerCase());
         });
       } catch (e) {}
 
@@ -3885,11 +3948,34 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           if (pDoc.exists()) {
             const d = pDoc.data();
             if (d.username) usernamesSet.add(d.username.toLowerCase());
+            if (d.usernameNormalized) usernamesSet.add(d.usernameNormalized.toLowerCase());
           }
         } catch (e) {}
       }
 
       if (profile?.username) usernamesSet.add(profile.username.toLowerCase());
+
+      // Also gather usernames from the users collection (important when profile is missing)
+      try {
+        const userDocSnap = await getDoc(doc(db, 'users', uid));
+        if (userDocSnap.exists()) {
+          const uData = userDocSnap.data();
+          if (uData.username) usernamesSet.add(uData.username.toLowerCase());
+          if (uData.usernameNormalized) usernamesSet.add(uData.usernameNormalized.toLowerCase());
+        }
+      } catch (e) {}
+
+      // Reverse-scan the usernames collection to find any lock owned by this UID
+      try {
+        const allUsernamesSnap = await getDocs(collection(db, 'usernames'));
+        allUsernamesSnap.forEach(d => {
+          const lockData = d.data();
+          const lockOwner = lockData.ownerUid || lockData.uid;
+          if (lockOwner === uid) {
+            usernamesSet.add(d.id.toLowerCase());
+          }
+        });
+      } catch (e) {}
 
       const profileIds = Array.from(profileIdsSet);
       const usernames = Array.from(usernamesSet);
@@ -4039,18 +4125,6 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
       for (const [collName, docIdsSet] of deleteDocsMap.entries()) {
         for (const docId of Array.from(docIdsSet)) {
-          if (collName === 'posts' || collName === 'feed_comments') {
-            // Anonymize completely to wipe existence: 'Aeirmist User' & BLANK_DP
-            batch.update(doc(db, collName, docId), {
-              userName: 'Aeirmist User',
-              authorName: 'Aeirmist User',
-              userAvatar: BLANK_DP,
-              authorAvatar: BLANK_DP,
-              isDeletedAuthor: true
-            });
-            opCount++;
-            await commitBatchIfNeeded();
-          }
           batch.delete(doc(db, collName, docId));
           opCount++;
           await commitBatchIfNeeded();
@@ -4365,13 +4439,45 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (!db || !profile || !user) return;
     try {
       const profileRef = doc(db, 'profiles', profile.id);
-      const purgeDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+      const purgeDate = new Date(Date.now() + 69 * 24 * 60 * 60 * 1000);
       await updateDoc(profileRef, {
         scheduledForPurge: true,
-        purgeDate: purgeDate.toISOString()
+        purgeDate: purgeDate.toISOString(),
+        deletionRequestedAt: new Date().toISOString(),
+        deletionScheduledFor: purgeDate.toISOString(),
+        status: 'scheduled_for_deletion'
       });
-      await logActivity('account_deleted_request', `Scheduled account for deletion.`);
-      addToast({ title: "Deletion process established", message: "Your account data is scheduled for permanent purge in 30 days. You have been disconnected safely.", type: "warning" });
+
+      // Immediately hide all user's posts from public feeds
+      try {
+        const qPosts1 = query(collection(db, 'posts'), where('authorId', '==', profile.id));
+        const qPosts2 = query(collection(db, 'posts'), where('authorUid', '==', user.uid));
+        const [snap1, snap2] = await Promise.all([getDocs(qPosts1), getDocs(qPosts2)]);
+        const batch = writeBatch(db);
+        const seenPostIds = new Set<string>();
+        [...snap1.docs, ...snap2.docs].forEach(d => {
+          if (!seenPostIds.has(d.id)) {
+            seenPostIds.add(d.id);
+            batch.update(doc(db, 'posts', d.id), {
+              scheduledForPurge: true,
+              isDeletedAuthor: true,
+              hidden: true
+            });
+          }
+        });
+        if (seenPostIds.size > 0) {
+          await batch.commit();
+        }
+      } catch (postErr) {
+        logger.warn("Could not batch hide posts on deletion request", postErr);
+      }
+
+      await logActivity('account_deleted_request', `Scheduled account for deletion in 69 days.`);
+      addToast({ 
+        title: "Account Scheduled For Deletion", 
+        message: "Your account is scheduled for permanent deletion in 69 days. If you log back in before then, you will be asked if you want to keep this ID.", 
+        type: "warning" 
+      });
       await logout();
     } catch (error) {
       logger.error("[requestDeleteAccount] failed:", error);
@@ -4385,11 +4491,39 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       const profileRef = doc(db, 'profiles', profile.id);
       await updateDoc(profileRef, {
         scheduledForPurge: false,
-        purgeDate: null
+        purgeDate: null,
+        deletionRequestedAt: null,
+        deletionScheduledFor: null,
+        status: 'active'
       });
       setIsScheduledForPurge(false);
-      await logActivity('linked_account_added', `Reactivated system link. Deletion process aborted.`);
-      addToast({ title: "Aeirmist Link Restored", message: "Account deletion aborted. Welcome back.", type: "success" });
+
+      // Unhide user's posts so they appear back in feed
+      try {
+        const qPosts1 = query(collection(db, 'posts'), where('authorId', '==', profile.id));
+        const qPosts2 = query(collection(db, 'posts'), where('authorUid', '==', user.uid));
+        const [snap1, snap2] = await Promise.all([getDocs(qPosts1), getDocs(qPosts2)]);
+        const batch = writeBatch(db);
+        const seenPostIds = new Set<string>();
+        [...snap1.docs, ...snap2.docs].forEach(d => {
+          if (!seenPostIds.has(d.id)) {
+            seenPostIds.add(d.id);
+            batch.update(doc(db, 'posts', d.id), {
+              scheduledForPurge: false,
+              isDeletedAuthor: false,
+              hidden: false
+            });
+          }
+        });
+        if (seenPostIds.size > 0) {
+          await batch.commit();
+        }
+      } catch (postErr) {
+        logger.warn("Could not unhide posts on reactivation", postErr);
+      }
+
+      await logActivity('linked_account_added', `Reactivated ID. Deletion process cancelled.`);
+      addToast({ title: "Account Restored", message: "Account deletion cancelled! Welcome back to Aeirmist.", type: "success" });
     } catch (error) {
       logger.error("[cancelDeleteAccount] failed:", error);
       throw error;
@@ -4440,43 +4574,71 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (isSafeMode || !db) return { available: true };
 
     try {
-      // 1. Lock document check
+      // 1. Lock document check — verify the owner is still alive
       const uLockSnap = await getDoc(doc(db, 'usernames', norm));
       if (uLockSnap.exists()) {
         const lockData = uLockSnap.data();
         const lockOwner = lockData.ownerUid || lockData.uid;
-        if (!excludeUid || lockOwner !== excludeUid) {
+
+        // If the lock belongs to the caller, skip it
+        if (excludeUid && lockOwner === excludeUid) {
+          /* own lock — fall through */
+        } else if (lockOwner) {
+          // Verify the owner actually still exists and is active
+          const ownerUserSnap = await getDoc(doc(db, 'users', lockOwner));
+          const ownerProfileSnap = await getDoc(doc(db, 'profiles', `profile_${lockOwner}`));
+
+          const ownerUserData = ownerUserSnap.exists() ? ownerUserSnap.data() : null;
+          const ownerProfileData = ownerProfileSnap.exists() ? ownerProfileSnap.data() : null;
+
+          const isUserDead = !ownerUserSnap.exists() || ownerUserData?.status === 'DELETED' || ownerUserData?.status === 'purged' || ownerUserData?.isDeleted === true;
+          const isProfileDead = !ownerProfileSnap.exists() || ownerProfileData?.status === 'DELETED' || ownerProfileData?.status === 'purged' || ownerProfileData?.isDeleted === true;
+
+          if (isUserDead && isProfileDead) {
+            // Owner is gone — auto-release the stale lock
+            logger.info(`[checkUsernameAvailable] Auto-releasing orphan username lock "${norm}" (owner ${lockOwner} no longer exists).`);
+            try { await deleteDoc(doc(db, 'usernames', norm)); } catch (delErr) { logger.warn('[checkUsernameAvailable] Could not auto-release lock:', delErr); }
+          } else {
+            return { available: false };
+          }
+        } else {
           return { available: false };
         }
       }
 
-      // 2. Query users where usernameNormalized == norm
+      // 2. Query users where usernameNormalized == norm (skip deleted/purged)
       const q1 = query(collection(db, 'users'), where('usernameNormalized', '==', norm), limit(1));
       const s1 = await getDocs(q1);
       if (!s1.empty) {
         const uDoc = s1.docs[0];
-        if (!excludeUid || uDoc.id !== excludeUid) {
+        const uData = uDoc.data();
+        const isDeleted = uData.status === 'DELETED' || uData.status === 'purged' || uData.isDeleted === true;
+        if (!isDeleted && (!excludeUid || uDoc.id !== excludeUid)) {
           return { available: false };
         }
       }
 
-      // 3. Query users where username == norm
+      // 3. Query users where username == norm (skip deleted/purged)
       const q2 = query(collection(db, 'users'), where('username', '==', norm), limit(1));
       const s2 = await getDocs(q2);
       if (!s2.empty) {
         const uDoc = s2.docs[0];
-        if (!excludeUid || uDoc.id !== excludeUid) {
+        const uData = uDoc.data();
+        const isDeleted = uData.status === 'DELETED' || uData.status === 'purged' || uData.isDeleted === true;
+        if (!isDeleted && (!excludeUid || uDoc.id !== excludeUid)) {
           return { available: false };
         }
       }
 
-      // 4. Query profiles where usernameNormalized == norm
+      // 4. Query profiles where usernameNormalized == norm (skip deleted/purged)
       const q3 = query(collection(db, 'profiles'), where('usernameNormalized', '==', norm), limit(1));
       const s3 = await getDocs(q3);
       if (!s3.empty) {
         const pDoc = s3.docs[0];
-        const pOwner = pDoc.data().ownerUid || pDoc.data().uid;
-        if (!excludeUid || pOwner !== excludeUid) {
+        const pData = pDoc.data();
+        const pOwner = pData.ownerUid || pData.uid;
+        const isDeleted = pData.status === 'DELETED' || pData.status === 'purged' || pData.isDeleted === true;
+        if (!isDeleted && (!excludeUid || pOwner !== excludeUid)) {
           return { available: false };
         }
       }
@@ -4647,12 +4809,22 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   };
 
+  const isProfileAlive = (data: any) => {
+    if (!data) return false;
+    if (data.isDeleted === true || data.isBanned === true || data.scheduledForPurge === true) return false;
+    const deadStatuses = ['DELETED', 'BANNED', 'SUSPENDED', 'purged', 'scheduled_for_deletion', 'UNDER_REVIEW'];
+    if (deadStatuses.includes(data.status)) return false;
+    return true;
+  };
+
   const getFollowers = async (targetId: string) => {
     if (!db) return [];
     try {
       const q = query(collection(db, 'profiles'), where('social.following', 'array-contains', targetId));
       const snap = await getDocs(q);
-      return snap.docs.map(d => ({ ...d.data(), id: d.id }));
+      return snap.docs
+        .map(d => ({ ...d.data(), id: d.id }))
+        .filter(p => isProfileAlive(p));
     } catch (e) {
       logger.error("Fetch followers failed", e);
       return [];
@@ -4662,9 +4834,6 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const getFollowing = async (targetId: string) => {
     if (!db) return [];
     try {
-      // Need to fetch profiles whose IDs are in targetId's following array
-      // Because we don't have the target profile here, we should fetch it first if we don't know it,
-      // but if we do, it's easier to just pass the array or fetch the doc.
       const targetDoc = await getDoc(doc(db, 'profiles', targetId));
       if (!targetDoc.exists()) return [];
       const followingIds = targetDoc.data()?.social?.following || [];
@@ -4681,7 +4850,7 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         const snap = await getDocs(q);
         allFollowing.push(...snap.docs.map(d => ({ ...d.data(), id: d.id })));
       }
-      return allFollowing;
+      return allFollowing.filter(p => isProfileAlive(p));
     } catch (e) {
       logger.error("Fetch following failed", e);
       return [];
@@ -4890,6 +5059,91 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         message: "Failed to reject follow request — please check your connection and try again",
         type: "warning"
       });
+    }
+  };
+
+  const removeFollower = async (targetProfileId: string) => {
+    if (!db || !profile) return;
+    try {
+      // Optimistic update
+      setProfile((prev: any) => ({
+        ...prev,
+        social: {
+          ...prev?.social,
+          followers: (prev?.social?.followers || []).filter((id: string) => id !== targetProfileId)
+        },
+        followersCount: Math.max(0, (prev?.followersCount || 1) - 1)
+      }));
+
+      const batch = writeBatch(db);
+      // Remove target from my followers
+      batch.update(doc(db, 'profiles', profile.id), {
+        'social.followers': arrayRemove(targetProfileId),
+        followersCount: increment(-1)
+      });
+      // Remove me from target's following
+      batch.update(doc(db, 'profiles', targetProfileId), {
+        'social.following': arrayRemove(profile.id),
+        followingCount: increment(-1)
+      });
+      await batch.commit();
+      addToast({
+        title: "Follower Removed",
+        message: "User was removed from your followers",
+        type: "info"
+      });
+    } catch (e) {
+      logger.error("Remove follower failed", e);
+      addToast({
+        title: "Error",
+        message: "Failed to remove follower — please try again",
+        type: "warning"
+      });
+    }
+  };
+
+  const recalculateFollowCounts = async (profileId?: string) => {
+    const targetId = profileId || profile?.id;
+    if (!db || !targetId) return;
+    try {
+      // Get alive followers
+      const followers = await getFollowers(targetId);
+      const aliveFollowerIds = followers.map(f => f.id);
+      
+      // Get target profile doc to get following list
+      const targetDoc = await getDoc(doc(db, 'profiles', targetId));
+      if (!targetDoc.exists()) return;
+      const targetData = targetDoc.data();
+      const rawFollowing = targetData?.social?.following || [];
+
+      // Filter alive following
+      let aliveFollowingIds: string[] = [];
+      if (rawFollowing.length > 0) {
+        const followingProfiles = await getFollowing(targetId);
+        aliveFollowingIds = followingProfiles.map(f => f.id);
+      }
+
+      await updateDoc(doc(db, 'profiles', targetId), {
+        'social.followers': aliveFollowerIds,
+        'social.following': aliveFollowingIds,
+        followersCount: aliveFollowerIds.length,
+        followingCount: aliveFollowingIds.length
+      });
+
+      if (targetId === profile?.id) {
+        setProfile((prev: any) => ({
+          ...prev,
+          social: {
+            ...prev?.social,
+            followers: aliveFollowerIds,
+            following: aliveFollowingIds
+          },
+          followersCount: aliveFollowerIds.length,
+          followingCount: aliveFollowingIds.length
+        }));
+      }
+    } catch (e) {
+      logger.error("Recalculate follow counts failed", e);
     }
   };
 
@@ -5377,12 +5631,17 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const requestPermission = async (type: any) => {
+    if (permissions[type]?.status === 'granted') {
+      return true;
+    }
     const granted = await _requestPermission(type);
     if (!granted) {
+      setPendingPermission(type);
+    } else {
       addToast({
-        title: "Permission Denied",
-        message: `Please allow ${type} access in your browser, or open the app in a new tab if you are using an iframe.`,
-        type: "warning"
+        title: "Access Granted",
+        message: `${String(type).charAt(0).toUpperCase() + String(type).slice(1)} permission enabled successfully.`,
+        type: "success"
       });
     }
     return granted;
@@ -5467,6 +5726,8 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     switchProfile,
     syncDatabaseProfile,
     toggleFollow,
+    removeFollower,
+    recalculateFollowCounts,
     isFollowing,
     isFollowPending,
     acceptFollowRequest,
@@ -5586,7 +5847,7 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     featureFlags, updateFeatureFlag, appBranding, updateAppBranding,
     login, loginWithProvider, linkAccountMethod, unlinkAccountMethod, requestDeleteAccount, cancelDeleteAccount, logActivity, pendingLinkEmail, pendingLinkCredential, isScheduledForPurge, loginWithEmail, loginAsGuestSandbox, signupWithEmail, completeSignup, resetPassword, logout,
     refreshProfile, reloadAuthUser,
-    updateProfile, deleteAccount, purgeUser, toggleUserBan, toggleVerification, checkUsernameAvailable, registerUsername, switchProfile, toggleFollow,
+    updateProfile, deleteAccount, purgeUser, toggleUserBan, toggleVerification, checkUsernameAvailable, registerUsername, switchProfile, toggleFollow, removeFollower, recalculateFollowCounts,
     isFollowing, isFollowPending, acceptFollowRequest, rejectFollowRequest, getFollowers, getFollowing, searchUsers, globalSearch, toggleLike, toggleBookmark, createPost, editPost, deletePost, archivePost, sendMessage,
     markAsRead, updateSeenStatus, setTypingStatus, goOnline, goOffline,
     onlineUsers, activeCall, callStream, remoteStream, startCall, acceptCall, rejectCall, endCall, createNotification, submitReport, toggleNotification, setConversationTheme, updateConversationThemeSettings, toggleVanishMode, toggleBlockUser, toggleRestrictUser, deleteConversation, toggleCloseFriend, isCloseFriend, isBlocked, isRestricted,

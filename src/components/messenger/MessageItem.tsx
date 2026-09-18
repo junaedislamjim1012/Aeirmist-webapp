@@ -404,6 +404,24 @@ export const MessageItem = React.memo<{
                     className={`w-full h-auto object-cover hover:scale-105 transition-all duration-1000 max-h-[400px] sm:max-h-[500px] cursor-pointer ${message.isOptimistic ? 'blur-lg scale-110 grayscale' : ''} ${message.isFailed ? 'blur-sm opacity-50' : ''}`} 
                   />
                 )}
+                <div className="absolute bottom-2 right-2 bg-black/60 backdrop-blur-md px-2 py-0.5 rounded-full flex items-center gap-1 text-[10px] text-white/90 shadow-md pointer-events-none">
+                  <span className="font-medium tracking-tight whitespace-nowrap">
+                    {formatTimeOnly(message.timestampMs || message.timestamp)}
+                  </span>
+                  {isMe && !message.isFailed && (
+                    <span className="flex items-center ml-0.5">
+                      {message.isOptimistic ? (
+                        <Loader2 size={10} className="animate-spin text-white/40" />
+                      ) : (message.isSeen && !otherUserRestricted && profile?.messagingSettings?.readReceipts !== false) ? (
+                        <CheckCheck size={12} className="text-aeirmist-cyan" />
+                      ) : message.isDelivered ? (
+                        <CheckCheck size={12} className="text-white/60" />
+                      ) : (
+                        <Check size={12} className="text-white/40" />
+                      )}
+                    </span>
+                  )}
+                </div>
               </div>
             )}
 

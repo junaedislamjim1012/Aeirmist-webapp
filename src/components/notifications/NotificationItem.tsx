@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { motion } from 'motion/react';
+import React, { useState, useRef, useEffect } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { 
   Heart, 
   MessageSquare, 
@@ -11,7 +11,13 @@ import {
   X, 
   ShieldCheck, 
   Sparkles,
-  Shield
+  Shield,
+  MoreHorizontal,
+  CheckCheck,
+  Trash2,
+  BellOff,
+  ShoppingBag,
+  Tv
 } from 'lucide-react';
 import { getAvatarUrl as getAvatarUrlHelper, BLANK_DP } from '../../lib/avatar';
 
@@ -25,43 +31,66 @@ interface NotificationItemProps {
   onAction?: (id: string, action: string) => void;
   isProcessing?: boolean;
   onUserClick?: (user: any) => void;
+  isFollowingUser?: boolean;
+  onFollowToggle?: (userId: string) => void;
 }
 
 export const NotificationItem: React.FC<NotificationItemProps> = ({ 
   notification, 
   onMarkRead,
   onDelete,
+  onHideType,
+  onMuteUser,
   onViewSource,
   onAction,
   isProcessing,
-  onUserClick
+  onUserClick,
+  isFollowingUser,
+  onFollowToggle
 }) => {
   const [isHovered, setIsHovered] = useState(false);
+  const [showMenu, setShowMenu] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
 
-  // Time Formatter matching iOS style: Just Now, 30m ago, 2h ago, Yesterday, etc.
+  // Close context menu on click outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setShowMenu(false);
+      }
+    };
+    if (showMenu) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showMenu]);
+
+  // Meta / Instagram style time formatter
   const formatNotificationTime = (timestampMs: number): string => {
     if (!timestampMs) return 'Just now';
     const now = Date.now();
     const diffSec = Math.floor((now - timestampMs) / 1000);
     
     if (diffSec < 10) return 'Just now';
-    if (diffSec < 60) return `${diffSec}s ago`;
+    if (diffSec < 60) return `${diffSec}s`;
     
     const diffMin = Math.floor(diffSec / 60);
-    if (diffMin < 60) return `${diffMin}m ago`;
+    if (diffMin < 60) return `${diffMin}m`;
     
     const diffHr = Math.floor(diffMin / 60);
-    if (diffHr < 24) return `${diffHr}h ago`;
+    if (diffHr < 24) return `${diffHr}h`;
     
     const diffDay = Math.floor(diffHr / 24);
     if (diffDay === 1) return 'Yesterday';
-    if (diffDay < 7) return `${diffDay}d ago`;
+    if (diffDay < 7) return `${diffDay}d`;
     
     const diffWk = Math.floor(diffDay / 7);
-    if (diffWk < 4) return `${diffWk}w ago`;
+    if (diffWk < 4) return `${diffWk}w`;
     
     const diffMo = Math.floor(diffDay / 30);
-    return `${diffMo}mo ago`;
+    return `${diffMo}mo`;
   };
 
   const isSecurity = String(notification.type || '').toLowerCase().includes('security') || 
@@ -88,128 +117,137 @@ export const NotificationItem: React.FC<NotificationItemProps> = ({
     (notification.createdAt?.toMillis ? notification.createdAt.toMillis() : Date.now())
   );
 
-  // Exact mapping matching the iPhone reference screenshot
-  const getCardContent = () => {
+  // Meta-style sentence configuration and action icons
+  const getMetaContent = () => {
     const type = String(notification.type || '').toLowerCase();
-    const name = getUserDisplayName();
-    const handle = getUserHandle();
 
-    // Security & Device Logins
+    // Security & Logins
     if (isSecurity) {
       return {
-        title: 'New Sign-in Detected',
-        subtitle: notification.message || 'New sign-in detected on your account.',
-        badgeIcon: <ShieldCheck size={9} className="text-cyan-400" />,
-        badgeBg: 'bg-cyan-500/20 border-cyan-400/40 text-cyan-400',
-        countPill: null,
-        isSecurity: true
+        actionText: 'New sign-in detected on your account.',
+        badgeIcon: <ShieldCheck size={10} className="text-white" />,
+        badgeBg: 'bg-[#00B2FF]',
+        category: 'system'
       };
     }
 
     // Follow Request
     if (type === 'follow_request') {
       return {
-        title: name,
-        subtitle: `${handle} requested to follow you.`,
-        badgeIcon: <UserPlus size={9} className="text-amber-400" />,
-        badgeBg: 'bg-amber-500/30 border-amber-400/50 text-amber-400',
-        countPill: notification.groupedCount || null
+        actionText: 'requested to follow you.',
+        badgeIcon: <UserPlus size={10} className="text-white" />,
+        badgeBg: 'bg-[#F59E0B]',
+        category: 'social'
       };
     }
 
     // Follow Request Accepted
     if (type === 'follow_accept') {
       return {
-        title: 'Follow request accepted',
-        subtitle: `${handle} accepted your follow request.`,
-        badgeIcon: <Check size={9} className="text-emerald-400" />,
-        badgeBg: 'bg-emerald-500/30 border-emerald-400/50 text-emerald-400',
-        countPill: notification.groupedCount || 11
+        actionText: 'accepted your follow request.',
+        badgeIcon: <Check size={10} className="text-white" />,
+        badgeBg: 'bg-[#00BA7C]',
+        category: 'social'
       };
     }
 
     // Follow / Follow Back
     if (type === 'follow' || type === 'follow_back') {
       return {
-        title: name,
-        subtitle: `${handle} started following you.`,
-        badgeIcon: <UserPlus size={9} className="text-emerald-400" />,
-        badgeBg: 'bg-emerald-500/30 border-emerald-400/50 text-emerald-400',
-        countPill: notification.groupedCount || null
+        actionText: type === 'follow_back' ? 'followed you back.' : 'started following you.',
+        badgeIcon: <UserPlus size={10} className="text-white" />,
+        badgeBg: 'bg-[#1877F2]',
+        category: 'social'
       };
     }
 
     // Message Request
     if (type === 'message_request') {
       return {
-        title: name,
-        subtitle: `${handle} sent you a message request.`,
-        badgeIcon: <Mail size={9} className="text-cyan-400" />,
-        badgeBg: 'bg-cyan-500/30 border-cyan-400/50 text-cyan-400',
-        countPill: notification.groupedCount || 1
+        actionText: 'sent you a message request.',
+        badgeIcon: <Mail size={10} className="text-white" />,
+        badgeBg: 'bg-[#00B2FF]',
+        category: 'messages'
       };
     }
 
     // Message
     if (type === 'message' || type.includes('msg')) {
-      const rawText = notification.message || 'Sent you a message';
-      const cleanText = rawText.startsWith('Sent you') ? rawText : `"${rawText}"`;
       return {
-        title: name,
-        subtitle: cleanText,
-        badgeIcon: <Mail size={9} className="text-cyan-400" />,
-        badgeBg: 'bg-cyan-500/30 border-cyan-400/50 text-cyan-400',
-        countPill: notification.groupedCount || null
+        actionText: 'sent you a message.',
+        snippet: notification.message ? `"${notification.message}"` : null,
+        badgeIcon: <Mail size={10} className="text-white" />,
+        badgeBg: 'bg-[#00B2FF]',
+        category: 'messages'
       };
     }
 
     // Post / Comment Like
     if (type === 'like' || type === 'post_like' || type === 'comment_like') {
       return {
-        title: name,
-        subtitle: `${handle} liked your post.`,
-        badgeIcon: <Heart size={9} className="text-rose-500 fill-rose-500" />,
-        badgeBg: 'bg-rose-500/30 border-rose-400/50 text-rose-500',
-        countPill: notification.groupedCount || null
+        actionText: type === 'comment_like' ? 'liked your comment.' : 'liked your post.',
+        badgeIcon: <Heart size={10} className="text-white fill-white" />,
+        badgeBg: 'bg-[#E41E3F]',
+        category: 'social'
       };
     }
 
     // Comment
     if (type === 'comment' || type === 'comment_reply') {
       return {
-        title: name,
-        subtitle: notification.message || `${handle} commented on your post.`,
-        badgeIcon: <MessageSquare size={9} className="text-cyan-400" />,
-        badgeBg: 'bg-cyan-500/30 border-cyan-400/50 text-cyan-400',
-        countPill: notification.groupedCount || null
+        actionText: type === 'comment_reply' ? 'replied to your comment:' : 'commented on your post:',
+        snippet: notification.message ? `"${notification.message}"` : null,
+        badgeIcon: <MessageSquare size={10} className="text-white fill-white" />,
+        badgeBg: 'bg-[#00BA7C]',
+        category: 'social'
       };
     }
 
-    // Share / Video
+    // Video / Reel / Share
     if (type === 'share' || type.includes('video') || type.includes('reel')) {
       return {
-        title: name,
-        subtitle: `${handle} shared a video with you.`,
-        badgeIcon: <Video size={9} className="text-purple-400" />,
-        badgeBg: 'bg-purple-500/30 border-purple-400/50 text-purple-400',
-        countPill: notification.groupedCount || 54
+        actionText: 'shared a video with you.',
+        badgeIcon: <Video size={10} className="text-white" />,
+        badgeBg: 'bg-[#873CE0]',
+        category: 'videos'
+      };
+    }
+
+    // Story React / Reply
+    if (type.includes('story')) {
+      return {
+        actionText: type.includes('react') ? 'reacted to your story.' : 'replied to your story.',
+        badgeIcon: <Tv size={10} className="text-white" />,
+        badgeBg: 'bg-[#E41E3F]',
+        category: 'stories'
+      };
+    }
+
+    // Market / Product
+    if (type.includes('store') || type.includes('product') || type.includes('market')) {
+      return {
+        actionText: notification.message || 'interacted with your store.',
+        badgeIcon: <ShoppingBag size={10} className="text-white" />,
+        badgeBg: 'bg-[#FA7B17]',
+        category: 'marketplace'
       };
     }
 
     // Default Fallback
     return {
-      title: name,
-      subtitle: notification.message || notification.content || 'Sent you an alert.',
-      badgeIcon: <Bell size={9} className="text-white" />,
-      badgeBg: 'bg-white/20 border-white/30 text-white',
-      countPill: notification.groupedCount || null
+      actionText: notification.message || notification.content || 'sent you a notification.',
+      badgeIcon: <Bell size={10} className="text-white" />,
+      badgeBg: 'bg-[#1877F2]',
+      category: 'system'
     };
   };
 
-  const { title, subtitle, badgeIcon, badgeBg, countPill } = getCardContent();
+  const { actionText, snippet, badgeIcon, badgeBg } = getMetaContent();
   const isUnread = !(notification.read || notification.isRead);
+  const displayName = getUserDisplayName();
+  const targetUserId = notification.fromUserId || notification.user?.id || notification.user?.uid;
 
-  // Click routing
+  // Handle row click
   const handleCardClick = (e: React.MouseEvent) => {
     onMarkRead?.(notification.id);
 
@@ -218,9 +256,9 @@ export const NotificationItem: React.FC<NotificationItemProps> = ({
       'like', 'comment_like', 'post_like', 'comment', 'comment_reply', 'mention', 'story_mention'
     ].includes(String(notification.type).toLowerCase());
 
-    if (isProfileType && onUserClick && (notification.user || notification.fromUserId)) {
+    if (isProfileType && onUserClick && targetUserId) {
       const targetUser = {
-        id: notification.fromUserId || notification.user?.id || notification.user?.uid,
+        id: targetUserId,
         displayName: notification.user?.name || notification.user?.displayName || 'Aeirmist User',
         photoURL: getAvatarUrl(),
         username: notification.user?.username || 'user'
@@ -234,119 +272,206 @@ export const NotificationItem: React.FC<NotificationItemProps> = ({
   return (
     <motion.div
       layout
-      whileTap={{ scale: 0.985 }}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
       transition={{ duration: 0.15 }}
-      className={`relative group rounded-[22px] p-3.5 sm:p-4 bg-[#18181c]/80 hover:bg-[#202026]/90 border transition-all duration-200 backdrop-blur-2xl shadow-[0_10px_32px_rgba(0,0,0,0.55)] cursor-pointer overflow-hidden ${
-        isUnread ? 'border-white/20 shadow-[0_0_24px_rgba(255,255,255,0.08)]' : 'border-white/10'
+      className={`relative group rounded-xl p-3 sm:p-3.5 transition-all duration-150 cursor-pointer overflow-hidden ${
+        isUnread 
+          ? 'bg-[#1877F2]/[0.08] hover:bg-[#1877F2]/[0.12] border border-[#1877F2]/20' 
+          : 'bg-[#18191A]/60 hover:bg-[#242526] border border-white/[0.04]'
       }`}
       onClick={handleCardClick}
     >
-      <div className="flex items-center gap-3.5 min-w-0">
+      <div className="flex items-center gap-3 min-w-0">
         
-        {/* Left: Avatar or Security Icon with Badging */}
+        {/* Left: Avatar with Overlapping Meta Action Badge */}
         <div className="relative shrink-0">
           {isSecurity ? (
-            <div className="w-10 h-10 rounded-[14px] bg-gradient-to-br from-cyan-950/80 to-blue-900/60 border border-cyan-500/30 flex items-center justify-center text-cyan-400 shadow-inner">
-              <ShieldCheck size={20} />
+            <div className="w-11 h-11 rounded-full bg-gradient-to-br from-cyan-900/80 to-blue-900/60 border border-cyan-500/30 flex items-center justify-center text-cyan-300 shadow-inner">
+              <ShieldCheck size={22} />
             </div>
           ) : (
             <img 
               src={getAvatarUrl() || BLANK_DP} 
-              alt={title} 
+              alt={displayName} 
               referrerPolicy="no-referrer"
-              className="w-10 h-10 rounded-[14px] object-cover bg-black/60 border border-white/15 shadow-inner"
+              className="w-11 h-11 rounded-full object-cover bg-black/60 ring-1 ring-white/10 shadow-sm"
               onError={(e) => { (e.target as HTMLImageElement).src = BLANK_DP; }}
             />
           )}
 
-          {/* Top-Right Count Bubble (e.g. '11', '54' matching iOS reference) */}
-          {countPill ? (
-            <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-white text-black text-[10px] font-black flex items-center justify-center shadow-md">
-              {countPill}
-            </span>
-          ) : null}
-
-          {/* Bottom-Right Action Icon Badge */}
-          <div className={`absolute -bottom-1 -right-1 w-4.5 h-4.5 rounded-full ${badgeBg} border border-black flex items-center justify-center shadow-md`}>
+          {/* Overlapping Meta Action Badge */}
+          <div className={`absolute -bottom-1 -right-1 w-5 h-5 rounded-full ${badgeBg} ring-2 ring-[#18191A] flex items-center justify-center shadow-md`}>
             {badgeIcon}
           </div>
         </div>
 
-        {/* Center: Title & Subtitle */}
+        {/* Center: Meta Typography Single-Sentence Flow */}
         <div className="flex-1 min-w-0 pr-1">
-          <div className="flex items-center justify-between gap-1.5">
-            <div className="flex items-center gap-1.5 min-w-0 truncate">
-              <h4 className="text-[13px] sm:text-sm font-bold text-white tracking-tight truncate leading-tight">
-                {title}
-              </h4>
+          <p className="text-[13px] sm:text-[13.5px] leading-snug text-[#E4E6EB]">
+            <strong 
+              className="font-bold text-white hover:underline cursor-pointer inline-flex items-center gap-1 mr-1"
+              onClick={(e) => {
+                if (onUserClick && targetUserId && !isSecurity) {
+                  e.stopPropagation();
+                  onUserClick({
+                    id: targetUserId,
+                    displayName,
+                    photoURL: getAvatarUrl(),
+                    username: notification.user?.username || 'user'
+                  });
+                }
+              }}
+            >
+              {displayName}
               {notification.user?.isVerified && (
-                <ShieldCheck className="text-cyan-400 shrink-0" size={13} />
+                <ShieldCheck className="text-[#00B2FF] inline-block shrink-0" size={13} />
               )}
-            </div>
-
-            <div className="flex items-center gap-1.5 shrink-0">
-              <span className="text-[11px] text-zinc-400 font-medium whitespace-nowrap">
-                {displayTime}
-              </span>
-
-              {/* Delete Button */}
-              {onDelete && (
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onDelete(notification.id);
-                  }}
-                  className={`p-1 -mr-1 rounded-lg text-zinc-500 hover:text-rose-400 hover:bg-rose-500/20 transition-all ${
-                    isHovered ? 'opacity-100' : 'opacity-0 sm:opacity-0'
-                  }`}
-                  title="Remove"
-                >
-                  <X size={13} />
-                </button>
-              )}
-            </div>
-          </div>
-
-          <p className="text-xs text-zinc-200 font-normal leading-relaxed mt-0.5 truncate">
-            {subtitle}
+            </strong>
+            <span className="text-[#D8DADF]">{actionText}</span>
+            <span className="text-xs text-[#8A8D91] font-normal whitespace-nowrap ml-1.5">
+              {displayTime}
+            </span>
           </p>
 
-          {/* Follow Request Inline Actions (Accept / Delete buttons) */}
+          {/* Optional snippet (e.g. comment text) */}
+          {snippet && (
+            <p className="text-xs text-[#B0B3B8] line-clamp-1 mt-0.5 font-normal">
+              {snippet}
+            </p>
+          )}
+
+          {/* Follow Request Inline Actions (Confirm / Delete buttons) */}
           {notification.type === 'follow_request' && onAction && (
             <div className="flex items-center gap-2 mt-2.5" onClick={(e) => e.stopPropagation()}>
               <button
                 type="button"
                 onClick={() => onAction(notification.id, 'accept_follow')}
                 disabled={isProcessing}
-                className="px-4 py-1.5 rounded-full bg-white text-black hover:bg-zinc-200 text-xs font-bold transition-all disabled:opacity-50 cursor-pointer shadow-sm active:scale-95"
+                className="px-4 py-1.5 rounded-lg bg-[#0064E0] hover:bg-[#1877F2] text-white text-xs font-bold transition-all disabled:opacity-50 cursor-pointer shadow-sm active:scale-95"
               >
-                {isProcessing ? 'Accepting...' : 'Accept'}
+                {isProcessing ? 'Confirming...' : 'Confirm'}
               </button>
               <button
                 type="button"
                 onClick={() => onAction(notification.id, 'reject_follow')}
                 disabled={isProcessing}
-                className="px-4 py-1.5 rounded-full bg-white/10 hover:bg-white/15 text-zinc-200 text-xs font-semibold border border-white/10 transition-all disabled:opacity-50 cursor-pointer active:scale-95"
+                className="px-3.5 py-1.5 rounded-lg bg-[#3A3B3C] hover:bg-[#4E4F50] text-[#E4E6EB] text-xs font-semibold transition-all disabled:opacity-50 cursor-pointer active:scale-95"
               >
-                {isProcessing ? 'Declining...' : 'Delete'}
+                {isProcessing ? 'Deleting...' : 'Delete'}
               </button>
             </div>
           )}
         </div>
 
-        {/* Right: Media Thumbnail Preview */}
-        {(notification.metadata?.postImage || notification.metadata?.thumbnail) && (
-          <div className="shrink-0 w-10 h-10 rounded-xl overflow-hidden border border-white/15 bg-black/50 ml-0.5 shadow-sm">
-            <img 
-              src={notification.metadata.postImage || notification.metadata.thumbnail} 
-              alt="Preview" 
-              className="w-full h-full object-cover" 
+        {/* Right: Meta-style Quick Action Buttons */}
+        <div className="flex items-center gap-2 shrink-0" onClick={(e) => e.stopPropagation()}>
+          
+          {/* Follow / Follow Back Button for new followers */}
+          {(notification.type === 'follow' || notification.type === 'follow_back') && targetUserId && onFollowToggle && (
+            <button
+              type="button"
+              onClick={() => onFollowToggle(targetUserId)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all active:scale-95 cursor-pointer ${
+                isFollowingUser
+                  ? 'bg-[#3A3B3C] hover:bg-[#4E4F50] text-zinc-200'
+                  : 'bg-[#0064E0] hover:bg-[#1877F2] text-white shadow-sm'
+              }`}
+            >
+              {isFollowingUser ? 'Following' : 'Follow Back'}
+            </button>
+          )}
+
+          {/* Media Thumbnail Preview */}
+          {(notification.metadata?.postImage || notification.metadata?.thumbnail) && (
+            <div className="w-11 h-11 rounded-lg overflow-hidden border border-white/10 bg-black/50 shadow-sm shrink-0">
+              <img 
+                src={notification.metadata.postImage || notification.metadata.thumbnail} 
+                alt="Preview" 
+                className="w-full h-full object-cover" 
+              />
+            </div>
+          )}
+
+          {/* Meta Unread Blue Dot Indicator */}
+          {isUnread && (
+            <div 
+              className="w-2.5 h-2.5 rounded-full bg-[#1877F2] shrink-0 shadow-[0_0_8px_rgba(24,119,242,0.9)]" 
+              title="Unread"
             />
+          )}
+
+          {/* Meta 3-dots Context Menu Button */}
+          <div className="relative" ref={menuRef}>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowMenu(prev => !prev);
+              }}
+              className={`w-7 h-7 rounded-full flex items-center justify-center text-[#B0B3B8] hover:text-white hover:bg-white/10 transition-all cursor-pointer ${
+                showMenu || isHovered ? 'opacity-100' : 'opacity-0 sm:opacity-0 group-hover:opacity-100'
+              }`}
+              title="More options"
+            >
+              <MoreHorizontal size={16} />
+            </button>
+
+            {/* Dropdown Options */}
+            <AnimatePresence>
+              {showMenu && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95, y: -5 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.95, y: -5 }}
+                  transition={{ duration: 0.12 }}
+                  className="absolute right-0 top-8 z-50 w-48 py-1.5 bg-[#242526] border border-white/10 rounded-xl shadow-2xl backdrop-blur-xl text-xs"
+                >
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowMenu(false);
+                      onMarkRead?.(notification.id);
+                    }}
+                    className="w-full px-3.5 py-2 text-left text-[#E4E6EB] hover:bg-white/10 flex items-center gap-2 transition-colors cursor-pointer"
+                  >
+                    <CheckCheck size={14} className="text-[#1877F2]" />
+                    <span>Mark as read</span>
+                  </button>
+
+                  {onDelete && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowMenu(false);
+                        onDelete(notification.id);
+                      }}
+                      className="w-full px-3.5 py-2 text-left text-rose-400 hover:bg-rose-500/15 flex items-center gap-2 transition-colors cursor-pointer"
+                    >
+                      <Trash2 size={14} />
+                      <span>Remove notification</span>
+                    </button>
+                  )}
+
+                  {onHideType && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowMenu(false);
+                        onHideType(notification.type);
+                      }}
+                      className="w-full px-3.5 py-2 text-left text-[#B0B3B8] hover:bg-white/10 flex items-center gap-2 transition-colors cursor-pointer"
+                    >
+                      <BellOff size={14} />
+                      <span>Turn off this type</span>
+                    </button>
+                  )}
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
-        )}
+
+        </div>
       </div>
     </motion.div>
   );

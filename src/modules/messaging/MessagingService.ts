@@ -25,6 +25,7 @@ import { aeirmistCache } from '../../services/CacheService';
 import { handleFirestoreError, OperationType } from '../../lib/firebase';
 import { logger } from '@/src/utils/logger';
 import { getAvatarUrl } from '../../lib/avatar';
+import { extractTimestampMs } from '../../lib/date';
 
 function cleanUndefined(obj: any): any {
   if (obj === null || typeof obj !== 'object') {
@@ -298,6 +299,10 @@ class MessagingService {
               uid: targetOwnerUid || targetProfileId
             }
           },
+          latestMessageAt: serverTimestamp(),
+          latestMessageId: messageId,
+          latestMessageSenderId: profile.id,
+          latestMessagePreview: text,
           lastMessage: {
             text,
             senderId: profile.id,
@@ -386,7 +391,11 @@ class MessagingService {
 
     const updates: any = {};
 
-    // ALWAYS update updatedAt and lastMessage so the UI reflects the real-time chat state
+    // ALWAYS update latestMessageAt, latestMessageId, latestMessageSenderId, latestMessagePreview and updatedAt
+    updates.latestMessageAt = serverTimestamp();
+    updates.latestMessageId = metadata.messageId || null;
+    updates.latestMessageSenderId = senderId;
+    updates.latestMessagePreview = text;
     updates.updatedAt = serverTimestamp();
     updates.lastMessage = {
       text,
@@ -498,14 +507,28 @@ class MessagingService {
       if (!val) return 0;
       if (typeof val.toMillis === 'function') return val.toMillis();
       if (typeof val.seconds === 'number') return val.seconds * 1000;
-      if (typeof val === 'number') return val;
+      if (typeof val === 'number' && val > 0) return val;
       if (val instanceof Date) return val.getTime();
       try {
-        const d = new Date(val);
-        return isNaN(d.getTime()) ? 0 : d.getTime();
+        const parsed = Date.parse(val);
+        return isNaN(parsed) ? 0 : parsed;
       } catch (e) {
         return 0;
       }
+    };
+
+    const extractMsgTimestampMs = (data: any): number => {
+      if (data.createdAt?.toMillis) return data.createdAt.toMillis();
+      if (data.timestamp?.toMillis) return data.timestamp.toMillis();
+      if (typeof data.timestampMs === 'number' && data.timestampMs > 0) return data.timestampMs;
+      if (typeof data.clientSentAt === 'number' && data.clientSentAt > 0) return data.clientSentAt;
+      if (data.createdAt instanceof Date) return data.createdAt.getTime();
+      if (data.timestamp instanceof Date) return data.timestamp.getTime();
+      if (typeof data.createdAt?.seconds === 'number') return data.createdAt.seconds * 1000;
+      if (typeof data.timestamp?.seconds === 'number') return data.timestamp.seconds * 1000;
+      if (typeof data.createdAt === 'number' && data.createdAt > 0) return data.createdAt;
+      if (typeof data.timestamp === 'number' && data.timestamp > 0) return data.timestamp;
+      return Date.now();
     };
 
     const otherLastRead = parseTimestampMs(chatData?.lastRead?.[otherParticipantId || '']);
@@ -524,18 +547,10 @@ class MessagingService {
       const messages = snapshot.docs
         .map(doc => {
           const data = doc.data({ serverTimestamps: 'estimate' });
-          const date = data.createdAt?.toDate?.() || data.timestamp?.toDate?.() || new Date();
-          const timestampMs = data.createdAt?.toMillis?.() || data.timestamp?.toMillis?.() || Date.now();
+          const timestampMs = extractMsgTimestampMs(data);
+          const date = new Date(timestampMs);
           
           const isSeenVal = data.isSeen || (data.senderId === currentProfileId && timestampMs <= otherLastRead);
-          logger.info(`[MessagingService DEBUG] isSeen computation:`, {
-            messageId: doc.id,
-            timestampMs,
-            otherLastRead,
-            otherParticipantId,
-            isSeen: isSeenVal,
-            text: data.text
-          });
 
           return {
             ...data,
@@ -544,7 +559,7 @@ class MessagingService {
             timestampMs,
             isSeen: isSeenVal,
             isDelivered: data.isDelivered || (data.senderId === currentProfileId && timestampMs <= otherLastDelivered),
-            status: data.status || (data.timestamp ? 'sent' : 'sending')
+            status: data.status || 'sent'
           } as Message;
         })
         .filter(m => {
@@ -560,7 +575,9 @@ class MessagingService {
           return true;
         });
       
-      const reversed = messages.reverse();
+      // Sort oldest to newest (ascending chronological sequence)
+      messages.sort((a, b) => (a.timestampMs || 0) - (b.timestampMs || 0));
+      const reversed = messages;
 
       // 2. Persist to Cache (Async)
       try {
@@ -613,15 +630,26 @@ class MessagingService {
           );
           
           currentProfileChats.sort((a, b) => {
-            const getMs = (val: any) => {
-              if (!val) return 0;
-              if (typeof val.toMillis === 'function') return val.toMillis();
-              if (val instanceof Date) return val.getTime();
-              if (typeof val === 'number') return val;
-              if (val.seconds) return val.seconds * 1000;
+            const getMs = (chat: any) => {
+              if (!chat) return 0;
+              const t0 = extractTimestampMs(chat.latestMessageAt);
+              if (t0 > 0) return t0;
+              const t1 = extractTimestampMs(chat.lastMessage?.timestamp || chat.lastMessage?.createdAt);
+              if (t1 > 0) return t1;
+              const t2 = extractTimestampMs(chat.updatedAt);
+              if (t2 > 0) return t2;
+              const t3 = extractTimestampMs(chat.createdAt);
+              if (t3 > 0) return t3;
               return 0;
             };
-            return getMs(b.updatedAt) - getMs(a.updatedAt);
+            const pinA = typeof a.isPinned === 'boolean' ? a.isPinned : !!a.isPinned?.[profileId];
+            const pinB = typeof b.isPinned === 'boolean' ? b.isPinned : !!b.isPinned?.[profileId];
+            if (pinA && !pinB) return -1;
+            if (!pinA && pinB) return 1;
+            const msA = getMs(a);
+            const msB = getMs(b);
+            if (msB !== msA) return msB - msA;
+            return String(b.id || '').localeCompare(String(a.id || ''));
           });
 
           if (currentProfileChats.length > 0) {
@@ -645,22 +673,40 @@ class MessagingService {
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       logger.info(`[MessagingService] Inbox snapshot: ${snapshot.size} total active frequencies.`);
-      const chats = snapshot.docs.map(doc => ({ 
-        ...doc.data(), 
-        id: doc.id 
-      } as Chat));
+      const chats = snapshot.docs.map(doc => {
+        const data = doc.data({ serverTimestamps: 'estimate' });
+        const hasPending = doc.metadata.hasPendingWrites;
+        return { 
+          ...data, 
+          id: doc.id,
+          hasPendingWrites: hasPending
+        } as unknown as Chat;
+      });
 
-      // Sort client-side by updatedAt descending to bypass composite index requirements
+      const getMs = (chat: any) => {
+        if (!chat) return 0;
+        const t0 = extractTimestampMs(chat.latestMessageAt);
+        if (t0 > 0) return t0;
+        const t1 = extractTimestampMs(chat.lastMessage?.timestamp || chat.lastMessage?.createdAt);
+        if (t1 > 0) return t1;
+        const t2 = extractTimestampMs(chat.updatedAt);
+        if (t2 > 0) return t2;
+        const t3 = extractTimestampMs(chat.createdAt);
+        if (t3 > 0) return t3;
+        if (chat.hasPendingWrites || chat.isOptimistic) return Date.now();
+        return 0;
+      };
+
+      // Sort client-side by pin priority, then latest activity descending, with deterministic tie-breaker
       chats.sort((a, b) => {
-        const getMs = (val: any) => {
-          if (!val) return 0;
-          if (typeof val.toMillis === 'function') return val.toMillis();
-          if (val instanceof Date) return val.getTime();
-          if (typeof val === 'number') return val;
-          if (val.seconds) return val.seconds * 1000;
-          return 0;
-        };
-        return getMs(b.updatedAt) - getMs(a.updatedAt);
+        const pinA = typeof a.isPinned === 'boolean' ? a.isPinned : !!a.isPinned?.[profileId];
+        const pinB = typeof b.isPinned === 'boolean' ? b.isPinned : !!b.isPinned?.[profileId];
+        if (pinA && !pinB) return -1;
+        if (!pinA && pinB) return 1;
+        const msA = getMs(a);
+        const msB = getMs(b);
+        if (msB !== msA) return msB - msA;
+        return String(b.id || '').localeCompare(String(a.id || ''));
       });
       
       // Filter by profileId if possible, but fallback to all chats if profileIds is missing (legacy support)

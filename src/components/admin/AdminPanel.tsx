@@ -679,11 +679,9 @@ const UsersTab = ({ db, addToast, purgeUser, toggleUserBan, toggleVerification, 
         await updateUserStatus(targetUid, 'DELETED');
         addToast({ title: 'Soft Deleted', message: 'Account marked as deleted (recoverable).', type: 'success' });
       } else {
-        const batch = writeBatch(db);
-        if (profileId) batch.delete(doc(db, 'profiles', profileId));
-        if (targetUid) batch.delete(doc(db, 'users', targetUid));
-        await batch.commit();
-        addToast({ title: 'Hard Deleted', message: 'All user data permanently wiped.', type: 'success' });
+        // Full Hard Delete: completely wipe all user data, posts, comments, stories, and username
+        await purgeUser(targetUid);
+        addToast({ title: 'Hard Deleted', message: 'All user data, posts, comments, stories, and username permanently wiped.', type: 'success' });
       }
       setDeleteModalUser(null);
       setDeleteConfirmText('');

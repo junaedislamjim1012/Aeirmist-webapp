@@ -47,10 +47,10 @@ export const MemberDetailsSheet: React.FC<MemberDetailsSheetProps> = ({
 
   const memberId = member.id || member.uid || member.username;
   const isSelf = memberId === currentUserId;
-  const isMemOnline = isSelf || (onlineUsers && (
-    onlineUsers.has(memberId) ||
-    (member.uid && onlineUsers.has(member.uid)) ||
-    (member.id && onlineUsers.has(member.id))
+  const isMemOnline = isSelf || (!!onlineUsers && (
+    !!onlineUsers?.has?.(memberId) ||
+    (!!member.uid && !!onlineUsers?.has?.(member.uid)) ||
+    (!!member.id && !!onlineUsers?.has?.(member.id))
   ));
 
   // Determine permissions

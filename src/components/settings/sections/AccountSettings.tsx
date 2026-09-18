@@ -224,23 +224,8 @@ const AccountSettings: React.FC<AccountSettingsProps> = ({
     }
     setIsProcessingDangerAction(true);
     try {
-      const requestedAt = new Date();
-      const scheduledFor = new Date(requestedAt.getTime() + 69 * 24 * 60 * 60 * 1000);
-      
-      handleFieldChange('deletionRequestedAt', requestedAt.toISOString());
-      handleFieldChange('deletionScheduledFor', scheduledFor.toISOString());
-      handleFieldChange('isDeactivated', true);
-      await handleUpdate();
-
-      addToast?.({
-        title: 'DELETION SCHEDULED',
-        message: `Account scheduled for deletion on ${scheduledFor.toLocaleDateString()}. Logging in before then will cancel deletion.`,
-        type: 'info'
-      });
       setShowMetaModal(false);
-      if (auth.currentUser) {
-        await auth.signOut();
-      }
+      await requestDeleteAccount();
     } catch (err: any) {
       addToast?.({
         title: 'DELETION SCHEDULE ERROR',

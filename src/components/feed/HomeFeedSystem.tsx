@@ -108,8 +108,8 @@ export const HomeFeedSystem: React.FC<{ onUserClick?: (user: any) => void, onPos
   // listener per batch and merging the results.
   const uidsToQueryString = React.useMemo(() => {
     if (!user || !profile) return '[]';
-    const following = profile.social?.following || [];
-    const uids = Array.from(new Set([...following, profile.id])).sort();
+    const following = (profile.social?.following || []).filter(Boolean);
+    const uids = Array.from(new Set([...following, profile.id, user.uid].filter(Boolean))).sort();
     return JSON.stringify(uids);
   }, [user?.uid, profile?.id, JSON.stringify(profile?.social?.following || [])]);
 
@@ -169,7 +169,22 @@ export const HomeFeedSystem: React.FC<{ onUserClick?: (user: any) => void, onPos
       deduped.sort((a, b) => (b.__sortTime || 0) - (a.__sortTime || 0));
 
       const filtered = deduped.slice(0, postLimit).filter(p => {
-        if (p.isArchived) return false;
+        if (!p || p.isArchived) return false;
+        // Strictly exclude posts from deleted or scheduled-for-purge accounts
+        if (
+          p.isDeletedAuthor || 
+          p.scheduledForPurge || 
+          p.isDeleted ||
+          p.hidden ||
+          p.authorName === 'Aeirmist User' || 
+          p.userName === 'Aeirmist User' || 
+          p.author?.name === 'Aeirmist User' ||
+          p.author?.displayName === 'Aeirmist User' ||
+          p.author?.username === 'aeirmist_user' ||
+          p.author?.username === 'deleted_user'
+        ) {
+          return false;
+        }
         if (p.authorId === profile.id || p.authorUid === user.uid) return true;
         if (p.audience === 'only_me') return false;
         if (p.audience === 'close_friends') {
@@ -229,21 +244,38 @@ export const HomeFeedSystem: React.FC<{ onUserClick?: (user: any) => void, onPos
       const processSnapshot = (snapshot: any, key: string) => {
         const dbPosts = snapshot.docs.map((doc: any) => {
           const data = doc.data() as any;
-          const isDeleted = Boolean(data.isDeletedAuthor || data.authorName === 'Aeirmist User' || data.userName === 'Aeirmist User');
+          const isDeleted = Boolean(
+            data.isDeletedAuthor === true || 
+            data.scheduledForPurge === true ||
+            data.isDeleted === true || 
+            data.hidden === true ||
+            data.author?.isDeleted === true ||
+            data.author?.scheduledForPurge === true ||
+            data.authorName === 'Aeirmist User' || 
+            data.userName === 'Aeirmist User' ||
+            data.author?.name === 'Aeirmist User' ||
+            data.author?.displayName === 'Aeirmist User' ||
+            data.author?.username === 'aeirmist_user' ||
+            data.author?.username === 'deleted_user'
+          );
+
+          // Completely skip deleted or purged author posts - do not show in feed
+          if (isDeleted) return null;
+
           return {
             id: doc.id,
             ...data,
             author: {
-              name: isDeleted ? 'Aeirmist User' : (data.author?.displayName || data.author?.username || data.authorName || data.userName || 'Aeirmist User'),
-              avatar: isDeleted ? BLANK_DP : getAvatarUrl(data.author?.photoURL || data.userAvatar || data.authorAvatar),
-              isVerified: isDeleted ? false : (data.author?.isVerified || false)
+              name: data.author?.displayName || data.author?.username || data.authorName || data.userName || 'User',
+              avatar: getAvatarUrl(data.author?.photoURL || data.userAvatar || data.authorAvatar),
+              isVerified: data.author?.isVerified || false
             },
             likesCount: data.likesCount || 0,
             commentsCount: data.commentsCount || 0,
             timestamp: data.createdAt?.toDate?.()?.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) || 'Just now',
             __sortTime: data.createdAt?.toMillis?.() || data.createdAt?.seconds * 1000 || 0,
           };
-        });
+        }).filter(Boolean);
         resultsByBatch.set(key, dbPosts);
         scheduleCommit();
       };

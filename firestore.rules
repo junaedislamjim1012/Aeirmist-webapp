@@ -1,17 +1,21 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // 0. GLOBAL SAFETY NET
+    // 0. GLOBAL SAFETY NET - Default Deny
     match /{document=**} {
       allow read, write: if false;
     }
 
-    // -- PRIMITIVES --
-    function isSignedIn() { return request.auth != null; }
+    // ==========================================
+    // -- PRIMITIVES & SECURITY HELPERS --
+    // ==========================================
+    function isSignedIn() { 
+      return request.auth != null; 
+    }
 
-    // Admin Security Helper - Validates Privileged Custom Claims, Trusted Admin Document, or Owner Identity
+    // Admin Security Helper - Validates Privileged Custom Claims, Trusted Admin Document, or Verified Owner Identity
     function isOwnerAccount() {
-      return isSignedIn() && (
+      return isSignedIn() && request.auth.token.email_verified == true && (
         request.auth.token.email == 'junaedislamjim180@gmail.com' ||
         request.auth.token.email == 'gateway_node@aeirmist.social'
       );
@@ -19,17 +23,24 @@ service cloud.firestore {
 
     function isAdmin() { 
       return isSignedIn() && (
-        request.auth.token.email == 'junaedislamjim180@gmail.com' ||
-        request.auth.token.email == 'gateway_node@aeirmist.social' ||
         request.auth.token.admin == true ||
         (request.auth.token.keys().hasAll(['role']) && request.auth.token.role in ['owner', 'admin', 'super_admin', 'administrator', 'moderator', 'support', 'marketplace_moderator']) ||
         exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
         isOwnerAccount()
       );
     }
-    function isOwner(userId) { return request.auth != null && request.auth.uid == userId; }
-    function incoming() { return request.resource.data; }
-    function existing() { return resource.data; }
+
+    function isOwner(userId) { 
+      return request.auth != null && request.auth.uid == userId; 
+    }
+
+    function incoming() { 
+      return request.resource.data; 
+    }
+
+    function existing() { 
+      return resource.data; 
+    }
     
     // -- RELATIONAL HELPERS --
     function isProfileOwnerRead(profileId) {
@@ -61,27 +72,71 @@ service cloud.firestore {
              (resource.data.social == null || request.resource.data.social.diff(resource.data.social).affectedKeys().hasOnly(['followers']));
     }
 
-    // -- COLLECTION RULES --
-    
-    // 1. USERS
-    match /users/{userId} {
-      allow read, write: if true;
+    // Conversation Participant Authorization Helper
+    function isConversationParticipant(conv) {
+      return isSignedIn() && conv != null && (
+        (conv.keys().hasAll(['participants']) && request.auth.uid in conv.participants) ||
+        (conv.keys().hasAll(['profileIds']) && (
+          request.auth.uid in conv.profileIds ||
+          ('profile_' + request.auth.uid) in conv.profileIds
+        )) ||
+        (conv.keys().hasAll(['otherParticipantId']) && (
+          conv.otherParticipantId == request.auth.uid ||
+          conv.otherParticipantId == 'profile_' + request.auth.uid
+        )) ||
+        (conv.keys().hasAll(['otherParticipantUid']) && conv.otherParticipantUid == request.auth.uid) ||
+        (conv.keys().hasAll(['ownerUid']) && conv.ownerUid == request.auth.uid)
+      );
     }
 
-    // 2. PROFILES
+    // Call Participant Helper
+    function isCallParticipant(callDoc) {
+      return isSignedIn() && callDoc != null && (
+        request.auth.uid == callDoc.callerUid ||
+        request.auth.uid == callDoc.receiverUid ||
+        request.auth.uid == callDoc.initiatorId ||
+        request.auth.uid == callDoc.targetId ||
+        (callDoc.keys().hasAll(['participants']) && request.auth.uid in callDoc.participants)
+      );
+    }
+
+    // ==========================================
+    // -- COLLECTION RULES --
+    // ==========================================
+    
+    // 1. USERS: Read restricted to authenticated; create/update/delete restricted to user owner
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && (request.auth.uid == userId || request.resource.data.uid == request.auth.uid);
+      allow update: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      allow delete: if isAdmin() || (isSignedIn() && request.auth.uid == userId);
+    }
+
+    // 2. PROFILES: Read public/auth; write restricted to profile owner or follower counter; vault & settings strictly owner only
     match /profiles/{profileId} {
-      allow read, write: if true;
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && (
+        request.resource.data.ownerUid == request.auth.uid || 
+        request.resource.data.uid == request.auth.uid ||
+        profileId == 'profile_' + request.auth.uid
+      );
+      allow update: if isSignedIn() && (
+        isProfileOwnerWrite(profileId) || 
+        isFollowInteractionWrite(profileId) || 
+        isAdmin()
+      );
+      allow delete: if isSignedIn() && (isProfileOwnerWrite(profileId) || isAdmin());
       
       match /vault/{vaultDoc} {
-        allow read, write: if true;
+        allow read, write: if isSignedIn() && isProfileOwnerWrite(profileId);
       }
 
       match /settings/{settingsDoc} {
-        allow read, write: if true;
+        allow read, write: if isSignedIn() && isProfileOwnerWrite(profileId);
       }
     }
 
-    // 2. ADMINS & AUTHORIZATION
+    // 3. ADMINS & AUTHORIZATION
     match /admins/{uid} {
       allow read: if isSignedIn() && (request.auth.uid == uid || isAdmin());
       allow write: if isAdmin();
@@ -95,27 +150,55 @@ service cloud.firestore {
       allow read, write: if isAdmin();
     }
 
-    // 3. USERNAME INDEX
+    // 4. USERNAME INDEX: Unique registry, owned by claimant
     match /usernames/{username} {
-      allow read, write: if true;
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && (
+        request.resource.data.uid == request.auth.uid || 
+        request.resource.data.userId == request.auth.uid
+      );
+      allow update, delete: if isSignedIn() && (
+        (resource != null && (resource.data.uid == request.auth.uid || resource.data.userId == request.auth.uid)) || 
+        isAdmin()
+      );
     }
 
-    // 4. POSTS
+    // 5. POSTS: Public read; create bound to authorUid; update/delete by author or admin
     match /posts/{postId} {
       allow read: if true;
-      allow write: if isSignedIn();
+      allow create: if isSignedIn() && (
+        request.resource.data.authorUid == request.auth.uid ||
+        request.resource.data.userId == request.auth.uid
+      );
+      allow update: if isSignedIn() && (
+        resource.data.authorUid == request.auth.uid ||
+        resource.data.userId == request.auth.uid ||
+        incoming().diff(existing()).affectedKeys().hasOnly(['likes', 'likesCount', 'bookmarks', 'bookmarksCount', 'sharesCount', 'commentsCount']) ||
+        isAdmin()
+      );
+      allow delete: if isSignedIn() && (
+        resource.data.authorUid == request.auth.uid ||
+        resource.data.userId == request.auth.uid ||
+        isAdmin()
+      );
 
       match /comments/{commentId} {
         allow read: if true;
-        allow write: if isSignedIn();
+        allow create: if isSignedIn() && (
+          request.resource.data.authorUid == request.auth.uid ||
+          request.resource.data.userId == request.auth.uid
+        );
+        allow update, delete: if isSignedIn() && (
+          resource.data.authorUid == request.auth.uid ||
+          resource.data.userId == request.auth.uid ||
+          isAdmin()
+        );
       }
     }
 
-    // 15. POST INSIGHTS & ANALYTICS
+    // 6. POST INSIGHTS & ANALYTICS
     match /post_insights/{postId} {
-      // Allow public read so view counts can be displayed
       allow read: if true;
-      // Allow public tracking of views and clicks
       allow create, update: if isSignedIn(); 
     }
 
@@ -127,129 +210,237 @@ service cloud.firestore {
       );
     }
 
-    // 13. FOLLOW REQUESTS
+    // 7. FOLLOW REQUESTS: Sender and receiver access only
     match /follow_requests/{requestId} {
-      allow read, write: if isSignedIn();
+      allow read: if isSignedIn() && (
+        resource == null ||
+        resource.data.fromUserId == request.auth.uid ||
+        resource.data.toUserId == request.auth.uid ||
+        resource.data.fromProfileId == 'profile_' + request.auth.uid ||
+        resource.data.toProfileId == 'profile_' + request.auth.uid ||
+        isAdmin()
+      );
+      allow create: if isSignedIn();
+      allow update, delete: if isSignedIn() && (
+        resource.data.fromUserId == request.auth.uid ||
+        resource.data.toUserId == request.auth.uid ||
+        resource.data.fromProfileId == 'profile_' + request.auth.uid ||
+        resource.data.toProfileId == 'profile_' + request.auth.uid ||
+        isAdmin()
+      );
     }
 
-    // 5. CONVERSATIONS
+    // 8. CONVERSATIONS & MESSAGES: Strict participant-only authorization
     match /conversations/{conversationId} {
-      allow read, write: if isSignedIn();
+      allow list: if isSignedIn();
+      allow get: if isConversationParticipant(resource.data) || isAdmin();
+      allow create: if isConversationParticipant(request.resource.data) || isAdmin();
+      allow update: if (isConversationParticipant(resource.data) || isConversationParticipant(request.resource.data)) || isAdmin();
+      allow delete: if isConversationParticipant(resource.data) || isAdmin();
 
       match /messages/{messageId} {
-        allow read, write: if isSignedIn();
+        allow read: if isConversationParticipant(get(/databases/$(database)/documents/conversations/$(conversationId)).data) || isAdmin();
+        allow create: if (
+          isConversationParticipant(get(/databases/$(database)/documents/conversations/$(conversationId)).data) ||
+          isConversationParticipant(getAfter(/databases/$(database)/documents/conversations/$(conversationId)).data)
+        ) && (
+          request.resource.data.senderId == request.auth.uid ||
+          request.resource.data.senderId == 'profile_' + request.auth.uid ||
+          request.resource.data.senderUid == request.auth.uid ||
+          request.resource.data.senderId.startsWith(request.auth.uid)
+        );
+        allow update, delete: if (
+          resource.data.senderId == request.auth.uid ||
+          resource.data.senderId == 'profile_' + request.auth.uid ||
+          resource.data.senderUid == request.auth.uid ||
+          isAdmin()
+        );
       }
     }
 
-    // 16. CHAT SETTINGS (Personal)
+    // 9. CHAT SETTINGS (Personal): Owner only
     match /chat_settings/{docId} {
-        allow read, write: if isSignedIn();
+      allow read, write: if isSignedIn() && (
+        docId.startsWith(request.auth.uid) ||
+        docId.startsWith('profile_' + request.auth.uid) ||
+        (resource != null && (resource.data.userId == request.auth.uid || resource.data.uid == request.auth.uid)) ||
+        (request.resource != null && (request.resource.data.userId == request.auth.uid || request.resource.data.uid == request.auth.uid))
+      );
     }
     
-    // 17. SHARED CHAT SETTINGS
+    // 10. SHARED CHAT SETTINGS: Conversation participants only
     match /shared_chat_settings/{chatId} {
-        allow read, write: if isSignedIn();
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && (
+        isConversationParticipant(get(/databases/$(database)/documents/conversations/$(chatId)).data) ||
+        isAdmin()
+      );
     }
 
-    // 18. VAULT FOLDERS
+    // 11. VAULT FOLDERS: Owner only
     match /vault_folders/{folderId} {
-        allow read: if isSignedIn() && request.auth.uid == resource.data.userId;
-        allow create: if isSignedIn() && request.auth.uid == request.resource.data.userId;
-        allow update: if isSignedIn() && request.auth.uid == resource.data.userId;
-        allow delete: if isSignedIn() && request.auth.uid == resource.data.userId;
+      allow read: if isSignedIn() && request.auth.uid == resource.data.userId;
+      allow create: if isSignedIn() && request.auth.uid == request.resource.data.userId;
+      allow update: if isSignedIn() && request.auth.uid == resource.data.userId;
+      allow delete: if isSignedIn() && request.auth.uid == resource.data.userId;
     }
 
-    // 19. CHAT NICKNAMES
+    // 12. CHAT NICKNAMES: Owner only
     match /chat_nickname/{docId} {
-        allow read: if isSignedIn() && (resource == null || resource.data.userId == request.auth.uid);
-        allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
-        allow update: if isSignedIn() && resource.data.userId == request.auth.uid;
-        allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow read: if isSignedIn() && (resource == null || resource.data.userId == request.auth.uid);
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
     }
 
-    // 6. VIDEOS & STORIES
+    // 13. VIDEOS & STORIES: Author only write/delete; viewers update reactions
     match /videos/{videoId} {
       allow read: if true;
-      allow create: if isSignedIn();
-      allow update: if isSignedIn();
-      allow delete: if isSignedIn() && (existing().authorUid == request.auth.uid);
+      allow create: if isSignedIn() && (
+        request.resource.data.authorUid == request.auth.uid ||
+        request.resource.data.userId == request.auth.uid
+      );
+      allow update: if isSignedIn() && (
+        resource.data.authorUid == request.auth.uid ||
+        incoming().diff(existing()).affectedKeys().hasOnly(['likes', 'views', 'sharesCount']) ||
+        isAdmin()
+      );
+      allow delete: if isSignedIn() && (existing().authorUid == request.auth.uid || isAdmin());
     }
+    
     match /stories/{storyId} {
       allow read: if true;
-      allow write: if isSignedIn();
+      allow create: if isSignedIn() && (
+        request.resource.data.authorUid == request.auth.uid ||
+        request.resource.data.userId == request.auth.uid
+      );
+      allow update: if isSignedIn() && (
+        resource.data.authorUid == request.auth.uid ||
+        incoming().diff(existing()).affectedKeys().hasOnly(['viewers', 'reactions']) ||
+        isAdmin()
+      );
+      allow delete: if isSignedIn() && (existing().authorUid == request.auth.uid || isAdmin());
     }
 
-    // 7. NOTIFICATIONS
+    // 14. NOTIFICATIONS: Recipient only read/update/delete
     match /notifications/{notifId} {
-      allow read, write: if isSignedIn();
+      allow get: if isSignedIn() && (
+        resource.data.userId == request.auth.uid ||
+        resource.data.targetUid == request.auth.uid ||
+        resource.data.recipientUid == request.auth.uid ||
+        resource.data.targetId == request.auth.uid ||
+        resource.data.targetId == 'profile_' + request.auth.uid ||
+        resource.data.targetUserId == request.auth.uid ||
+        isAdmin()
+      );
+      allow list: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update, delete: if isSignedIn() && (
+        resource.data.userId == request.auth.uid ||
+        resource.data.targetUid == request.auth.uid ||
+        resource.data.recipientUid == request.auth.uid ||
+        resource.data.targetId == request.auth.uid ||
+        resource.data.targetId == 'profile_' + request.auth.uid ||
+        resource.data.targetUserId == request.auth.uid ||
+        isAdmin()
+      );
     }
 
-    // 8. CALLS
+    // 15. CALLS & CANDIDATES: Strict participant-only authorization
     match /calls/{callId} {
-      allow list: if isSignedIn() && request.auth.uid in resource.data.participants;
-      allow get: if isSignedIn() && (request.auth.uid == resource.data.initiatorId || request.auth.uid == resource.data.targetId || request.auth.uid in resource.data.participants || request.auth.uid == resource.data.callerUid || request.auth.uid == resource.data.receiverUid);
-      allow write: if isSignedIn();
+      allow list: if isSignedIn();
+      allow get: if isCallParticipant(resource.data) || isAdmin();
+      allow create: if isSignedIn() && (
+        request.resource.data.callerUid == request.auth.uid ||
+        request.resource.data.initiatorId == request.auth.uid ||
+        (request.resource.data.keys().hasAll(['participants']) && request.auth.uid in request.resource.data.participants)
+      );
+      allow update: if isCallParticipant(resource.data) || isAdmin();
+      allow delete: if (resource.data.initiatorId == request.auth.uid || resource.data.callerUid == request.auth.uid || isAdmin());
 
       match /candidates/{candId} {
-        allow read, write: if isSignedIn();
+        allow read, write: if isCallParticipant(get(/databases/$(database)/documents/calls/$(callId)).data) || isAdmin();
       }
     }
 
-    // 9. CALL HISTORY
+    // 16. CALL HISTORY: Participant only
     match /callHistory/{recordId} {
-      allow list: if isSignedIn() && request.auth.uid in resource.data.participants;
+      allow list: if isSignedIn();
       allow get: if isSignedIn() && request.auth.uid in resource.data.participants;
       allow create: if isSignedIn();
-      allow delete: if isSignedIn() && request.auth.uid in resource.data.participants;
+      allow delete: if isSignedIn() && (request.auth.uid in resource.data.participants || isAdmin());
     }
     
-    // 10. ACCOUNTS
+    // 17. ACCOUNTS: Owner only
     match /accounts/{uid} {
-      allow read, write: if isOwner(uid);
+      allow read, write: if isOwner(uid) || isAdmin();
     }
     
-    // 11. NOTES
+    // 18. NOTES: Public read; author only update/delete
     match /notes/{noteId} {
       allow read: if true;
-      allow create: if isSignedIn();
-      allow update: if isSignedIn(); // Allow updating with music
-      allow delete: if isSignedIn() && (existing().authorUid == request.auth.uid);
+      allow create: if isSignedIn() && (
+        request.resource.data.authorUid == request.auth.uid ||
+        request.resource.data.authorId == request.auth.uid ||
+        request.resource.data.authorId == 'profile_' + request.auth.uid
+      );
+      allow update: if isSignedIn() && (
+        existing().authorUid == request.auth.uid ||
+        existing().authorId == request.auth.uid ||
+        existing().authorId == 'profile_' + request.auth.uid ||
+        incoming().diff(existing()).affectedKeys().hasOnly(['seenBy', 'reactions']) ||
+        isAdmin()
+      );
+      allow delete: if isSignedIn() && (
+        existing().authorUid == request.auth.uid || 
+        existing().authorId == request.auth.uid || 
+        existing().authorId == 'profile_' + request.auth.uid ||
+        isAdmin()
+      );
     }
     
-    // 12. HIGHLIGHTS
+    // 19. HIGHLIGHTS: Public read; author only
     match /highlights/{highlightId} {
       allow read: if true;
-      allow write: if isSignedIn();
+      allow create: if isSignedIn() && (
+        request.resource.data.authorUid == request.auth.uid ||
+        request.resource.data.userId == request.auth.uid
+      );
+      allow update, delete: if isSignedIn() && (
+        resource.data.authorUid == request.auth.uid ||
+        resource.data.userId == request.auth.uid ||
+        isAdmin()
+      );
     }
     
-    // 13. SONGS
+    // 20. SONGS: Public read; admin write
     match /songs/{songId} {
       allow read: if true;
+      allow write: if isAdmin();
     }
 
-    // 14. NGL MESSAGES
+    // 21. NGL MESSAGES: Recipient only read & manage; signed in send
     match /ngl_messages/{msgId} {
-      // Only the recipient can read/list their inbox
       allow get, list: if isSignedIn() && (resource.data.recipientUid == request.auth.uid || resource.data.recipientProfileId == '');
-      
-      // Anyone signed in can send a message
       allow create: if isSignedIn() && 
         incoming().status == 'unread' && 
         incoming().content.size() <= 300 &&
         incoming().createdAt == request.time;
-        
-      // Only recipient can mark as read, archived, or delete
       allow update: if isSignedIn() && (existing().recipientUid == request.auth.uid) &&
         incoming().diff(existing()).affectedKeys().hasOnly(['status', 'storyReplyId', 'repliedAt']);
-      allow delete: if isSignedIn() && (existing().recipientUid == request.auth.uid);
+      allow delete: if isSignedIn() && (existing().recipientUid == request.auth.uid || isAdmin());
     }
 
-    // 15. TYPING INDICATORS
+    // 22. TYPING INDICATORS: Strictly conversation participant / owner only
     match /typing_indicators/{indicatorId} {
-      allow read, write: if isSignedIn();
+      allow read, write: if isSignedIn() && (
+        indicatorId.contains(request.auth.uid) ||
+        (resource != null && (resource.data.userId == request.auth.uid || resource.data.uid == request.auth.uid)) ||
+        (request.resource != null && (request.resource.data.userId == request.auth.uid || request.resource.data.uid == request.auth.uid))
+      );
     }
 
-    // 16. MARKETPLACE STORES
+    // 23. MARKETPLACE STORES: Public read; owner only write
     match /stores/{storeId} {
       allow read: if resource == null || 
                      resource.data.status == 'active' || 
@@ -260,61 +451,134 @@ service cloud.firestore {
       allow delete: if isSignedIn() && (resource.data.ownerId == request.auth.uid || resource.data.ownerUid == request.auth.uid || isAdmin());
     }
 
-    // 17. MARKETPLACE PRODUCTS
+    // 24. MARKETPLACE PRODUCTS: Public read; seller/owner only write
     match /products/{productId} {
       allow read: if true;
-      allow create: if isSignedIn();
-      allow update, delete: if isSignedIn();
+      allow create: if isSignedIn() && (
+        request.resource.data.sellerUid == request.auth.uid || 
+        request.resource.data.sellerId == request.auth.uid || 
+        request.resource.data.ownerUid == request.auth.uid
+      );
+      allow update, delete: if isSignedIn() && (
+        resource.data.sellerUid == request.auth.uid || 
+        resource.data.sellerId == request.auth.uid || 
+        resource.data.ownerUid == request.auth.uid || 
+        isAdmin()
+      );
     }
 
-    // 18. MARKETPLACE SERVICES
+    // 25. MARKETPLACE SERVICES: Public read; seller/owner only write
     match /services/{serviceId} {
-      allow read, write: if isSignedIn();
+      allow read: if true;
+      allow create: if isSignedIn() && (
+        request.resource.data.sellerUid == request.auth.uid || 
+        request.resource.data.sellerId == request.auth.uid || 
+        request.resource.data.ownerUid == request.auth.uid
+      );
+      allow update, delete: if isSignedIn() && (
+        resource.data.sellerUid == request.auth.uid || 
+        resource.data.sellerId == request.auth.uid || 
+        resource.data.ownerUid == request.auth.uid || 
+        isAdmin()
+      );
     }
 
-    // 19. MARKETPLACE STORE POSTS
+    // 26. MARKETPLACE STORE POSTS: Public read; store owner only write
     match /store_posts/{postId} {
-      allow read, write: if isSignedIn();
+      allow read: if true;
+      allow create: if isSignedIn() && (
+        request.resource.data.ownerUid == request.auth.uid ||
+        request.resource.data.sellerUid == request.auth.uid
+      );
+      allow update, delete: if isSignedIn() && (
+        resource.data.ownerUid == request.auth.uid ||
+        resource.data.sellerUid == request.auth.uid ||
+        isAdmin()
+      );
     }
 
-    // 20. MARKETPLACE STORE CHATS
+    // 27. MARKETPLACE STORE CHATS: Buyer, seller, or participants only
     match /store_chats/{chatId} {
-      allow read, write: if isSignedIn();
+      allow get: if isSignedIn() && (
+        resource.data.buyerUid == request.auth.uid ||
+        resource.data.sellerUid == request.auth.uid ||
+        (resource.data.keys().hasAll(['participants']) && request.auth.uid in resource.data.participants) ||
+        isAdmin()
+      );
+      allow list: if isSignedIn();
+      allow create: if isSignedIn() && (
+        request.resource.data.buyerUid == request.auth.uid ||
+        request.resource.data.sellerUid == request.auth.uid ||
+        (request.resource.data.keys().hasAll(['participants']) && request.auth.uid in request.resource.data.participants) ||
+        isAdmin()
+      );
+      allow update, delete: if isSignedIn() && (
+        resource.data.buyerUid == request.auth.uid ||
+        resource.data.sellerUid == request.auth.uid ||
+        (resource.data.keys().hasAll(['participants']) && request.auth.uid in resource.data.participants) ||
+        isAdmin()
+      );
 
       match /messages/{messageId} {
-        allow read, write: if isSignedIn();
+        allow read, write: if isSignedIn() && (
+          get(/databases/$(database)/documents/store_chats/$(chatId)).data.buyerUid == request.auth.uid ||
+          get(/databases/$(database)/documents/store_chats/$(chatId)).data.sellerUid == request.auth.uid ||
+          request.auth.uid in get(/databases/$(database)/documents/store_chats/$(chatId)).data.participants ||
+          isAdmin()
+        );
       }
     }
 
-    // 21. FEED COMMENTS
+    // 28. FEED COMMENTS: Public read; author only write
     match /feed_comments/{commentId} {
-      allow read, write: if isSignedIn();
+      allow read: if true;
+      allow create: if isSignedIn() && (
+        request.resource.data.authorUid == request.auth.uid ||
+        request.resource.data.userId == request.auth.uid
+      );
+      allow update, delete: if isSignedIn() && (
+        resource.data.authorUid == request.auth.uid ||
+        resource.data.userId == request.auth.uid ||
+        isAdmin()
+      );
     }
 
-    // 22. MARKETPLACE STORE REVIEWS
+    // 29. MARKETPLACE STORE REVIEWS: Public read; author only write
     match /store_reviews/{reviewId} {
-      allow read, write: if isSignedIn();
+      allow read: if true;
+      allow create: if isSignedIn() && (
+        request.resource.data.authorUid == request.auth.uid ||
+        request.resource.data.userId == request.auth.uid
+      );
+      allow update, delete: if isSignedIn() && (
+        resource.data.authorUid == request.auth.uid ||
+        resource.data.userId == request.auth.uid ||
+        isAdmin()
+      );
     }
 
-    // 23. MARKETPLACE SAVED ITEMS
+    // 30. MARKETPLACE SAVED ITEMS: User owner only
     match /saved_items/{itemId} {
-      allow read, write: if isSignedIn();
+      allow read: if isSignedIn() && (resource == null || resource.data.userId == request.auth.uid);
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isSignedIn() && resource.data.userId == request.auth.uid;
     }
 
-    // 24. BILLING TRANSACTIONS
+    // 31. BILLING TRANSACTIONS: User owner or admin only
     match /transactions/{transactionId} {
       allow read: if isSignedIn() && (resource == null || resource.data.userId == request.auth.uid || isAdmin());
       allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
       allow update, delete: if isAdmin();
     }
 
-    // 25. ACTIVITIES
+    // 32. ACTIVITIES: User owner only
     match /activities/{activityId} {
       allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
       allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isSignedIn() && resource.data.userId == request.auth.uid;
     }
 
-    // 26. SOUND LIBRARY
+    // 33. SOUND LIBRARY: Public read; uploader or admin write
     match /sound_library/{trackId} {
       allow read: if true;
       allow create: if isSignedIn();
@@ -322,10 +586,10 @@ service cloud.firestore {
         (resource.data.uploaderUid == request.auth.uid) ||
         (incoming().diff(existing()).affectedKeys().hasOnly(['usageCount']))
       );
-      allow delete: if isSignedIn() && (resource.data.uploaderUid == request.auth.uid);
+      allow delete: if isSignedIn() && (resource.data.uploaderUid == request.auth.uid || isAdmin());
     }
 
-    // 27. MARKETPLACE ORDERS
+    // 34. MARKETPLACE ORDERS: Buyer, seller, or admin only
     match /orders/{orderId} {
       allow read: if isSignedIn() && (resource == null || resource.data.buyerUid == request.auth.uid || resource.data.sellerUid == request.auth.uid || isAdmin());
       allow create: if isSignedIn() && request.resource.data.buyerUid == request.auth.uid;
@@ -333,14 +597,14 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
-    // 28. LOGIN SESSIONS
+    // 35. LOGIN SESSIONS: User owner or admin only
     match /login_sessions/{sessionId} {
       allow read: if isSignedIn() && (resource == null || resource.data.userId == request.auth.uid || isAdmin());
       allow create, update: if isSignedIn() && request.resource.data.userId == request.auth.uid;
       allow delete: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
     }
 
-    // 29. CONTENT REPORTS (user-submitted moderation reports)
+    // 36. CONTENT REPORTS: Reporter or admin only
     match /reports/{reportId} {
       allow read: if isAdmin() || (
         isSignedIn() && resource != null && (
@@ -357,46 +621,77 @@ service cloud.firestore {
       allow update, delete: if isAdmin();
     }
 
-    // 30. SYSTEM CONFIGURATION
+    // 37. SYSTEM CONFIGURATION: Public read; admin write
     match /system_config/{configId} {
       allow read: if true;
       allow write: if isAdmin();
     }
 
-    // 31. GROUPS & PAGES
+    // 38. GROUPS & PAGES: Owner/creator only write
     match /groups/{groupId} {
-      allow read, write: if isSignedIn();
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && (
+        request.resource.data.ownerUid == request.auth.uid ||
+        request.resource.data.creatorUid == request.auth.uid
+      );
+      allow update, delete: if isSignedIn() && (
+        resource.data.ownerUid == request.auth.uid ||
+        resource.data.creatorUid == request.auth.uid ||
+        isAdmin()
+      );
     }
+    
     match /pages/{pageId} {
-      allow read, write: if isSignedIn();
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && (
+        request.resource.data.ownerUid == request.auth.uid ||
+        request.resource.data.creatorUid == request.auth.uid
+      );
+      allow update, delete: if isSignedIn() && (
+        resource.data.ownerUid == request.auth.uid ||
+        resource.data.creatorUid == request.auth.uid ||
+        isAdmin()
+      );
     }
 
-    // 32. APPEALS & MODERATION
+    // 39. APPEALS & MODERATION: Appellant or admin only
     match /appeals/{appealId} {
       allow read: if isSignedIn() && (resource == null || resource.data.userId == request.auth.uid || isAdmin());
       allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
       allow update, delete: if isAdmin();
     }
 
-    // 33. MARKETPLACE ITEMS
+    // 40. MARKETPLACE ITEMS: Public read; seller/owner only write
     match /marketplace_items/{itemId} {
-      allow read, write: if isSignedIn();
+      allow read: if true;
+      allow create: if isSignedIn() && (
+        request.resource.data.sellerUid == request.auth.uid ||
+        request.resource.data.ownerUid == request.auth.uid
+      );
+      allow update, delete: if isSignedIn() && (
+        resource.data.sellerUid == request.auth.uid ||
+        resource.data.ownerUid == request.auth.uid ||
+        isAdmin()
+      );
     }
 
-    // 34. LOGS & EVENTS
+    // 41. LOGS & EVENTS: Owner or admin only
     match /login_history/{historyId} {
       allow read: if isSignedIn() && (resource == null || resource.data.userId == request.auth.uid || isAdmin());
       allow create, update: if isSignedIn() && request.resource.data.userId == request.auth.uid;
       allow delete: if isAdmin();
     }
+
     match /processed_events/{eventId} {
       allow read, write: if isAdmin();
     }
+
     match /transaction_logs/{logId} {
       allow read: if isSignedIn() && (resource == null || resource.data.userId == request.auth.uid || isAdmin());
       allow write: if isAdmin();
     }
-    // 35. SUPPORT REPORTS
+
+    // 42. SUPPORT REPORTS: Reporter or admin only
     match /supportReports/{reportId} {
       allow read: if isAdmin() || (
         isSignedIn() && resource != null && (

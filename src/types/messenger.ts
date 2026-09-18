@@ -70,4 +70,14 @@ export interface Chat {
   unreadCount?: { [userId: string]: number };
   updatedAt?: any;
   updatedAtMs?: number;
+  latestMessageAt?: any;
+  latestMessageAtMs?: number;
+  latestMessageId?: string;
+  latestMessageSenderId?: string;
+  latestMessagePreview?: string;
+  _optimisticBumpAt?: number;
+  isOptimistic?: boolean;
+  hasPendingWrites?: boolean;
+  rawLastMessage?: any;
+  messagingSettings?: any;
 }

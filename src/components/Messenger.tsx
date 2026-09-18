@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Send, 
@@ -73,13 +73,69 @@ import {
 } from 'firebase/firestore';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { Chat, Message } from '../types/messenger';
-import { formatAeirmistTimestamp, formatShortTimestamp, formatActiveStatus, formatDateSeparator } from '../lib/date';
+import { 
+  formatAeirmistTimestamp, 
+  formatShortTimestamp, 
+  formatActiveStatus, 
+  formatDateSeparator, 
+  formatMetaInboxTimestamp,
+  extractTimestampMs
+} from '../lib/date';
 import { useAeirmist } from '../context/AeirmistContext';
 import { aeirmistCache } from '../services/CacheService';
 import { mediaService, MediaQuality } from '../services/MediaService';
 import { messagingService } from '../modules/messaging/MessagingService';
 import { aeirmistCall } from '../modules/calls/CallService';
 import { logger } from '@/src/utils/logger';
+
+export const getChatActivityMs = (chat: any): number => {
+  if (!chat) return 0;
+  
+  // 1. Optimistic bump check if write is pending
+  if (chat._optimisticBumpAt && (chat.isOptimistic || chat.hasPendingWrites)) {
+    return chat._optimisticBumpAt;
+  }
+
+  // 2. Extract from primary timestamp fields
+  const t0 = extractTimestampMs(chat.latestMessageAt);
+  if (t0 > 0) return t0;
+
+  const t1 = extractTimestampMs(chat.lastMessage?.timestamp || chat.lastMessage?.createdAt || chat.rawLastMessage?.timestamp);
+  if (t1 > 0) return t1;
+
+  const t2 = extractTimestampMs(chat.updatedAt);
+  if (t2 > 0) return t2;
+
+  const t3 = extractTimestampMs(chat.createdAt);
+  if (t3 > 0) return t3;
+
+  if (typeof chat.updatedAtMs === 'number' && chat.updatedAtMs > 0) {
+    return chat.updatedAtMs;
+  }
+
+  if (chat.hasPendingWrites || chat.isOptimistic) {
+    return Date.now();
+  }
+
+  return 0;
+};
+
+export const sortChatsDeterministic = (chatsList: any[], activeProfileId?: string): any[] => {
+  return [...chatsList].sort((a, b) => {
+    const pinA = typeof a.isPinned === 'boolean' ? a.isPinned : !!a.isPinned?.[activeProfileId || ''];
+    const pinB = typeof b.isPinned === 'boolean' ? b.isPinned : !!b.isPinned?.[activeProfileId || ''];
+    if (pinA && !pinB) return -1;
+    if (!pinA && pinB) return 1;
+
+    const timeA = a.latestMessageAtMs || a.updatedAtMs || getChatActivityMs(a);
+    const timeB = b.latestMessageAtMs || b.updatedAtMs || getChatActivityMs(b);
+
+    if (timeB !== timeA) {
+      return (timeB || 0) - (timeA || 0);
+    }
+    return String(b.id || '').localeCompare(String(a.id || ''));
+  });
+};
 
 
 const moods = {
@@ -111,8 +167,8 @@ const LiveParticipantAvatar = ({
   const [isDeleted, setIsDeleted] = useState(false);
 
   useEffect(() => {
-    if (!db || !participantId) return;
-    const unsub = onSnapshot(doc(db, 'profiles', participantId), (docSnap) => {
+    if (!db || !participantId || typeof participantId !== 'string' || !participantId.trim()) return;
+    const unsub = onSnapshot(doc(db, 'profiles', participantId.trim()), (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
         if (data.isDeleted === true || data.status === 'deleted') {
@@ -156,10 +212,10 @@ export const LiveParticipantName = ({ participantId, fallbackName, className = "
   const [isDeleted, setIsDeleted] = useState(false);
 
   useEffect(() => {
-    if (!db || !participantId) return;
+    if (!db || !participantId || typeof participantId !== 'string' || !participantId.trim()) return;
     
     // Listen for profile changes
-    const unsubProfile = onSnapshot(doc(db, 'profiles', participantId), (docSnap) => {
+    const unsubProfile = onSnapshot(doc(db, 'profiles', participantId.trim()), (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
         if (data.isDeleted === true || data.status === 'deleted') {
@@ -178,8 +234,8 @@ export const LiveParticipantName = ({ participantId, fallbackName, className = "
 
     // Listen for shared nickname changes
     let unsubNickname: any;
-    if (db && chatId) {
-        unsubNickname = onSnapshot(doc(db, 'chat_settings', chatId), (docSnap) => {
+    if (db && chatId && typeof chatId === 'string' && chatId.trim()) {
+        unsubNickname = onSnapshot(doc(db, 'chat_settings', chatId.trim()), (docSnap) => {
             if (docSnap.exists()) {
                 const nicks = docSnap.data().nicknames || {};
                 setNickname(nicks[participantId] || '');
@@ -205,16 +261,16 @@ const LiveParticipantPresenceDot = ({ participantId }: { participantId: string }
   const [showPresence, setShowPresence] = useState(false);
 
   useEffect(() => {
-    if (!db || !participantId) return;
+    if (!db || !participantId || typeof participantId !== 'string' || !participantId.trim()) return;
     
-    const unsub = onSnapshot(doc(db, 'profiles', participantId), (docSnap) => {
+    const unsub = onSnapshot(doc(db, 'profiles', participantId.trim()), (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
         if (data.isDeleted === true || data.status === 'deleted') {
           setShowPresence(false);
           return;
         }
-        const isOnline = onlineUsers.has(participantId);
+        const isOnline = !!onlineUsers?.has?.(participantId);
         const hasShowActivity = data.privacySettings?.showActivity !== false;
         const isOnlineStatusOn = data.messagingSettings?.onlineStatus !== false;
         setShowPresence(isOnline && hasShowActivity && isOnlineStatusOn);
@@ -246,9 +302,9 @@ const LiveParticipantSubDetails = ({ participantId, chatId }: { participantId: s
   const myOnlineStatusOn = profile?.messagingSettings?.onlineStatus !== false;
 
   useEffect(() => {
-    if (!db || !participantId) return;
+    if (!db || !participantId || typeof participantId !== 'string' || !participantId.trim()) return;
 
-    const unsubProfile = onSnapshot(doc(db, 'profiles', participantId), (docSnap) => {
+    const unsubProfile = onSnapshot(doc(db, 'profiles', participantId.trim()), (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
         setUsername(data.username || '');
@@ -258,33 +314,36 @@ const LiveParticipantSubDetails = ({ participantId, chatId }: { participantId: s
       }
     });
 
-    const indicatorId = `${chatId}_${participantId}`;
-    const unsubTyping = onSnapshot(doc(db, 'typing_indicators', indicatorId), (snap) => {
-      if (snap.exists()) {
-        const data = snap.data();
-        if (data.updatedAt) {
-          try {
-            const date = typeof data.updatedAt.toDate === 'function' ? data.updatedAt.toDate() : new Date(data.updatedAt);
-            const isCurrentlyTyping = (Date.now() - date.getTime()) < 4000;
-            setIsTyping(isCurrentlyTyping);
-          } catch (e) {
+    let unsubTyping: (() => void) | undefined;
+    if (chatId && typeof chatId === 'string' && chatId.trim()) {
+      const indicatorId = `${chatId.trim()}_${participantId.trim()}`;
+      unsubTyping = onSnapshot(doc(db, 'typing_indicators', indicatorId), (snap) => {
+        if (snap.exists()) {
+          const data = snap.data();
+          if (data.updatedAt) {
+            try {
+              const date = typeof data.updatedAt.toDate === 'function' ? data.updatedAt.toDate() : new Date(data.updatedAt);
+              const isCurrentlyTyping = (Date.now() - date.getTime()) < 4000;
+              setIsTyping(isCurrentlyTyping);
+            } catch (e) {
+              setIsTyping(false);
+            }
+          } else {
             setIsTyping(false);
           }
         } else {
           setIsTyping(false);
         }
-      } else {
-        setIsTyping(false);
-      }
-    });
+      });
+    }
 
     return () => {
       unsubProfile();
-      unsubTyping();
+      if (unsubTyping) unsubTyping();
     };
   }, [db, participantId, chatId]);
 
-  const isOnline = onlineUsers.has(participantId);
+  const isOnline = !!onlineUsers?.has?.(participantId);
 
   let presenceText = '';
   if (showPresence) {
@@ -332,8 +391,8 @@ const Messenger = ({ initialRecipient, onUserClick }: { initialRecipient?: any, 
     sendMessage, 
     uploadMedia, 
     mediaSettings,
-    allProfiles,
-    suggestedUsers,
+    allProfiles = [],
+    suggestedUsers = [],
     localAvatarURL,
     toggleNotification,
     deleteConversation,
@@ -587,7 +646,7 @@ const Messenger = ({ initialRecipient, onUserClick }: { initialRecipient?: any, 
       const processedChats = fetchedChats.map(data => {
         // If explicitly deleted for this profile, skip unless a new message arrived after deletion
         const deletedAt = data.deletedFor?.[profile.id];
-        const chatUpdatedAt = data.updatedAt?.toMillis?.() || Date.now();
+        const chatUpdatedAt = getChatActivityMs(data);
         if (deletedAt === true) return null; // Legacy support
         if (typeof deletedAt === 'number' && chatUpdatedAt <= deletedAt) return null;
 
@@ -658,6 +717,8 @@ const Messenger = ({ initialRecipient, onUserClick }: { initialRecipient?: any, 
           displayLastMsg = rawLastText.startsWith('You: ') ? rawLastText : `You: ${rawLastText}`;
         }
 
+        const calculatedActivityMs = getChatActivityMs(data);
+
         return {
           ...data,
           id: data.id,
@@ -665,6 +726,7 @@ const Messenger = ({ initialRecipient, onUserClick }: { initialRecipient?: any, 
           otherParticipantUid,
           name: (data.isGroup || data.type === 'group') ? (data.groupName || data.name || 'Group Chat') : (details.displayName || 'Aeirmist User'),
           photo: (data.isGroup || data.type === 'group') ? getAvatarUrl(data.groupPhotoURL || data.photo) : getAvatarUrl(details.photoURL),
+          rawLastMessage: rawLastMsg,
           lastMessage: displayLastMsg,
           time: timeString,
           unread: typeof data.unreadCount === 'number' ? data.unreadCount > 0 : (data.unreadCount?.[profile.id] || 0) > 0,
@@ -674,19 +736,35 @@ const Messenger = ({ initialRecipient, onUserClick }: { initialRecipient?: any, 
           isVanishMode: !!data.isVanishMode,
           theme: data.theme || 'neural',
           themeSettings: data.themeSettings,
-          online: onlineUsers.has(otherParticipantId),
+          online: !!onlineUsers?.has?.(otherParticipantId),
           lastMessageSenderId: lastSenderId,
           lastMessageMood: data.lastMessage?.mood,
-          updatedAtMs: data.updatedAt?.toMillis?.() || Date.now()
+          latestMessageAtMs: calculatedActivityMs,
+          updatedAtMs: calculatedActivityMs
         };
       }).filter(c => c !== null) as any[];
 
-      const sortedChats = processedChats.sort((a, b) => {
-        if (a.isPinned && !b.isPinned) return -1;
-        if (!a.isPinned && b.isPinned) return 1;
-        return (b.updatedAtMs || 0) - (a.updatedAtMs || 0);
+      setChats(prevChats => {
+        const prevMap = new Map(prevChats.map(c => [c.id, c]));
+        const merged = processedChats.map(chat => {
+          const prev = prevMap.get(chat.id);
+          let activity = chat.latestMessageAtMs || chat.updatedAtMs || getChatActivityMs(chat);
+          // If prev state had an optimistic bump within the last 20 seconds and server has not yet written a newer timestamp
+          if (prev?._optimisticBumpAt && (chat.hasPendingWrites || activity < prev._optimisticBumpAt)) {
+            if (Date.now() - prev._optimisticBumpAt < 20000) {
+              activity = prev._optimisticBumpAt;
+            }
+          }
+          return {
+            ...chat,
+            updatedAtMs: activity,
+            latestMessageAtMs: activity,
+            _optimisticBumpAt: prev?._optimisticBumpAt
+          };
+        });
+
+        return sortChatsDeterministic(merged, profile.id);
       });
-      setChats(sortedChats);
     });
 
     return () => unsubscribe();
@@ -768,7 +846,7 @@ const Messenger = ({ initialRecipient, onUserClick }: { initialRecipient?: any, 
         lastMessage: 'Tap to chat',
         time: '',
         unread: false,
-        online: onlineUsers.has(targetId),
+        online: !!onlineUsers?.has?.(targetId),
         participants: [user!.uid, targetUid].filter(Boolean).sort(),
         profileIds: profileIds,
         isTemporary: true
@@ -788,6 +866,55 @@ const Messenger = ({ initialRecipient, onUserClick }: { initialRecipient?: any, 
     setTempChat(null);
     setIsMobileList(false);
   };
+
+  const handleOptimisticChatBump = useCallback((chatId: string, text: string, currentChatObj?: any) => {
+    const now = Date.now();
+    const isNew = chatId.startsWith('new_');
+    const targetId = isNew ? chatId.replace('new_', '') : null;
+    const canonicalId = (isNew && targetId && profile?.id) 
+      ? [profile.id, targetId].sort().join('_') 
+      : chatId;
+
+    setChats(prevChats => {
+      let found = false;
+      const updated = prevChats.map(c => {
+        if (c.id === chatId || c.id === canonicalId) {
+          found = true;
+          return {
+            ...c,
+            id: canonicalId,
+            lastMessage: text.startsWith('You: ') ? text : `You: ${text}`,
+            latestMessagePreview: text,
+            updatedAtMs: now,
+            latestMessageAtMs: now,
+            _optimisticBumpAt: now,
+            updatedAt: new Date(now),
+            unread: false,
+            isTemporary: false
+          };
+        }
+        return c;
+      });
+
+      if (!found && currentChatObj) {
+        const newEntry = {
+          ...currentChatObj,
+          id: canonicalId,
+          lastMessage: text.startsWith('You: ') ? text : `You: ${text}`,
+          latestMessagePreview: text,
+          updatedAtMs: now,
+          latestMessageAtMs: now,
+          _optimisticBumpAt: now,
+          updatedAt: new Date(now),
+          unread: false,
+          isTemporary: false
+        };
+        updated.unshift(newEntry);
+      }
+
+      return sortChatsDeterministic(updated, profile?.id);
+    });
+  }, [profile?.id]);
 
   const handleGroupCreated = (groupId: string, groupData?: any) => {
     setIsGroupCreationOpen(false);
@@ -821,19 +948,19 @@ const Messenger = ({ initialRecipient, onUserClick }: { initialRecipient?: any, 
       list = chats.filter(c => c.isArchived).map(c => ({
         ...c,
         time: formatShortTimestamp(c.updatedAt),
-        online: onlineUsers.has(c.otherParticipantId || '')
+        online: !!onlineUsers?.has?.(c.otherParticipantId || '')
       }));
     } else if (activeFilter === 'requests') {
       list = requestChats.map(c => ({
          ...c,
          time: formatShortTimestamp(c.updatedAt),
-         online: onlineUsers.has(c.otherParticipantId || '')
+         online: !!onlineUsers?.has?.(c.otherParticipantId || '')
       }));
     } else {
       list = mainChats.filter(c => !c.isArchived).map(c => ({
          ...c,
          time: formatShortTimestamp(c.updatedAt),
-         online: onlineUsers.has(c.otherParticipantId || '')
+         online: !!onlineUsers?.has?.(c.otherParticipantId || '')
       }));
 
       if (activeFilter === 'unread') list = list.filter(c => c.unread);
@@ -856,7 +983,7 @@ const Messenger = ({ initialRecipient, onUserClick }: { initialRecipient?: any, 
       );
     }
 
-    return list;
+    return sortChatsDeterministic(list, profile?.id);
   }, [chats, mainChats, requestChats, activeFilter, onlineUsers, searchQuery]);
 
   const themeStyles = {
@@ -1058,7 +1185,7 @@ const Messenger = ({ initialRecipient, onUserClick }: { initialRecipient?: any, 
                                       if (existingChat) {
                                         handleChatSelect(existingChat);
                                       } else {
-                                        const usr = allProfiles.find(p => p.id === item.id);
+                                        const usr = allProfiles?.find?.(p => p.id === item.id);
                                         if (usr) handleUserClick(usr);
                                       }
                                     }
@@ -1389,7 +1516,7 @@ const Messenger = ({ initialRecipient, onUserClick }: { initialRecipient?: any, 
 
                   if (searchTab === 'all' || searchTab === 'groups' || searchTab === 'messages' || searchTab === 'media') {
                     chatMatches.forEach(c => {
-                      const isOnline = onlineUsers.has(c.otherParticipantId || '');
+                      const isOnline = !!onlineUsers?.has?.(c.otherParticipantId || '');
                       const isGroup = c.isGroup || (c.participants?.length || 0) > 2;
                       
                       if (searchTab === 'groups' && !isGroup) return;
@@ -1432,7 +1559,7 @@ const Messenger = ({ initialRecipient, onUserClick }: { initialRecipient?: any, 
 
                   if (searchTab === 'all' || searchTab === 'people') {
                     searchResults.forEach(item => {
-                      const isOnline = onlineUsers.has(item.id);
+                      const isOnline = !!onlineUsers?.has?.(item.id);
                       displayList.push(
                         <div 
                           key={`person-${item.id}`}
@@ -1751,14 +1878,17 @@ const Messenger = ({ initialRecipient, onUserClick }: { initialRecipient?: any, 
                 </div>
               )}
               {filteredChats.map((chat) => {
-                const isOnline = onlineUsers.has(chat.otherParticipantId);
+                const isOnline = !!onlineUsers?.has?.(chat.otherParticipantId);
                 const isSelected = currentChat?.id === chat.id;
+                const activityTimestamp = chat.latestMessageAtMs || chat.updatedAtMs || getChatActivityMs(chat);
+                const metaTime = formatMetaInboxTimestamp(activityTimestamp);
+
                 return (
                   <div 
                     key={chat.id} 
                     onClick={() => handleChatSelect(chat)}
                     onContextMenu={(e) => handleContextMenu(e, chat.id)}
-                    className={`h-[72px] px-4 flex items-center gap-4 cursor-pointer hover:bg-aeirmist-cyan/[0.05] transition-all relative group ${isSelected ? 'bg-aeirmist-cyan/[0.08]' : ''}`}
+                    className={`h-[72px] px-4 flex items-center gap-3.5 cursor-pointer hover:bg-aeirmist-cyan/[0.05] transition-all relative group ${isSelected ? 'bg-aeirmist-cyan/[0.08]' : ''}`}
                   >
                     {/* Avatar */}
                     {chat.isGroup || chat.type === 'group' ? (
@@ -1781,37 +1911,49 @@ const Messenger = ({ initialRecipient, onUserClick }: { initialRecipient?: any, 
                     )}
 
                     {/* Chat Info */}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between">
-                        <h3 className={`text-[14px] font-bold truncate ${chat.unread ? 'text-white' : 'text-white/90'}`}>
-                          {chat.isGroup || chat.type === 'group' ? (chat.name || chat.groupName || 'Group Chat') : (chat.otherParticipantId === profile?.id ? 'My Space' : <LiveParticipantName participantId={chat.otherParticipantId} fallbackName={chat.name} chatId={chat.id} />)}
-                        </h3>
+                    <div className="flex-1 min-w-0 pr-1">
+                      {/* Top Row: Name + Pin badge + Meta timestamp */}
+                      <div className="flex items-center justify-between gap-1.5">
+                        <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                          <h3 className={`text-[14px] font-bold truncate ${chat.unread ? 'text-white' : 'text-white/90'}`}>
+                            {chat.isGroup || chat.type === 'group' ? (chat.name || chat.groupName || 'Group Chat') : (chat.otherParticipantId === profile?.id ? 'My Space' : <LiveParticipantName participantId={chat.otherParticipantId} fallbackName={chat.name} chatId={chat.id} />)}
+                          </h3>
+                          {chat.isPinned && (
+                            <Pin size={11} className="text-aeirmist-cyan shrink-0 rotate-45" />
+                          )}
+                        </div>
+                        {metaTime && (
+                          <span className={`text-[11px] shrink-0 font-medium ${chat.unread ? 'text-aeirmist-cyan font-bold' : 'text-white/40'}`}>
+                            {metaTime}
+                          </span>
+                        )}
                       </div>
-                      <div className="flex items-center gap-1 min-w-0 mt-0.5">
-                        <p className={`text-[12px] truncate ${chat.unread ? 'text-white font-medium' : 'text-white/50'}`}>
+
+                      {/* Bottom Row: Last message preview + Unread badge */}
+                      <div className="flex items-center justify-between gap-2 min-w-0 mt-0.5">
+                        <p className={`text-[12px] truncate flex-1 min-w-0 ${chat.unread ? 'text-white font-semibold' : 'text-white/50'}`}>
                           {chat.lastMessage}
                         </p>
+                        {chat.unread && (
+                          <div className="w-2.5 h-2.5 rounded-full bg-aeirmist-cyan shadow-[0_0_10px_rgba(0,242,255,0.5)] shrink-0" />
+                        )}
                       </div>
                     </div>
 
-                    <div className="flex flex-col items-end gap-2 shrink-0">
+                    {/* Context Menu Action Button */}
+                    <div className="flex items-center shrink-0">
                       <button 
                         onClick={(e) => {
                           e.stopPropagation();
                           handleContextMenu(e as any, chat.id);
                         }}
-                        className="p-1.5 text-white/10 hover:text-white hover:bg-white/5 rounded-lg transition-all"
+                        className="p-1.5 text-white/10 hover:text-white hover:bg-white/5 rounded-lg transition-all opacity-0 group-hover:opacity-100"
+                        title="Chat options"
                       >
                         <MoreVertical size={16} />
                       </button>
-
-                      {/* Unread indicator */}
-                      {chat.unread && (
-                        <div className="w-2.5 h-2.5 rounded-full bg-aeirmist-cyan shadow-[0_0_10px_rgba(0,242,255,0.5)]" />
-                      )}
                     </div>
                   </div>
-
                 );
               })}
             </div>
@@ -1868,6 +2010,7 @@ const Messenger = ({ initialRecipient, onUserClick }: { initialRecipient?: any, 
                 localAvatarURL={localAvatarURL}
                 pendingNoteReply={pendingNoteReply}
                 onClearPendingNoteReply={() => setPendingNoteReply(null)}
+                onMessageSent={handleOptimisticChatBump}
               />
             <AnimatePresence>
               {isInfoOpen && (
@@ -2062,7 +2205,8 @@ const ChatWindow = ({
   isVaultMode = false,
   localAvatarURL,
   pendingNoteReply,
-  onClearPendingNoteReply
+  onClearPendingNoteReply,
+  onMessageSent
 }: { 
   chat: Chat, 
   onBack: () => void, 
@@ -2080,7 +2224,8 @@ const ChatWindow = ({
   isVaultMode?: boolean,
   localAvatarURL?: string,
   pendingNoteReply?: { chatId: string; text: string; authorName: string } | null,
-  onClearPendingNoteReply?: () => void
+  onClearPendingNoteReply?: () => void,
+  onMessageSent?: (chatId: string, text: string, currentChat?: any) => void
 }) => {
   const [messages, setMessages] = useState<any[]>([]);
   const [optimistic, setOptimistic] = useState<any[]>([]);
@@ -2301,7 +2446,7 @@ const ChatWindow = ({
     return () => unsubscribe();
   }, [db, chat.id, user?.uid, profile?.id, scrollToBottom]);
 
-  // Derive processed messages with live read/delivered status
+  // Derive processed messages with live read/delivered status and guaranteed stable chronological order
   const displayedMessages = useMemo(() => {
     const otherParticipantId = chat.otherParticipantId || chat.profileIds?.find((id: string) => id !== profile?.id);
     
@@ -2309,14 +2454,13 @@ const ChatWindow = ({
       if (!val) return 0;
       if (typeof val.toMillis === 'function') return val.toMillis();
       if (typeof val.seconds === 'number') return val.seconds * 1000;
-      if (typeof val === 'number') return val;
+      if (typeof val === 'number' && val > 0) return val;
       if (val instanceof Date) return val.getTime();
-      try {
-        const d = new Date(val);
-        return isNaN(d.getTime()) ? 0 : d.getTime();
-      } catch (e) {
-        return 0;
+      if (typeof val === 'string') {
+        const parsed = Date.parse(val);
+        if (!isNaN(parsed) && parsed > 0) return parsed;
       }
+      return 0;
     };
 
     const lastRead = parseTimestampMs(chat.lastRead?.[otherParticipantId || '']);
@@ -2325,31 +2469,29 @@ const ChatWindow = ({
     const merged = [...messages, ...optimistic].filter((msg, index, self) => {
       // Deduplicate optimistic messages if server confirms receipt
       if (msg.isOptimistic) {
-        const confirmed = messages.some(m => m.metadata?.optimisticId === msg.id);
+        const confirmed = messages.some(m => m.metadata?.optimisticId === msg.id || m.id === msg.id);
         if (confirmed) return false;
       }
       return index === self.findIndex((m) => m.id === msg.id);
     });
 
-    const sorted = merged.map(m => {
-       const rawTs = m.timestampMs || parseTimestampMs(m.timestamp) || parseTimestampMs(m.createdAt);
-       const timestampMs = rawTs || (m.isOptimistic ? Date.now() : 0);
+    const sorted = merged.map((m, originalIndex) => {
+       const timestampMs = (typeof m.timestampMs === 'number' && m.timestampMs > 0)
+         ? m.timestampMs
+         : (parseTimestampMs(m.createdAt) || parseTimestampMs(m.timestamp) || (m.isOptimistic ? Date.now() : Date.now()));
        return {
          ...m,
          timestampMs,
-         isSeen: m.isSeen || (m.senderId === profile.id && timestampMs <= lastRead),
-         isDelivered: m.isDelivered || (m.senderId === profile.id && timestampMs <= lastDelivered),
+         _originalIndex: originalIndex,
+         isSeen: m.isSeen || (m.senderId === profile?.id && timestampMs <= lastRead),
+         isDelivered: m.isDelivered || (m.senderId === profile?.id && timestampMs <= lastDelivered),
          isFailed: failedMessages.has(m.id)
        };
     }).sort((a, b) => {
-      // Ensure optimistic messages anchor stably at the bottom
-      if (a.isOptimistic && !b.isOptimistic) {
-        return Math.max(a.timestampMs, (b.timestampMs || 0) + 1) - (b.timestampMs || 0);
+      if (a.timestampMs !== b.timestampMs) {
+        return a.timestampMs - b.timestampMs;
       }
-      if (!a.isOptimistic && b.isOptimistic) {
-        return (a.timestampMs || 0) - Math.max(b.timestampMs, (a.timestampMs || 0) + 1);
-      }
-      return (a.timestampMs || 0) - (b.timestampMs || 0);
+      return a._originalIndex - b._originalIndex;
     });
 
     return sorted.map((m, i) => ({
@@ -2359,7 +2501,7 @@ const ChatWindow = ({
         isNewSender: i === 0 || sorted[i-1].senderId !== m.senderId
       }
     }));
-  }, [messages, optimistic, chat.lastRead, chat.lastDelivered, chat.id, profile.id, failedMessages]);
+  }, [messages, optimistic, chat.lastRead, chat.lastDelivered, chat.id, profile?.id, failedMessages]);
   
   // Stable auto-scroll on new messages or list growth
   const prevMsgLengthRef = useRef(displayedMessages.length);
@@ -2456,6 +2598,7 @@ const ChatWindow = ({
     };
     
     setOptimistic(prev => [...prev, optimisticMsg]);
+    onMessageSent?.(chat.id, `Sent a ${type}`, chat);
     
     try {
       const isNew = chat.id.startsWith('new_');
@@ -2527,6 +2670,7 @@ const ChatWindow = ({
     };
     
     setOptimistic(prev => [...prev, optimisticMsg]);
+    onMessageSent?.(chat.id, text, chat);
     requestAnimationFrame(() => scrollToBottom('auto'));
     setTimeout(() => scrollToBottom('auto'), 60);
     
@@ -2712,7 +2856,7 @@ const ChatWindow = ({
               userId={!isPrivateSpace && !chat?.isGroup && !isOtherUnavailable ? chat.otherParticipantId : undefined}
               className="group-hover:border-aeirmist-cyan transition-colors"
             />
-            {!isPrivateSpace && !chat?.isGroup && !isOtherUnavailable && onlineUsers.has(chat.otherParticipantId || '') && showTheirPresence && (
+            {!isPrivateSpace && !chat?.isGroup && !isOtherUnavailable && !!onlineUsers?.has?.(chat.otherParticipantId || '') && showTheirPresence && (
               <div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-aeirmist-lime rounded-full border-2 border-aeirmist-bg z-10" />
             )}
           </div>
@@ -2739,17 +2883,23 @@ const ChatWindow = ({
                 <div className="flex items-center gap-1 mt-0.5">
                   <span className={`text-[8px] uppercase tracking-widest font-black italic ${isVaultMode ? 'text-[#c77dff]' : 'text-aeirmist-cyan'}`}>Typing...</span>
                 </div>
-              ) : (
-                <div className="flex items-center gap-1 mt-0.5 min-w-0">
-                  <p className={`text-[8px] uppercase tracking-widest font-bold ${onlineUsers.has(chat.otherParticipantId || '') && otherProfile?.messagingSettings?.onlineStatus !== false && profile?.messagingSettings?.onlineStatus !== false ? 'text-aeirmist-lime' : 'text-white/30'} truncate`}>
-                    {formatActiveStatus(
-                      onlineUsers.has(chat.otherParticipantId || '') && profile?.messagingSettings?.onlineStatus !== false, 
-                      otherProfile?.lastSeen, 
-                      otherProfile?.messagingSettings?.onlineStatus === false || profile?.messagingSettings?.onlineStatus === false
-                    )}
-                  </p>
-                </div>
-              )
+              ) : (() => {
+                const otherId = chat.otherParticipantId || chat.profileIds?.find((id: string) => id !== profile?.id) || otherProfile?.id;
+                const isOtherOnline = (otherProfile?.status === 'online' || !!onlineUsers?.has(otherId || '')) && otherProfile?.messagingSettings?.onlineStatus !== false;
+                const showStatus = otherProfile?.messagingSettings?.onlineStatus !== false && profile?.messagingSettings?.onlineStatus !== false;
+                return (
+                  <div className="flex items-center gap-1 mt-0.5 min-w-0">
+                    <p className={`text-[8px] uppercase tracking-widest font-bold ${isOtherOnline && showStatus ? 'text-aeirmist-lime flex items-center gap-1' : 'text-white/40'} truncate`}>
+                      {isOtherOnline && showStatus && <span className="w-1.5 h-1.5 rounded-full bg-aeirmist-lime animate-pulse inline-block" />}
+                      {formatActiveStatus(
+                        isOtherOnline && showStatus, 
+                        otherProfile?.lastSeen || otherProfile?.updatedAt, 
+                        !showStatus
+                      )}
+                    </p>
+                  </div>
+                );
+              })()
             )}
           </div>
         </div>

@@ -4,7 +4,8 @@ import {
   Smile, Image as ImageIcon, MapPin, Users, Music as MusicIcon, 
   Link as LinkIcon, Sparkles, Trash2, Globe, Eye, MessageSquare, 
   Settings, Monitor, Smartphone, LayoutGrid, Check, Play, Pause, 
-  AlertCircle, ChevronLeft, ChevronRight, X, Clock, HelpCircle, ArrowLeft, ShieldCheck
+  AlertCircle, ChevronLeft, ChevronRight, X, Clock, HelpCircle, ArrowLeft, 
+  ShieldCheck, Sliders, Plus, Edit3, Lock, MessageCircle, ChevronDown
 } from 'lucide-react';
 import { useAeirmist } from '../../context/AeirmistContext';
 import { getAvatarUrl } from '../../lib/avatar';
@@ -17,7 +18,6 @@ import { TagPeople } from './TagPeople';
 import { MusicSelector } from './MusicSelector';
 import { GifPicker } from './GifPicker';
 import { logger } from '@/src/utils/logger';
-
 
 // Rich post gradients
 const THEME_GRADIENTS = [
@@ -93,32 +93,12 @@ export const PostStudio: React.FC<PostStudioProps> = React.memo(({ onClose, init
   const [allowComments, setAllowComments] = useState(true);
   const [hideLikes, setHideLikes] = useState(false);
   const [sensitiveWarning, setSensitiveWarning] = useState(false);
-  const [scheduledTime, setScheduledTime] = useState('');
 
-  // UI state
-  const [previewMode, setPreviewMode] = useState<'desktop' | 'mobile'>('desktop');
+  // Categorized tool drawer state: null | 'filters' | 'music' | 'tag' | 'location' | 'theme' | 'audience' | 'settings' | 'link' | 'poll'
+  const [activeTool, setActiveTool] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<number>(0);
   const [uploadStatus, setUploadStatus] = useState<string>('');
-  const [activeRightPanel, setActiveRightPanel] = useState<'details' | 'tag' | 'location' | 'music' | 'settings'>('details');
-
-  // Text Formatter functions
-  const insertFormatting = (syntaxStart: string, syntaxEnd: string = '') => {
-    const textarea = document.getElementById('caption-textarea') as HTMLTextAreaElement;
-    if (!textarea) return;
-    const start = textarea.selectionStart;
-    const end = textarea.selectionEnd;
-    const text = textarea.value;
-    const selected = text.substring(start, end);
-    const replacement = syntaxStart + selected + (syntaxEnd || syntaxStart);
-    setCaption(text.substring(0, start) + replacement + text.substring(end));
-    
-    // Focus back
-    setTimeout(() => {
-      textarea.focus();
-      textarea.setSelectionRange(start + syntaxStart.length, start + syntaxStart.length + selected.length);
-    }, 10);
-  };
 
   // Draft save & restore
   const handleSaveDraft = () => {
@@ -141,7 +121,7 @@ export const PostStudio: React.FC<PostStudioProps> = React.memo(({ onClose, init
     localStorage.setItem('aeirmist_studio_draft', JSON.stringify(draftPayload));
     addToast({
       title: 'Draft Saved',
-      message: 'Your creative progress has been saved locally.',
+      message: 'Your post draft has been saved.',
       type: 'info'
     });
   };
@@ -154,13 +134,10 @@ export const PostStudio: React.FC<PostStudioProps> = React.memo(({ onClose, init
       setSelectedType(parsed.selectedType || 'photo');
       setCaption(parsed.caption || '');
       
-      // Fix: Restore media files and ensure URLs are usable
       const restoredMedia = (parsed.mediaFiles || []).map((item: any) => {
-        // If it's a restored draft, the 'file' object is gone, 
-        // we must use the dataUrl (base64) for preview if blob is dead.
         return {
           ...item,
-          url: item.dataUrl || item.url // Prefer base64 if it exists for persistence
+          url: item.dataUrl || item.url
         };
       });
       
@@ -181,95 +158,22 @@ export const PostStudio: React.FC<PostStudioProps> = React.memo(({ onClose, init
         message: 'Successfully reloaded your offline draft workspace.',
         type: 'info'
       });
-    } catch (e: any) { logger.error("Failed to restore draft", e); addToast({ title: "Draft Error", message: "Failed to restore offline draft", type: "warning" }); }
+    } catch (e: any) { 
+      logger.error("Failed to restore draft", e); 
+      addToast({ title: "Draft Error", message: "Failed to restore offline draft", type: "warning" }); 
+    }
   };
 
-  // Trigger file manager
+  // Add media files
   const handleAddMediaFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files) return;
     const files = Array.from(e.target.files);
     
-    // Format limits & validation
     const maxFiles = 10;
     if (mediaFiles.length + files.length > maxFiles) {
       addToast({
         title: 'Selection Overflow',
-        message: 'Max 10 items allowed per carousel collage.',
-        type: 'warning'
-      });
-      return;
-    }
-
-    const currentLength = mediaFiles.length;
-    const formatted = files.map(file => {
-      const url = createStableUrl(file);
-      return {
-        file,
-        url,
-        previewUrl: url,
-        type: file.type,
-        name: file.name,
-        // Preset non-destructive edits
-        brightness: 100,
-        contrast: 100,
-        saturation: 100,
-        warmth: 0,
-        blur: 0,
-        vignette: 0,
-        rotate: 0,
-        flipX: false,
-        flipY: false,
-        cropRatio: 'original',
-        muted: false,
-        volume: 80,
-        speed: 1,
-        loop: true,
-        coverTime: 0
-      };
-    });
-
-    setMediaFiles(prev => [...prev, ...formatted]);
-    setSelectedMediaIdx(currentLength);
-
-    // Sequential base64 conversion to avoid CPU spikes and state jitter
-    const processSequentially = async () => {
-      for (let i = 0; i < files.length; i++) {
-        try {
-          const base64Url = await readFileAsDataURL(files[i]);
-          setMediaFiles(prev => {
-            const updated = [...prev];
-            const targetIndex = currentLength + i;
-            if (updated[targetIndex]) {
-              updated[targetIndex] = {
-                ...updated[targetIndex],
-                dataUrl: base64Url
-              };
-            }
-            return updated;
-          });
-        } catch (err: any) { logger.error("Error reading file to data URL", err); addToast({ title: "Media Error", message: "Failed to read media file", type: "warning" }); }
-      }
-    };
-    
-    processSequentially();
-  };
-
-  // Paste / Drag-and-drop handles
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-  };
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    if (!e.dataTransfer.files) return;
-    const files = Array.from(e.dataTransfer.files);
-    
-    // Format limits & validation
-    const maxFiles = 10;
-    if (mediaFiles.length + files.length > maxFiles) {
-      addToast({
-        title: 'Selection Overflow',
-        message: 'Max 10 items allowed per carousel collage.',
+        message: 'Max 10 items allowed per post.',
         type: 'warning'
       });
       return;
@@ -294,6 +198,7 @@ export const PostStudio: React.FC<PostStudioProps> = React.memo(({ onClose, init
         flipX: false,
         flipY: false,
         cropRatio: 'original',
+        fitMode: 'contain',
         muted: false,
         volume: 80,
         speed: 1,
@@ -320,39 +225,13 @@ export const PostStudio: React.FC<PostStudioProps> = React.memo(({ onClose, init
             }
             return updated;
           });
-        } catch (err: any) { logger.error("Error reading file to data URL", err); addToast({ title: "Media Error", message: "Failed to read media file", type: "warning" }); }
+        } catch (err: any) { 
+          logger.error("Error reading file to data URL", err); 
+        }
       }
     };
     
     processSequentially();
-  };
-
-  // Live URL validation for Link Post
-  const handleLinkLookup = () => {
-    if (!linkUrl) return;
-    // Real card simulation matching standard OpenGraph outputs
-    setLinkPreview({
-      url: linkUrl,
-      title: `${linkUrl.replace('https://', '').split('/')[0]} Hub`,
-      description: 'Explore verified shared channels, stories, and live feed updates instantly on Aeirmist platform.',
-      image: 'https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=600&q=80'
-    });
-  };
-
-  // Voice recording mock
-  const startRecordingVoice = () => {
-    setIsRecording(true);
-    setRecordDuration(0);
-    recordIntervalRef.current = setInterval(() => {
-      setRecordDuration(prev => prev + 1);
-    }, 1000);
-  };
-
-  const stopRecordingVoice = () => {
-    setIsRecording(false);
-    clearInterval(recordIntervalRef.current);
-    // Simulate audio wave file
-    setRecordedAudio('https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3');
   };
 
   const handleMediaChange = React.useCallback((updated: any) => {
@@ -369,40 +248,43 @@ export const PostStudio: React.FC<PostStudioProps> = React.memo(({ onClose, init
   const handlePublish = async () => {
     if (isUploading) return;
     
-    // Validation
     if (selectedType === 'text' && !caption) {
-      addToast({ title: 'Empty Content', message: 'Please write a caption or choose other post types.', type: 'warning' });
+      addToast({ title: 'Empty Content', message: 'Please write some text for your post.', type: 'warning' });
       return;
     }
     if (selectedType === 'photo' && mediaFiles.length === 0) {
-      addToast({ title: 'No Media Selected', message: 'Please upload at least one image or video for this type.', type: 'warning' });
+      addToast({ title: 'No Media Selected', message: 'Please add at least one photo or video.', type: 'warning' });
       return;
     }
 
     setIsUploading(true);
     setUploadProgress(10);
-    setUploadStatus('Compressing & formatting assets...');
+    setUploadStatus('Preparing assets...');
 
     try {
-      setUploadStatus(`Uploading ${mediaFiles.length} media asset(s) in parallel...`);
-      
-      const progressArray = new Array(mediaFiles.length).fill(0);
-      const uploadPromises = mediaFiles.map((item, idx) => {
-        return uploadMedia(item.file, 'posts', (progress) => {
-          progressArray[idx] = progress;
-          const averageProgress = progressArray.reduce((sum, val) => sum + val, 0) / mediaFiles.length;
-          // Scale progress from 10% to 90%
-          const scaledProgress = 10 + (averageProgress * 0.8);
-          setUploadProgress(Math.min(90, Math.floor(scaledProgress)));
+      let uploadedUrls: string[] = [];
+      if (mediaFiles.length > 0) {
+        setUploadStatus(`Uploading ${mediaFiles.length} media file(s)...`);
+        const progressArray = new Array(mediaFiles.length).fill(0);
+        const uploadPromises = mediaFiles.map((item, idx) => {
+          if (item.file) {
+            return uploadMedia(item.file, 'posts', (progress) => {
+              progressArray[idx] = progress;
+              const averageProgress = progressArray.reduce((sum, val) => sum + val, 0) / mediaFiles.length;
+              setUploadProgress(Math.min(90, Math.floor(10 + (averageProgress * 0.8))));
+            });
+          } else if (item.dataUrl || item.url) {
+            return Promise.resolve(item.dataUrl || item.url);
+          }
+          return Promise.resolve('');
         });
-      });
 
-      const uploadedUrls = await Promise.all(uploadPromises);
+        uploadedUrls = (await Promise.all(uploadPromises)).filter(Boolean);
+      }
 
       setUploadStatus('Publishing post...');
       setUploadProgress(92);
 
-      // Create rich payload
       const payload: any = {
         content: caption,
         mediaUrls: uploadedUrls,
@@ -410,7 +292,7 @@ export const PostStudio: React.FC<PostStudioProps> = React.memo(({ onClose, init
         authorId: profile?.id || 'unknown',
         authorUid: user?.uid || 'unknown',
         author: {
-          displayName: profile?.displayName || 'User',
+          displayName: profile?.displayName || profile?.fullName || profile?.name || 'User',
           username: profile?.username || 'user',
           photoURL: getAvatarUrl(profile?.photoURL),
           isVerified: profile?.isVerified || false
@@ -420,7 +302,6 @@ export const PostStudio: React.FC<PostStudioProps> = React.memo(({ onClose, init
         likedBy: [],
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
-        // Extra features
         audience,
         allowComments,
         hideLikes,
@@ -437,30 +318,28 @@ export const PostStudio: React.FC<PostStudioProps> = React.memo(({ onClose, init
         payload.gradientId = selectedGradient.id;
       }
 
-      // Add Doc directly in firestore
       await addDoc(collection(db, 'posts'), payload);
 
       setUploadProgress(100);
       setUploadStatus('Published successfully!');
       
       addToast({
-        title: 'Post Published',
-        message: 'Your post is now live.',
+        title: 'Post Live',
+        message: 'Your post was published to Aeirmist.',
         type: 'success'
       });
 
-      // Clear draft since published
       localStorage.removeItem('aeirmist_studio_draft');
 
       setTimeout(() => {
         onClose();
-      }, 600);
+      }, 500);
 
     } catch (e: any) {
       logger.error('Publishing failed', e);
       addToast({
         title: 'Could Not Publish',
-        message: 'An error occurred while publishing your post. Please try again.',
+        message: 'An error occurred while publishing. Please try again.',
         type: 'warning'
       });
     } finally {
@@ -468,25 +347,24 @@ export const PostStudio: React.FC<PostStudioProps> = React.memo(({ onClose, init
     }
   };
 
-  // Remember audience selection
-  useEffect(() => {
-    localStorage.setItem('aeirmist_post_audience', audience);
-  }, [audience]);
+  const currentMedia = mediaFiles[selectedMediaIdx];
+  const userDisplayName = profile?.displayName || profile?.fullName || profile?.name || 'User';
 
   return (
-    <div className="flex flex-col h-full max-h-[92vh] text-white overflow-hidden font-sans">
-      {/* INSTAGRAM-STYLE HEADER */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-white/10 shrink-0 bg-[#06090e]">
-        <div className="flex items-center gap-3">
+    <div className="flex flex-col h-full w-full text-white overflow-hidden font-sans bg-[#05070d]">
+      
+      {/* 1. TOP APP BAR */}
+      <div className="flex items-center justify-between px-3 sm:px-5 py-3 border-b border-white/10 shrink-0 bg-[#070a12]/95 backdrop-blur-xl z-20">
+        <div className="flex items-center gap-2.5">
           <button 
             onClick={onClose}
             className="w-9 h-9 flex items-center justify-center hover:bg-white/10 rounded-full transition-all cursor-pointer text-white/80 hover:text-white active:scale-95"
-            aria-label="Close composer"
+            aria-label="Close studio"
           >
-            <ArrowLeft size={20} />
+            <ArrowLeft size={19} />
           </button>
           <div className="flex items-center gap-2">
-            <h1 className="text-sm sm:text-base font-bold text-white tracking-tight">Create New Post</h1>
+            <h1 className="text-sm sm:text-base font-bold text-white tracking-tight">Create Post</h1>
           </div>
         </div>
 
@@ -495,212 +373,223 @@ export const PostStudio: React.FC<PostStudioProps> = React.memo(({ onClose, init
           {localStorage.getItem('aeirmist_studio_draft') && (
             <button
               onClick={handleRestoreDraft}
-              className="px-3 py-1.5 bg-white/5 border border-white/10 hover:bg-white/10 text-xs font-bold rounded-xl transition-all cursor-pointer hidden sm:block text-white/80"
+              className="px-2.5 py-1.5 bg-white/5 border border-white/10 hover:bg-white/10 text-[11px] font-bold rounded-xl transition-all cursor-pointer text-white/70 hover:text-white"
             >
-              Restore Draft
+              Restore
             </button>
           )}
           <button
             onClick={handleSaveDraft}
-            className="px-3 py-1.5 bg-white/5 border border-white/10 hover:bg-white/10 text-xs font-bold rounded-xl transition-all cursor-pointer hidden sm:block text-white/80"
+            className="px-2.5 py-1.5 bg-white/5 border border-white/10 hover:bg-white/10 text-[11px] font-bold rounded-xl transition-all cursor-pointer hidden sm:block text-white/70 hover:text-white"
           >
             Save Draft
           </button>
           <button
             disabled={isUploading}
             onClick={handlePublish}
-            className="px-5 py-1.5 sm:py-2 bg-aeirmist-cyan text-black hover:brightness-110 active:scale-95 text-xs font-bold uppercase rounded-full transition-all shadow-[0_0_20px_rgba(0,242,255,0.3)] disabled:opacity-40 flex items-center gap-1.5 justify-center cursor-pointer"
+            className="px-5 py-2 bg-aeirmist-cyan text-black hover:brightness-110 active:scale-95 text-xs font-black uppercase rounded-full transition-all shadow-[0_0_20px_rgba(0,242,255,0.3)] disabled:opacity-40 flex items-center gap-1.5 justify-center cursor-pointer"
           >
             {isUploading ? (
-              <Clock size={14} className="animate-spin" />
+              <Clock size={13} className="animate-spin" />
             ) : (
-              <Sparkles size={14} />
+              <Sparkles size={13} />
             )}
             <span>Share</span>
           </button>
         </div>
       </div>
 
-      {/* WORKSPACE AREA: DESKTOP vs PHONE SPLIT LAYOUT */}
-      <div className="flex-1 flex flex-col md:flex-row min-h-0 overflow-y-auto md:overflow-hidden bg-[#020509]">
+      {/* 2. POST FORMAT PILL BAR */}
+      <div className="px-3 sm:px-5 py-2.5 border-b border-white/5 bg-[#030408] shrink-0 overflow-x-auto no-scrollbar flex items-center gap-2">
+        {[
+          { id: 'photo', label: 'Photos / Videos', icon: Camera },
+          { id: 'text', label: 'Story Card', icon: FileText },
+          { id: 'poll', label: 'Poll', icon: ListTodo },
+          { id: 'gif', label: 'GIF', icon: Sparkles },
+          { id: 'link', label: 'Link Preview', icon: LinkIcon }
+        ].map(mode => (
+          <button
+            key={mode.id}
+            type="button"
+            onClick={() => {
+              setSelectedType(mode.id);
+              setActiveTool(null);
+            }}
+            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer whitespace-nowrap border ${
+              selectedType === mode.id 
+                ? 'bg-aeirmist-cyan text-black border-aeirmist-cyan shadow-md shadow-aeirmist-cyan/20 font-black' 
+                : 'bg-white/[0.03] text-white/60 border-white/5 hover:text-white hover:bg-white/10'
+            }`}
+          >
+            <mode.icon size={13} />
+            <span>{mode.label}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* 3. SCROLLABLE COMPOSER BODY */}
+      <div className="flex-1 overflow-y-auto bg-[#020509] p-3 sm:p-6 space-y-4">
         
-        {/* LEFT / TOP STAGE: MEDIA & LIVE PREVIEW (60% width on Desktop, Full on Mobile) */}
-        <div className="w-full md:w-[60%] flex flex-col bg-[#010307] border-b md:border-b-0 md:border-r border-white/10 p-4 sm:p-6 min-h-[340px] md:min-h-0 relative">
+        {/* A. INTERACTIVE MEDIA / CANVAS PREVIEW STAGE */}
+        <div className="w-full bg-[#010307] rounded-3xl border border-white/10 p-3 sm:p-4 overflow-hidden shadow-2xl space-y-3">
           
-          {/* Post Type Selector Bar */}
-          <div className="flex items-center justify-between gap-2 mb-4 shrink-0 overflow-x-auto scrollbar-none pb-1">
-            <div className="flex items-center gap-1.5 bg-white/5 border border-white/10 rounded-full p-1">
-              {[
-                { id: 'photo', label: 'Media', icon: Camera },
-                { id: 'text', label: 'Text', icon: FileText },
-                { id: 'poll', label: 'Poll', icon: ListTodo },
-                { id: 'gif', label: 'GIF', icon: Sparkles },
-                { id: 'voice', label: 'Voice', icon: BookOpen },
-                { id: 'link', label: 'Link', icon: LinkIcon }
-              ].map(mode => (
-                <button
-                  key={mode.id}
-                  type="button"
-                  onClick={() => setSelectedType(mode.id)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${selectedType === mode.id ? 'bg-aeirmist-cyan text-black shadow-md shadow-aeirmist-cyan/20' : 'text-white/60 hover:text-white hover:bg-white/5'}`}
-                >
-                  <mode.icon size={14} />
-                  <span>{mode.label}</span>
-                </button>
-              ))}
-            </div>
-
-            {/* Device mode toggle for preview */}
-            <div className="hidden sm:flex items-center bg-white/5 border border-white/10 rounded-lg p-0.5 shrink-0">
-              <button 
-                type="button"
-                onClick={() => setPreviewMode('desktop')}
-                className={`p-1.5 rounded transition-all ${previewMode === 'desktop' ? 'bg-white/10 text-aeirmist-cyan' : 'text-white/40 hover:text-white'}`}
-                title="Desktop View"
-              >
-                <Monitor size={14} />
-              </button>
-              <button 
-                type="button"
-                onClick={() => setPreviewMode('mobile')}
-                className={`p-1.5 rounded transition-all ${previewMode === 'mobile' ? 'bg-white/10 text-aeirmist-cyan' : 'text-white/40 hover:text-white'}`}
-                title="Mobile View"
-              >
-                <Smartphone size={14} />
-              </button>
-            </div>
-          </div>
-
-          {/* MAIN PREVIEW CANVAS */}
-          <div className="flex-1 flex items-center justify-center min-h-[260px] md:min-h-0 relative rounded-2xl overflow-hidden bg-black/40 border border-white/5 p-4">
+          <div className="w-full aspect-[4/3] sm:aspect-video max-h-[360px] sm:max-h-[460px] rounded-2xl overflow-hidden bg-black/60 border border-white/5 relative flex items-center justify-center select-none shadow-inner">
             
-            {/* 1. MEDIA CAROUSEL & PHOTO / VIDEO STAGE */}
+            {/* 1. PHOTO & VIDEO MODE */}
             {selectedType === 'photo' && (
               mediaFiles.length > 0 ? (
-                <div className="w-full h-full flex flex-col items-center justify-center max-h-[500px]">
-                  <MediaEditor 
-                    key={`${selectedMediaIdx}_${mediaFiles[selectedMediaIdx]?.name || 'media'}`}
-                    file={mediaFiles[selectedMediaIdx]} 
-                    onChange={handleMediaChange}
-                  />
+                <div className="w-full h-full relative flex items-center justify-center overflow-hidden bg-black">
+                  {currentMedia?.type?.startsWith('video/') ? (
+                    <video
+                      src={currentMedia.url}
+                      className={`max-h-full w-full object-contain ${currentMedia.fitMode === 'cover' ? 'object-cover' : 'object-contain'}`}
+                      style={{
+                        filter: `brightness(${currentMedia.brightness ?? 100}%) contrast(${currentMedia.contrast ?? 100}%) saturate(${currentMedia.saturation ?? 100}%) blur(${currentMedia.blur ?? 0}px) hue-rotate(${currentMedia.warmth ?? 0}deg)`,
+                        transform: `rotate(${currentMedia.rotate ?? 0}deg) scaleX(${currentMedia.flipX ? -1 : 1}) scaleY(${currentMedia.flipY ? -1 : 1})`,
+                      }}
+                      controls
+                      autoPlay
+                      loop
+                      muted={currentMedia.muted}
+                    />
+                  ) : (
+                    <img
+                      src={currentMedia.url}
+                      alt="Preview"
+                      className={`max-h-full w-full object-contain ${currentMedia.fitMode === 'cover' ? 'object-cover' : 'object-contain'}`}
+                      style={{
+                        filter: `brightness(${currentMedia.brightness ?? 100}%) contrast(${currentMedia.contrast ?? 100}%) saturate(${currentMedia.saturation ?? 100}%) blur(${currentMedia.blur ?? 0}px) hue-rotate(${currentMedia.warmth ?? 0}deg)`,
+                        transform: `rotate(${currentMedia.rotate ?? 0}deg) scaleX(${currentMedia.flipX ? -1 : 1}) scaleY(${currentMedia.flipY ? -1 : 1})`,
+                      }}
+                    />
+                  )}
+
+                  {/* Overlay Quick Action: Edit Filters button */}
+                  <div className="absolute top-3 right-3 flex items-center gap-1.5 z-10">
+                    <button
+                      type="button"
+                      onClick={() => setActiveTool(activeTool === 'filters' ? null : 'filters')}
+                      className="px-3 py-1.5 bg-black/80 backdrop-blur-md border border-white/20 hover:bg-black text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-lg active:scale-95 transition-all cursor-pointer"
+                    >
+                      <Sliders size={13} className="text-aeirmist-cyan" />
+                      <span>{activeTool === 'filters' ? 'Close Editor' : 'Edit & Crop'}</span>
+                    </button>
+                  </div>
+
+                  {/* Sound Tag Indicator on Media */}
+                  {selectedMusic && (
+                    <div className="absolute bottom-3 left-3 bg-black/85 backdrop-blur-md border border-white/20 rounded-xl px-2.5 py-1 flex items-center gap-1.5 text-[10px] text-white shadow-lg">
+                      <MusicIcon size={12} className="text-aeirmist-cyan animate-pulse" />
+                      <span className="font-bold truncate max-w-[150px]">{selectedMusic.track.title}</span>
+                    </div>
+                  )}
                 </div>
               ) : (
+                /* Empty Media Dropzone */
                 <div 
-                  className="w-full max-w-md p-8 border-2 border-dashed border-white/15 rounded-3xl bg-white/[0.01] text-center space-y-4 hover:border-aeirmist-cyan/50 transition-colors cursor-pointer select-none"
-                  onDragOver={handleDragOver}
-                  onDrop={handleDrop}
                   onClick={() => fileInputRef.current?.click()}
+                  className="w-full h-full flex flex-col items-center justify-center p-6 text-center cursor-pointer hover:bg-white/[0.02] transition-colors"
                 >
-                  <div className="w-16 h-16 rounded-full bg-aeirmist-cyan/10 border border-aeirmist-cyan/30 flex items-center justify-center mx-auto text-aeirmist-cyan">
-                    <ImageIcon size={32} />
+                  <div className="w-14 h-14 rounded-2xl bg-aeirmist-cyan/10 border border-aeirmist-cyan/30 flex items-center justify-center text-aeirmist-cyan mb-3 shadow-lg">
+                    <ImageIcon size={28} />
                   </div>
-                  <div>
-                    <h3 className="text-sm font-bold text-white">Drag photos & videos here</h3>
-                    <p className="text-xs text-white/50 mt-1">Supports JPG, PNG, WEBP, MP4 up to 10MB</p>
-                  </div>
-                  <button 
+                  <h3 className="text-xs sm:text-sm font-bold text-white mb-1">Add Photos & Videos</h3>
+                  <p className="text-[10px] text-white/40 mb-3 font-mono">JPG, PNG, WEBP, MP4 (Up to 10 files)</p>
+                  <button
                     type="button"
-                    className="px-5 py-2.5 bg-aeirmist-cyan text-black font-bold text-xs rounded-full hover:brightness-110 shadow-lg shadow-aeirmist-cyan/20 transition-all cursor-pointer"
+                    className="px-4 py-2 bg-aeirmist-cyan text-black font-black text-xs uppercase tracking-wider rounded-full shadow-lg shadow-aeirmist-cyan/20 active:scale-95 transition-all"
                   >
                     Select From Device
                   </button>
-                  <input 
-                    type="file" 
-                    ref={fileInputRef} 
-                    onChange={handleAddMediaFiles} 
-                    multiple 
-                    accept="image/*,video/*" 
-                    className="hidden" 
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleAddMediaFiles}
+                    multiple
+                    accept="image/*,video/*"
+                    className="hidden"
                   />
                 </div>
               )
             )}
 
-            {/* 2. TEXT POST STAGE (PLAIN TEXT MODE vs CANVAS CARD MODE) */}
+            {/* 2. TEXT CARD MODE */}
             {selectedType === 'text' && (
               selectedGradient.id === 'plain' ? (
-                /* PLAIN TEXT MODE (Canvas Chara) */
-                <div className="w-full max-w-[calc(100vw-48px)] md:max-w-md rounded-2xl border border-white/10 bg-[#060a12] p-5 md:p-6 shadow-2xl space-y-4 text-left">
-                  <div className="flex items-center gap-3">
+                <div className="w-full h-full p-5 sm:p-6 flex flex-col justify-between text-left bg-[#060a12]">
+                  <div className="flex items-center gap-2.5">
                     <img 
                       src={getAvatarUrl(profile?.photoURL)} 
-                      className="w-10 h-10 rounded-full border border-white/20 object-cover" 
+                      className="w-8 h-8 rounded-full border border-white/20 object-cover" 
                       alt="" 
                     />
                     <div>
-                      <div className="text-sm font-bold text-white flex items-center gap-1.5">
-                        <span>{profile?.displayName || profile?.username || 'User'}</span>
-                        {profile?.isVerified && <ShieldCheck size={12} className="text-aeirmist-cyan shrink-0" />}
+                      <div className="text-xs font-bold text-white flex items-center gap-1">
+                        <span>{userDisplayName}</span>
+                        {profile?.isVerified && <ShieldCheck size={12} className="text-aeirmist-cyan" />}
                       </div>
-                      <div className="text-[10px] text-white/40 font-mono uppercase tracking-wider">Plain Text Post</div>
+                      <div className="text-[9px] text-white/40 font-mono">Plain Text Feed Post</div>
                     </div>
                   </div>
-                  
+
                   <textarea
-                    id="caption-textarea"
                     value={caption}
                     onChange={(e) => setCaption(e.target.value)}
-                    placeholder="Write your text post here..."
-                    aria-label="Text post content"
+                    placeholder="Type your story, thoughts, or update here..."
                     maxLength={3000}
                     rows={6}
-                    className="w-full bg-transparent text-left text-sm text-white focus:outline-none focus:ring-0 resize-none leading-relaxed placeholder:text-white/30"
+                    className="w-full bg-transparent text-sm text-white focus:outline-none resize-none leading-relaxed placeholder:text-white/30 my-auto py-2"
                   />
-                  
-                  <div className="flex justify-end items-center pt-3 border-t border-white/10 text-xs text-white/40 font-mono">
+
+                  <div className="flex justify-between items-center text-[10px] text-white/40 font-mono pt-2 border-t border-white/10">
+                    <span>Aeirmist Story</span>
                     <span>{caption.length} / 3000</span>
                   </div>
                 </div>
               ) : (
-                /* CANVAS CARD MODE (Canvas Soho) */
                 <div 
-                  className="w-full max-w-[calc(100vw-48px)] md:max-w-md aspect-square rounded-3xl border p-6 md:p-8 flex flex-col justify-between shadow-2xl relative overflow-hidden text-center transition-all duration-300"
+                  className="w-full h-full p-6 sm:p-8 flex flex-col justify-between text-center relative overflow-hidden transition-all duration-300"
                   style={{ background: selectedGradient.css }}
                 >
-                  <div className="absolute inset-0 bg-[linear-gradient(to_right,#ffffff05_1px,transparent_1px),linear-gradient(to_bottom,#ffffff05_1px,transparent_1px)] bg-[size:16px_16px]" />
-                  
-                  <div className="flex items-center gap-3 z-10 text-left">
-                    <img src={getAvatarUrl(profile?.photoURL)} className="w-9 h-9 rounded-full border border-white/20 object-cover" alt="" />
+                  <div className="flex items-center gap-2.5 text-left z-10">
+                    <img src={getAvatarUrl(profile?.photoURL)} className="w-8 h-8 rounded-full border border-white/20 object-cover" alt="" />
                     <div>
                       <div className="text-xs font-bold text-white flex items-center gap-1">
-                        <span>@{profile?.username || 'user'}</span>
-                        {profile?.isVerified && <ShieldCheck size={14} className="text-aeirmist-cyan shrink-0" />}
+                        <span>{userDisplayName}</span>
+                        {profile?.isVerified && <ShieldCheck size={12} className="text-aeirmist-cyan" />}
                       </div>
-                      <div className="text-[9px] text-white/50 uppercase tracking-widest">Canvas Card</div>
+                      <div className="text-[9px] text-white/50 uppercase tracking-widest font-mono">Canvas Card</div>
                     </div>
                   </div>
 
-                  <div className="my-auto z-10 w-full px-2">
-                    <textarea
-                      id="caption-textarea"
-                      value={caption}
-                      onChange={(e) => setCaption(e.target.value)}
-                      placeholder="Type your story card text..."
-                      aria-label="Canvas card content"
-                      maxLength={3000}
-                      rows={5}
-                      className="w-full bg-transparent text-center text-lg font-bold text-white leading-relaxed tracking-wide placeholder:text-white/30 focus:outline-none resize-none"
-                    />
-                  </div>
+                  <textarea
+                    value={caption}
+                    onChange={(e) => setCaption(e.target.value)}
+                    placeholder="Type your highlight quote or story here..."
+                    maxLength={3000}
+                    rows={4}
+                    className="w-full bg-transparent text-center text-base sm:text-lg font-bold text-white leading-relaxed placeholder:text-white/30 focus:outline-none resize-none z-10 my-auto px-2"
+                  />
 
-                  <div className="flex justify-end items-center text-[10px] text-white/40 tracking-wider font-mono z-10 pt-3 border-t border-white/10">
+                  <div className="flex justify-between items-center text-[10px] text-white/50 tracking-wider font-mono z-10 pt-2 border-t border-white/10">
+                    <span>{selectedGradient.label}</span>
                     <span>{caption.length} / 3000</span>
                   </div>
                 </div>
               )
             )}
 
-            {/* 3. POLL STAGE */}
+            {/* 3. POLL MODE */}
             {selectedType === 'poll' && (
-              <div className="w-full max-w-sm bg-[#080d17] border border-white/10 p-6 rounded-3xl space-y-4 text-left shadow-2xl">
+              <div className="w-full max-w-sm bg-[#080d17] border border-white/10 p-5 rounded-2xl space-y-3 text-left shadow-2xl">
                 <div className="flex items-center gap-2 text-aeirmist-cyan font-bold text-xs uppercase tracking-wider">
-                  <ListTodo size={18} />
+                  <ListTodo size={16} />
                   <span>Interactive Poll</span>
                 </div>
-                <div className="text-sm font-bold text-white">{poll?.question || 'Your Poll Question Here'}</div>
-                <div className="space-y-2">
+                <div className="text-xs sm:text-sm font-bold text-white">{poll?.question || 'Your Poll Question Here'}</div>
+                <div className="space-y-1.5">
                   {(poll?.options || ['Option 1', 'Option 2']).map((opt: string, i: number) => (
-                    <div key={i} className="bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-xs font-semibold flex justify-between items-center">
+                    <div key={i} className="bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs font-semibold flex justify-between items-center">
                       <span>{opt || `Option ${i + 1}`}</span>
                       <span className="text-white/40 font-mono text-[10px]">0%</span>
                     </div>
@@ -709,42 +598,42 @@ export const PostStudio: React.FC<PostStudioProps> = React.memo(({ onClose, init
               </div>
             )}
 
-            {/* 4. GIF STAGE */}
+            {/* 4. GIF MODE */}
             {selectedType === 'gif' && (
               attachedGif ? (
-                <div className="relative max-w-md rounded-2xl overflow-hidden border border-white/20 shadow-2xl">
-                  <img src={attachedGif} className="w-full max-h-[380px] object-cover" alt="GIF" />
+                <div className="relative w-full h-full flex items-center justify-center">
+                  <img src={attachedGif} className="max-h-full w-full object-contain" alt="GIF" />
                   <button 
                     onClick={() => setAttachedGif(null)}
-                    className="absolute top-2 right-2 p-1.5 rounded-full bg-black/70 text-white hover:bg-black transition-all"
+                    className="absolute top-2.5 right-2.5 p-1.5 rounded-full bg-black/80 text-white hover:bg-black transition-all"
                   >
                     <X size={14} />
                   </button>
                 </div>
               ) : (
-                <div className="w-full max-w-md p-6 bg-white/[0.02] border border-white/10 rounded-3xl text-center">
+                <div className="w-full max-w-sm p-4 text-center">
                   <GifPicker onSelect={(gif) => setAttachedGif(gif)} />
                 </div>
               )
             )}
 
-            {/* 5. LINK STAGE */}
+            {/* 5. LINK MODE */}
             {selectedType === 'link' && (
-              <div className="w-full max-w-sm bg-[#080d17] border border-white/10 rounded-3xl overflow-hidden shadow-2xl text-left">
+              <div className="w-full max-w-sm bg-[#080d17] border border-white/10 rounded-2xl overflow-hidden shadow-2xl text-left">
                 {linkPreview ? (
                   <div>
-                    <img src={linkPreview.image} className="w-full h-40 object-cover" alt="" />
-                    <div className="p-4 space-y-2 border-t border-white/10">
-                      <div className="text-xs text-aeirmist-cyan font-bold truncate">{linkPreview.url}</div>
+                    <img src={linkPreview.image} className="w-full h-32 object-cover" alt="" />
+                    <div className="p-3 space-y-1 border-t border-white/10">
+                      <div className="text-[11px] text-aeirmist-cyan font-bold truncate">{linkPreview.url}</div>
                       <div className="text-xs font-bold text-white">{linkPreview.title}</div>
                       <div className="text-[10px] text-white/50 leading-relaxed line-clamp-2">{linkPreview.description}</div>
                     </div>
                   </div>
                 ) : (
-                  <div className="p-8 text-center space-y-3">
-                    <LinkIcon size={36} className="mx-auto text-white/30" />
-                    <h4 className="text-xs font-bold text-white">Enter Link URL</h4>
-                    <p className="text-[10px] text-white/50">Enter a website URL in the right details panel to fetch preview card metadata.</p>
+                  <div className="p-6 text-center space-y-2">
+                    <LinkIcon size={30} className="mx-auto text-white/30" />
+                    <h4 className="text-xs font-bold text-white">Attach Web Link</h4>
+                    <p className="text-[10px] text-white/40">Use the link row below to fetch title and preview card.</p>
                   </div>
                 )}
               </div>
@@ -752,54 +641,63 @@ export const PostStudio: React.FC<PostStudioProps> = React.memo(({ onClose, init
 
           </div>
 
-          {/* Carousel Slide Timeline Bar */}
-          {selectedType === 'photo' && mediaFiles.length > 1 && (
-            <div className="flex gap-2 bg-white/5 p-3 rounded-2xl border border-white/10 overflow-x-auto shrink-0 select-none">
+          {/* CAROUSEL THUMBNAIL STRIP */}
+          {selectedType === 'photo' && mediaFiles.length > 0 && (
+            <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-1 shrink-0">
               {mediaFiles.map((file, idx) => (
                 <div 
                   key={idx}
                   onClick={() => setSelectedMediaIdx(idx)}
-                  className={`relative w-12 h-12 rounded-xl overflow-hidden cursor-pointer border shrink-0 group transition-all ${selectedMediaIdx === idx ? 'border-aeirmist-cyan scale-105 shadow-md' : 'border-white/10 hover:border-white/30'}`}
+                  className={`relative w-12 h-12 rounded-xl overflow-hidden cursor-pointer border shrink-0 group transition-all ${
+                    selectedMediaIdx === idx 
+                      ? 'border-aeirmist-cyan ring-2 ring-aeirmist-cyan/30 scale-105 shadow-md' 
+                      : 'border-white/15 opacity-70 hover:opacity-100'
+                  }`}
                 >
                   <img src={file.url} className="w-full h-full object-cover" alt="" />
                   <button
+                    type="button"
                     onClick={(e) => {
                       e.stopPropagation();
                       const filtered = mediaFiles.filter((_, i) => i !== idx);
                       setMediaFiles(filtered);
                       setSelectedMediaIdx(0);
                     }}
-                    className="absolute top-0 right-0 bg-red-500 p-0.5 text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                    className="absolute top-0 right-0 bg-red-500 p-0.5 text-white opacity-0 group-hover:opacity-100 transition-opacity rounded-bl-md"
                   >
                     <X size={10} />
                   </button>
                 </div>
               ))}
-              <button 
-                onClick={() => fileInputRef.current?.click()}
-                className="w-12 h-12 rounded-xl border border-dashed border-white/20 hover:border-aeirmist-cyan flex items-center justify-center text-white/40 hover:text-white transition-colors shrink-0"
-              >
-                <Trash2 size={16} className="rotate-45" />
-              </button>
+
+              {mediaFiles.length < 10 && (
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="w-12 h-12 rounded-xl border border-dashed border-white/20 hover:border-aeirmist-cyan flex flex-col items-center justify-center text-white/50 hover:text-white transition-colors shrink-0 bg-white/[0.02]"
+                  title="Add more photos or videos"
+                >
+                  <Plus size={16} />
+                  <span className="text-[8px] font-bold uppercase mt-0.5">Add</span>
+                </button>
+              )}
             </div>
           )}
 
         </div>
 
-        {/* RIGHT / BOTTOM PANEL: INSTAGRAM-STYLE DETAILS & TOOLS (40% width on Desktop, Scrollable below on Phone) */}
-        <div className="w-full md:w-[40%] flex flex-col bg-[#05080e] p-4 sm:p-6 space-y-5 overflow-y-auto shrink-0 border-t md:border-t-0 border-white/10">
-          
-          {/* User Profile Header */}
-          <div className="flex items-center justify-between pb-3 border-b border-white/10">
-            <div className="flex items-center gap-3">
+        {/* B. AUTHOR BAR & CAPTION INPUT */}
+        <div className="bg-[#04060c] border border-white/10 rounded-2xl p-3.5 sm:p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
               <img 
                 src={getAvatarUrl(profile?.photoURL)} 
-                className="w-9 h-9 rounded-full border border-white/20 object-cover" 
+                className="w-9 h-9 rounded-full border border-white/20 object-cover shadow-sm" 
                 alt="" 
               />
               <div>
-                <span className="text-xs font-bold text-white block">{profile?.displayName || profile?.username || 'User'}</span>
-                <span className="text-[10px] text-white/40 block font-mono">@{profile?.username || 'username'}</span>
+                <span className="text-xs font-bold text-white block">{userDisplayName}</span>
+                <span className="text-[10px] text-white/40 block font-mono">@{profile?.username || 'user'}</span>
               </div>
             </div>
 
@@ -807,7 +705,7 @@ export const PostStudio: React.FC<PostStudioProps> = React.memo(({ onClose, init
             <select
               value={audience}
               onChange={(e) => setAudience(e.target.value as any)}
-              className="bg-white/5 border border-white/10 rounded-full px-3 py-1 text-[10px] font-bold text-white focus:outline-none focus:border-aeirmist-cyan cursor-pointer"
+              className="bg-white/5 hover:bg-white/10 border border-white/10 rounded-full px-3 py-1 text-[11px] font-bold text-white focus:outline-none focus:border-aeirmist-cyan cursor-pointer transition-colors"
             >
               <option value="public" className="bg-[#05080e] text-white">Public</option>
               <option value="followers" className="bg-[#05080e] text-white">Followers</option>
@@ -816,161 +714,321 @@ export const PostStudio: React.FC<PostStudioProps> = React.memo(({ onClose, init
             </select>
           </div>
 
-          {/* MAIN CAPTION BOX (If not in Plain Text mode where caption is in preview) */}
           {selectedType !== 'text' && (
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-bold text-white/60">Caption</label>
-              </div>
+            <div className="space-y-1 pt-1">
               <textarea
-                id="caption-textarea"
                 value={caption}
                 onChange={(e) => setCaption(e.target.value)}
-                placeholder="Write a caption..."
-                aria-label="Post caption"
-                rows={4}
+                placeholder="Write a caption, mention @friends, add #hashtags..."
+                rows={3}
                 maxLength={3000}
-                className="w-full bg-white/[0.02] border border-white/10 rounded-2xl p-3 text-xs text-white placeholder:text-white/30 focus:outline-none focus:border-aeirmist-cyan resize-none leading-relaxed"
+                className="w-full bg-white/[0.02] border border-white/10 rounded-xl p-3 text-xs text-white placeholder:text-white/30 focus:outline-none focus:border-aeirmist-cyan resize-none leading-relaxed transition-all"
               />
-              <div className="flex justify-between items-center text-[10px] text-white/30 font-mono">
-                <span>Formatting: **bold** *italic*</span>
+              <div className="flex justify-between items-center text-[10px] text-white/30 font-mono px-1">
+                <span>**bold** *italic*</span>
                 <span>{caption.length} / 3000</span>
               </div>
             </div>
           )}
+        </div>
 
-          {/* TEXT CANVAS STYLE PICKER (For Text Posts) */}
-          {selectedType === 'text' && (
-            <div className="space-y-2.5 bg-white/[0.02] border border-white/10 p-4 rounded-2xl">
-              <label className="text-xs font-bold text-white flex items-center gap-2">
-                <Sparkles size={14} className="text-aeirmist-cyan" />
-                <span>Canvas Style</span>
-              </label>
-              <div className="grid grid-cols-2 gap-2">
-                {THEME_GRADIENTS.map(grad => (
-                  <button
-                    key={grad.id}
-                    type="button"
-                    onClick={() => setSelectedGradient(grad)}
-                    className={`p-2.5 rounded-xl text-xs font-bold border text-left truncate transition-all cursor-pointer ${selectedGradient.id === grad.id ? 'border-aeirmist-cyan shadow-md shadow-aeirmist-cyan/10 text-white' : 'border-white/10 text-white/60 hover:text-white hover:bg-white/5'}`}
-                    style={{ background: grad.css }}
-                  >
-                    {grad.label}
-                  </button>
-                ))}
+        {/* C. CATEGORIZED FEATURE ROWS (শ্রেণীবদ্ধ ফিচার লিস্ট) */}
+        <div className="bg-[#04060c] border border-white/10 rounded-2xl overflow-hidden divide-y divide-white/5">
+          
+          {/* 1. Add Music / Sound */}
+          <div 
+            onClick={() => setActiveTool(activeTool === 'music' ? null : 'music')}
+            className="flex items-center justify-between p-3.5 hover:bg-white/[0.04] transition-colors cursor-pointer"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-xl bg-aeirmist-cyan/10 border border-aeirmist-cyan/30 flex items-center justify-center text-aeirmist-cyan">
+                <MusicIcon size={15} />
               </div>
+              <div>
+                <div className="text-xs font-bold text-white">Add Music & Soundtrack</div>
+                <div className="text-[10px] text-white/40 truncate max-w-[200px]">
+                  {selectedMusic ? `${selectedMusic.track.title} • ${selectedMusic.track.artist}` : 'Hindi, Bangla, Spotify hits'}
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              {selectedMusic && <span className="w-2 h-2 rounded-full bg-green-400" />}
+              <ChevronRight size={15} className={`text-white/30 transition-transform ${activeTool === 'music' ? 'rotate-90 text-aeirmist-cyan' : ''}`} />
+            </div>
+          </div>
+
+          {/* 2. Tag People */}
+          <div 
+            onClick={() => setActiveTool(activeTool === 'tag' ? null : 'tag')}
+            className="flex items-center justify-between p-3.5 hover:bg-white/[0.04] transition-colors cursor-pointer"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-xl bg-purple-500/10 border border-purple-500/30 flex items-center justify-center text-purple-400">
+                <Users size={15} />
+              </div>
+              <div>
+                <div className="text-xs font-bold text-white">Tag People</div>
+                <div className="text-[10px] text-white/40">
+                  {taggedPeople.length > 0 ? `${taggedPeople.length} user(s) tagged` : 'Tag friends in this post'}
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              {taggedPeople.length > 0 && (
+                <span className="px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 text-[10px] font-bold">
+                  {taggedPeople.length}
+                </span>
+              )}
+              <ChevronRight size={15} className={`text-white/30 transition-transform ${activeTool === 'tag' ? 'rotate-90 text-aeirmist-cyan' : ''}`} />
+            </div>
+          </div>
+
+          {/* 3. Add Location */}
+          <div 
+            onClick={() => setActiveTool(activeTool === 'location' ? null : 'location')}
+            className="flex items-center justify-between p-3.5 hover:bg-white/[0.04] transition-colors cursor-pointer"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-xl bg-pink-500/10 border border-pink-500/30 flex items-center justify-center text-pink-400">
+                <MapPin size={15} />
+              </div>
+              <div>
+                <div className="text-xs font-bold text-white">Add Location</div>
+                <div className="text-[10px] text-white/40 truncate max-w-[200px]">
+                  {location || 'Search place or city'}
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              {location && <span className="w-2 h-2 rounded-full bg-pink-400" />}
+              <ChevronRight size={15} className={`text-white/30 transition-transform ${activeTool === 'location' ? 'rotate-90 text-aeirmist-cyan' : ''}`} />
+            </div>
+          </div>
+
+          {/* 4. Canvas Theme (Only for Text Mode) */}
+          {selectedType === 'text' && (
+            <div 
+              onClick={() => setActiveTool(activeTool === 'theme' ? null : 'theme')}
+              className="flex items-center justify-between p-3.5 hover:bg-white/[0.04] transition-colors cursor-pointer"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400">
+                  <Sparkles size={15} />
+                </div>
+                <div>
+                  <div className="text-xs font-bold text-white">Story Card Theme</div>
+                  <div className="text-[10px] text-white/40">{selectedGradient.label}</div>
+                </div>
+              </div>
+              <ChevronRight size={15} className={`text-white/30 transition-transform ${activeTool === 'theme' ? 'rotate-90 text-aeirmist-cyan' : ''}`} />
             </div>
           )}
 
-          {/* ORGANIZED TOOL ACCORDION SECTIONS */}
-          <div className="space-y-2 pt-2">
-            
-            {/* Tool Nav Tabs */}
-            <div className="flex gap-1 bg-white/5 border border-white/10 rounded-xl p-1 overflow-x-auto scrollbar-none">
-              {[
-                { id: 'details', label: 'Tools', icon: Settings },
-                { id: 'tag', label: 'Tag People', icon: Users },
-                { id: 'location', label: 'Location', icon: MapPin },
-                { id: 'music', label: 'Music', icon: MusicIcon },
-                { id: 'settings', label: 'Privacy', icon: Globe }
-              ].map(tab => (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => setActiveRightPanel(tab.id as any)}
-                  className={`flex-1 py-1.5 px-2 rounded-lg text-[10px] font-bold transition-all shrink-0 cursor-pointer flex items-center justify-center gap-1 ${activeRightPanel === tab.id ? 'bg-aeirmist-cyan text-black font-bold shadow' : 'text-white/60 hover:text-white hover:bg-white/5'}`}
-                >
-                  <tab.icon size={12} />
-                  <span>{tab.label}</span>
-                </button>
-              ))}
+          {/* 5. Poll Options (Only for Poll Mode) */}
+          {selectedType === 'poll' && (
+            <div 
+              onClick={() => setActiveTool(activeTool === 'poll' ? null : 'poll')}
+              className="flex items-center justify-between p-3.5 hover:bg-white/[0.04] transition-colors cursor-pointer"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400">
+                  <ListTodo size={15} />
+                </div>
+                <div>
+                  <div className="text-xs font-bold text-white">Edit Poll Questions & Choices</div>
+                  <div className="text-[10px] text-white/40">Customize choices and answers</div>
+                </div>
+              </div>
+              <ChevronRight size={15} className={`text-white/30 transition-transform ${activeTool === 'poll' ? 'rotate-90 text-aeirmist-cyan' : ''}`} />
+            </div>
+          )}
+
+          {/* 6. Link Metadata (Only for Link Mode) */}
+          {selectedType === 'link' && (
+            <div 
+              onClick={() => setActiveTool(activeTool === 'link' ? null : 'link')}
+              className="flex items-center justify-between p-3.5 hover:bg-white/[0.04] transition-colors cursor-pointer"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+                  <LinkIcon size={15} />
+                </div>
+                <div>
+                  <div className="text-xs font-bold text-white">Configure Web Link URL</div>
+                  <div className="text-[10px] text-white/40 truncate max-w-[200px]">{linkUrl || 'Enter target website link'}</div>
+                </div>
+              </div>
+              <ChevronRight size={15} className={`text-white/30 transition-transform ${activeTool === 'link' ? 'rotate-90 text-aeirmist-cyan' : ''}`} />
+            </div>
+          )}
+
+          {/* 7. Advanced Settings */}
+          <div 
+            onClick={() => setActiveTool(activeTool === 'settings' ? null : 'settings')}
+            className="flex items-center justify-between p-3.5 hover:bg-white/[0.04] transition-colors cursor-pointer"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-xl bg-zinc-700/30 border border-white/10 flex items-center justify-center text-white/70">
+                <Settings size={15} />
+              </div>
+              <div>
+                <div className="text-xs font-bold text-white">Advanced Options</div>
+                <div className="text-[10px] text-white/40">Comments, like counts & flags</div>
+              </div>
+            </div>
+            <ChevronRight size={15} className={`text-white/30 transition-transform ${activeTool === 'settings' ? 'rotate-90 text-aeirmist-cyan' : ''}`} />
+          </div>
+
+        </div>
+
+        {/* D. ACTIVE SLIDE-UP DRAWER (Clean contextual modal) */}
+        {activeTool && (
+          <div className="bg-[#090d16] border border-white/15 rounded-3xl p-4 sm:p-5 space-y-3.5 relative shadow-2xl animate-in fade-in slide-in-from-top-2 duration-200">
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <span className="text-xs font-black uppercase text-aeirmist-cyan tracking-wider">
+                {activeTool === 'filters' && 'Media Filters & Adjustments'}
+                {activeTool === 'music' && 'Music & Soundtrack'}
+                {activeTool === 'tag' && 'Tag People'}
+                {activeTool === 'location' && 'Add Location'}
+                {activeTool === 'theme' && 'Canvas Card Background'}
+                {activeTool === 'poll' && 'Configure Poll'}
+                {activeTool === 'link' && 'Web Link Card'}
+                {activeTool === 'settings' && 'Advanced Post Settings'}
+              </span>
+              <button
+                type="button"
+                onClick={() => setActiveTool(null)}
+                className="w-7 h-7 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center text-white/60 hover:text-white transition-colors cursor-pointer"
+              >
+                <X size={14} />
+              </button>
             </div>
 
-            {/* Active Tool Panel Content */}
-            <div className="pt-2">
-              {activeRightPanel === 'details' && (
-                <div className="space-y-3">
-                  {selectedType === 'poll' && (
-                    <PollComposer poll={poll} onChange={setPoll} />
-                  )}
-                  {selectedType === 'link' && (
-                    <div className="space-y-2 bg-white/[0.02] border border-white/10 p-3 rounded-2xl">
-                      <label className="text-xs font-bold text-white/80 block">Fetch Web Link</label>
-                      <div className="flex gap-2">
-                        <input 
-                          type="text" 
-                          value={linkUrl}
-                          onChange={(e) => setLinkUrl(e.target.value)}
-                          placeholder="https://example.com"
-                          className="flex-1 bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-aeirmist-cyan"
-                        />
-                        <button 
-                          onClick={handleLinkLookup}
-                          className="px-4 bg-aeirmist-cyan text-black text-xs font-bold rounded-xl hover:brightness-110 transition-all"
-                        >
-                          Fetch
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                  {selectedType === 'photo' && (
-                    <div className="p-4 bg-white/[0.02] border border-white/10 rounded-2xl space-y-2">
-                      <div className="text-xs font-bold text-white">Media Enhancements</div>
-                      <p className="text-[10px] text-white/50">Click any attached photo in the preview stage to crop, adjust filters, or rotate.</p>
-                    </div>
-                  )}
+            {/* Drawer Components */}
+            <div>
+              {activeTool === 'filters' && currentMedia && (
+                <div className="py-1">
+                  <MediaEditor
+                    file={currentMedia}
+                    onChange={handleMediaChange}
+                  />
                 </div>
               )}
 
-              {activeRightPanel === 'tag' && (
-                <div className="bg-white/[0.02] border border-white/10 p-3 rounded-2xl">
-                  <TagPeople taggedUsers={taggedPeople} onChange={setTaggedPeople} />
+              {activeTool === 'music' && (
+                <MusicSelector
+                  selectedTrack={selectedMusic}
+                  onChange={setSelectedMusic}
+                />
+              )}
+
+              {activeTool === 'tag' && (
+                <TagPeople
+                  taggedUsers={taggedPeople}
+                  onChange={setTaggedPeople}
+                />
+              )}
+
+              {activeTool === 'location' && (
+                <LocationSearch
+                  selectedLocation={location}
+                  onSelect={setLocation}
+                />
+              )}
+
+              {activeTool === 'theme' && (
+                <div className="grid grid-cols-2 gap-2.5 pt-1">
+                  {THEME_GRADIENTS.map(grad => (
+                    <button
+                      key={grad.id}
+                      type="button"
+                      onClick={() => setSelectedGradient(grad)}
+                      className={`p-3 rounded-2xl text-xs font-bold border text-left truncate transition-all cursor-pointer ${
+                        selectedGradient.id === grad.id 
+                          ? 'border-aeirmist-cyan shadow-md shadow-aeirmist-cyan/20 text-white' 
+                          : 'border-white/10 text-white/60 hover:text-white'
+                      }`}
+                      style={{ background: grad.css }}
+                    >
+                      {grad.label}
+                    </button>
+                  ))}
                 </div>
               )}
 
-              {activeRightPanel === 'location' && (
-                <div className="bg-white/[0.02] border border-white/10 p-3 rounded-2xl">
-                  <LocationSearch selectedLocation={location} onSelect={setLocation} />
+              {activeTool === 'poll' && (
+                <PollComposer poll={poll} onChange={setPoll} />
+              )}
+
+              {activeTool === 'link' && (
+                <div className="space-y-2.5">
+                  <label className="text-xs font-bold text-white/70 block">Target URL</label>
+                  <div className="flex gap-2">
+                    <input 
+                      type="text" 
+                      value={linkUrl}
+                      onChange={(e) => setLinkUrl(e.target.value)}
+                      placeholder="https://example.com"
+                      className="flex-1 bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-aeirmist-cyan"
+                    />
+                    <button 
+                      type="button"
+                      onClick={() => {
+                        if (!linkUrl) return;
+                        setLinkPreview({
+                          url: linkUrl,
+                          title: `${linkUrl.replace('https://', '').split('/')[0]} Hub`,
+                          description: 'Explore verified shared channels and updates instantly on Aeirmist platform.',
+                          image: 'https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=600&q=80'
+                        });
+                      }}
+                      className="px-4 bg-aeirmist-cyan text-black text-xs font-bold rounded-xl hover:brightness-110 transition-all"
+                    >
+                      Fetch
+                    </button>
+                  </div>
                 </div>
               )}
 
-              {activeRightPanel === 'music' && (
-                <div className="bg-white/[0.02] border border-white/10 p-3 rounded-2xl">
-                  <MusicSelector selectedTrack={selectedMusic} onChange={setSelectedMusic} />
-                </div>
-              )}
-
-              {activeRightPanel === 'settings' && (
-                <div className="space-y-3 bg-white/[0.02] border border-white/10 p-4 rounded-2xl">
-                  <div className="text-xs font-bold text-white mb-2">Advanced Settings</div>
-                  
+              {activeTool === 'settings' && (
+                <div className="space-y-3 pt-1">
                   <div className="flex justify-between items-center text-xs">
                     <span className="text-white/80">Allow Comments</span>
-                    <button onClick={() => setAllowComments(!allowComments)} className={`w-9 h-5 rounded-full p-0.5 transition-colors ${allowComments ? 'bg-aeirmist-cyan' : 'bg-white/10'}`}>
+                    <button 
+                      type="button"
+                      onClick={() => setAllowComments(!allowComments)} 
+                      className={`w-9 h-5 rounded-full p-0.5 transition-colors cursor-pointer ${allowComments ? 'bg-aeirmist-cyan' : 'bg-white/10'}`}
+                    >
                       <div className={`w-4 h-4 rounded-full bg-black transition-transform ${allowComments ? 'translate-x-4' : 'translate-x-0'}`} />
                     </button>
                   </div>
 
                   <div className="flex justify-between items-center text-xs">
                     <span className="text-white/80">Hide Like Counts</span>
-                    <button onClick={() => setHideLikes(!hideLikes)} className={`w-9 h-5 rounded-full p-0.5 transition-colors ${hideLikes ? 'bg-aeirmist-cyan' : 'bg-white/10'}`}>
+                    <button 
+                      type="button"
+                      onClick={() => setHideLikes(!hideLikes)} 
+                      className={`w-9 h-5 rounded-full p-0.5 transition-colors cursor-pointer ${hideLikes ? 'bg-aeirmist-cyan' : 'bg-white/10'}`}
+                    >
                       <div className={`w-4 h-4 rounded-full bg-black transition-transform ${hideLikes ? 'translate-x-4' : 'translate-x-0'}`} />
                     </button>
                   </div>
 
                   <div className="flex justify-between items-center text-xs">
                     <span className="text-white/80">Sensitive Content Flag</span>
-                    <button onClick={() => setSensitiveWarning(!sensitiveWarning)} className={`w-9 h-5 rounded-full p-0.5 transition-colors ${sensitiveWarning ? 'bg-red-500' : 'bg-white/10'}`}>
+                    <button 
+                      type="button"
+                      onClick={() => setSensitiveWarning(!sensitiveWarning)} 
+                      className={`w-9 h-5 rounded-full p-0.5 transition-colors cursor-pointer ${sensitiveWarning ? 'bg-red-500' : 'bg-white/10'}`}
+                    >
                       <div className={`w-4 h-4 rounded-full bg-black transition-transform ${sensitiveWarning ? 'translate-x-4' : 'translate-x-0'}`} />
                     </button>
                   </div>
                 </div>
               )}
             </div>
-
           </div>
-
-        </div>
+        )}
 
       </div>
 

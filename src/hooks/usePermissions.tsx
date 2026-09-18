@@ -1,7 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import { logger } from '@/src/utils/logger';
 
-
 export type PermissionType = 
   | 'camera' 
   | 'microphone' 
@@ -46,9 +45,9 @@ export const usePermissions = () => {
           camera: 'camera',
           microphone: 'microphone',
           location: 'geolocation',
-          photos: 'notifications', // No direct photo permission query in many browsers
-          contacts: 'contacts' as any,
-          bluetooth: 'bluetooth' as any
+          photos: 'notifications',
+          contacts: 'contacts',
+          bluetooth: 'bluetooth'
         };
 
         const permissionName = nameMap[type];
@@ -83,7 +82,7 @@ export const usePermissions = () => {
 
   const requestPermission = useCallback(async (type: PermissionType): Promise<boolean> => {
     // If already granted, return true immediately
-    if (permissions[type].status === 'granted') {
+    if (permissions[type]?.status === 'granted') {
       return true;
     }
 
@@ -91,26 +90,39 @@ export const usePermissions = () => {
     logger.info(`[Permissions] Requesting ${type}...`);
     
     try {
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        throw new Error("navigator.mediaDevices is not available");
-      }
-
       if (type === 'camera') {
-        // Request BOTH for camera as it's usually for video calls or video capture
-        const stream = await navigator.mediaDevices.getUserMedia({ 
-          video: true,
-          audio: true 
-        });
-        stream.getTracks().forEach(track => track.stop());
-        setPermissions(prev => ({ 
-          ...prev, 
-          camera: { status: 'granted', lastRequested: Date.now() },
-          microphone: { status: 'granted', lastRequested: Date.now() }
-        }));
-        return true;
+        let stream: MediaStream | null = null;
+        try {
+          if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+            stream = await navigator.mediaDevices.getUserMedia({ 
+              video: { facingMode: 'user' },
+              audio: true 
+            });
+          }
+        } catch (e) {
+          // Fallback to video only if audio is unavailable
+          if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+            stream = await navigator.mediaDevices.getUserMedia({ video: true });
+          }
+        }
+
+        if (stream) {
+          stream.getTracks().forEach(track => track.stop());
+          setPermissions(prev => ({ 
+            ...prev, 
+            camera: { status: 'granted', lastRequested: Date.now() },
+            microphone: { status: 'granted', lastRequested: Date.now() }
+          }));
+          return true;
+        } else {
+          throw new Error('Could not open camera device stream.');
+        }
       }
 
       if (type === 'microphone') {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          throw new Error("Microphone access is not supported on this device.");
+        }
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         stream.getTracks().forEach(track => track.stop());
         setPermissions(prev => ({ ...prev, microphone: { status: 'granted', lastRequested: Date.now() } }));
@@ -130,31 +142,33 @@ export const usePermissions = () => {
 
       if (type === 'location') {
         return new Promise((resolve) => {
+          if (!('geolocation' in navigator)) {
+            setPermissions(prev => ({ ...prev, location: { status: 'unavailable' } }));
+            resolve(false);
+            return;
+          }
           navigator.geolocation.getCurrentPosition(
             () => {
               setPermissions(prev => ({ ...prev, location: { status: 'granted', lastRequested: Date.now() } }));
               resolve(true);
             },
             (err) => {
-              setPermissions(prev => ({ ...prev, location: { status: 'denied', error: err.message } }));
+              const status = err.code === 1 ? 'denied' : 'unavailable';
+              setPermissions(prev => ({ ...prev, location: { status, error: err.message, lastRequested: Date.now() } }));
               resolve(false);
             },
-            { timeout: 5000 }
+            { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
           );
         });
       }
 
       if (type === 'photos') {
-        // In web, standard input file doesn't need "permission" in the same way, 
-        // but we can simulate a "granted" state for our logic.
         setPermissions(prev => ({ ...prev, photos: { status: 'granted', lastRequested: Date.now() } }));
         return true;
       }
 
-      // Contacts and Bluetooth are experimental or platform specific
       if (type === 'contacts') {
         if ('contacts' in navigator && 'ContactsManager' in window) {
-           // Theoretical support
            setPermissions(prev => ({ ...prev, contacts: { status: 'granted', lastRequested: Date.now() } }));
            return true;
         }
@@ -162,18 +176,26 @@ export const usePermissions = () => {
         return false;
       }
 
+      if (type === 'bluetooth') {
+        if ('bluetooth' in navigator) {
+          setPermissions(prev => ({ ...prev, bluetooth: { status: 'granted', lastRequested: Date.now() } }));
+          return true;
+        }
+        setPermissions(prev => ({ ...prev, bluetooth: { status: 'unavailable' } }));
+        return false;
+      }
+
       return false;
     } catch (err: any) {
-      logger.error(`[Permissions] Critical failure for ${type}:`, err);
-      logger.error(`[Permissions] Error Name: ${err.name}, Message: ${err.message}`);
+      logger.error(`[Permissions] Failure for ${type}:`, err);
       
       let status: 'denied' | 'unavailable' = 'denied';
       let customErrorMessage = err.message || `Failed to access ${type}`;
 
       if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError' || err.name === 'NotSupportedError') {
         status = 'unavailable';
-      } else if (err.name === 'NotAllowedError') {
-        customErrorMessage = "System access denied. Please check your browser's site settings for Camera and Microphone and ensure they are allowed.";
+      } else if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        customErrorMessage = `System access denied for ${type}. Please enable it in device site settings.`;
       }
       
       setPermissions(prev => ({ 
@@ -182,7 +204,7 @@ export const usePermissions = () => {
       }));
       return false;
     }
-  }, []);
+  }, [permissions]);
 
   useEffect(() => {
     const permissionsToCheck: PermissionType[] = ['camera', 'microphone', 'notifications', 'location'];

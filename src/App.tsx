@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, lazy, Suspense, useEffect, useRef } from 'react';
+import React, { useState, lazy, Suspense, useEffect, useRef, useCallback } from 'react';
 import { BrowserRouter, Routes, Route, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { Navigation, Tab } from './components/Navigation';
@@ -232,7 +232,8 @@ function AppContent() {
     cancelDeleteAccount,
     storyUpload,
     needsPasswordOnboarding,
-    featureFlags
+    featureFlags,
+    addToast
   } = useAeirmist();
   const { isLoading: isThemeLoading } = useTheme();
 
@@ -274,6 +275,169 @@ function AppContent() {
       setShowSafeExit(false);
     }
   }, [loading, user, profile, needsUsername]);
+
+  // Native Android Hardware Back Button Integration & Navigation Stack
+  const lastBackPressRef = useRef<number>(0);
+  const tabHistoryStackRef = useRef<Tab[]>(['feed']);
+
+  // Keep a synchronous, always-up-to-date reference of navigation state
+  const navStateRef = useRef<any>({});
+  useEffect(() => {
+    navStateRef.current = {
+      viewingPostId,
+      viewingVideoId,
+      isPosting,
+      isNotificationsOpen,
+      isAccountSwitcherOpen,
+      cameraConfig,
+      settingsSection,
+      viewingProfile,
+      viewingStoreId,
+      viewingProductId,
+      messageRecipient,
+      activeTab,
+      storyState,
+      addToast
+    };
+  });
+
+  // Track tab history for back navigation between pages
+  useEffect(() => {
+    if (isPoppingRef.current) return;
+    const stack = tabHistoryStackRef.current;
+    if (stack[stack.length - 1] !== activeTab) {
+      stack.push(activeTab);
+      if (stack.length > 40) stack.shift();
+    }
+  }, [activeTab]);
+
+  useEffect(() => {
+    let backListener: any;
+    let isMounted = true;
+    
+    const setupListener = async () => {
+      try {
+        const { App: CapApp } = await import('@capacitor/app');
+        if (!isMounted) return;
+
+        backListener = await CapApp.addListener('backButton', ({ canGoBack }: any) => {
+          const s = navStateRef.current;
+
+          // 1. Stories open
+          if (s.storyState?.activeStoryGroup || s.storyState?.isStudioOpen || s.storyState?.isCreatingNote) {
+            setStoryState({ activeStoryGroup: null, isStudioOpen: false, isCreatingNote: false });
+            window.dispatchEvent(new CustomEvent('aeirmist-story-close'));
+            return;
+          }
+
+          // 2. Post detail modal is open
+          if (s.viewingPostId) {
+            setViewingPostId(null);
+            return;
+          }
+
+          // 3. Video modal / detail is open
+          if (s.viewingVideoId) {
+            setViewingVideoId(null);
+            return;
+          }
+
+          // 4. Create Post studio is open
+          if (s.isPosting) {
+            setIsPosting(false);
+            return;
+          }
+
+          // 5. Notification Center is open
+          if (s.isNotificationsOpen) {
+            setIsNotificationsOpen(false);
+            return;
+          }
+
+          // 6. Account switcher is open
+          if (s.isAccountSwitcherOpen) {
+            setIsAccountSwitcherOpen(false);
+            return;
+          }
+
+          // 7. Camera is open
+          if (s.cameraConfig?.isOpen) {
+            setCameraConfig(null);
+            return;
+          }
+
+          // 8. Settings sub-section is open
+          if (s.settingsSection) {
+            setSettingsSection(null);
+            return;
+          }
+
+          // 9. Viewing a store or product
+          if (s.viewingStoreId || s.viewingProductId) {
+            setViewingStoreId(null);
+            setViewingProductId(null);
+            return;
+          }
+
+          // 10. Specific chat in Messenger
+          if (s.messageRecipient) {
+            setMessageRecipient(null);
+            return;
+          }
+
+          // 11. Viewing another user's profile
+          if (s.viewingProfile) {
+            setViewingProfile(null);
+            return;
+          }
+
+          // 12. If we have browser history entries created by app navigation
+          if (window.history.length > 1 && window.history.state?._appNav) {
+            window.history.back();
+            return;
+          }
+
+          // 13. If user navigated through different tabs, pop back to previous tab
+          if (tabHistoryStackRef.current.length > 1) {
+            tabHistoryStackRef.current.pop(); // Remove current tab
+            const previousTab = tabHistoryStackRef.current[tabHistoryStackRef.current.length - 1] || 'feed';
+            setActiveTab(previousTab);
+            return;
+          }
+
+          // 14. If on any tab other than feed, return to feed
+          if (s.activeTab !== 'feed') {
+            setActiveTab('feed');
+            return;
+          }
+
+          // 15. At root home feed: double back press within 2000ms to exit app
+          const now = Date.now();
+          if (now - lastBackPressRef.current < 2000) {
+            CapApp.exitApp();
+          } else {
+            lastBackPressRef.current = now;
+            s.addToast?.({
+              title: 'Exit Aeirmist',
+              message: 'Press back again to exit.',
+              type: 'info'
+            });
+          }
+        });
+      } catch (err) {
+        // Not in Capacitor native environment
+      }
+    };
+
+    setupListener();
+
+    return () => {
+      isMounted = false;
+      if (backListener?.remove) {
+        backListener.remove();
+      }
+    };
+  }, []);
 
   React.useEffect(() => {
     const handleNavigate = (e: any) => {
@@ -777,20 +941,28 @@ function AppContent() {
         setIsPosting(poppedState.isPosting);
         setIsNotificationsOpen(poppedState.isNotificationsOpen);
         setIsAccountSwitcherOpen(poppedState.isAccountSwitcherOpen);
+        setSettingsSection(poppedState.settingsSection || null);
         if (poppedState.storyState) {
           setStoryState(poppedState.storyState);
           window.dispatchEvent(new CustomEvent('aeirmist-story-state-restore', { detail: poppedState.storyState }));
+        }
+
+        // Sync tab history stack
+        const restoredTab = poppedState.activeTab === 'notifications' ? 'feed' : poppedState.activeTab;
+        if (restoredTab && tabHistoryStackRef.current[tabHistoryStackRef.current.length - 1] !== restoredTab) {
+          tabHistoryStackRef.current.push(restoredTab);
         }
         
         // Reset popping state asynchronously to accommodate React state update scheduling
         setTimeout(() => {
           isPoppingRef.current = false;
-        }, 0);
+        }, 50);
       } else {
         // Fallback popstate if state doesn't have _appNav (e.g. direct url change)
         const pathInit = getInitialStateFromPath(window.location.pathname);
         setActiveTab(pathInit.tab);
         setIsNotificationsOpen(pathInit.notifs);
+        setSettingsSection(null);
       }
     };
 
@@ -860,9 +1032,114 @@ function AppContent() {
 
   // Show unified Welcome screen on opening / initial load
   if (loading || (showSplash && !needsUsername)) {
-    const displayNameText = user 
-      ? (profile?.displayName || user.displayName || user.email?.split('@')[0] || 'User')
-      : 'AEIRMIST';
+    const getPersistedIdName = () => {
+      const isValid = (val?: string | null) => {
+        if (!val || typeof val !== 'string') return false;
+        const trimmed = val.trim();
+        if (!trimmed) return false;
+        const l = trimmed.toLowerCase();
+        return l !== 'aeirmist member' && l !== 'aeirmist user' && l !== 'user' && l !== 'member';
+      };
+
+      // Explicit check for main admin account: junaedislamjim180@gmail.com / doViFWfMXcOoas976z6MO216YNg1
+      const userEmail = (user?.email || '').toLowerCase().trim();
+      const userUid = user?.uid || '';
+      const profileEmail = (profile?.email || '').toLowerCase().trim();
+      const profileUid = profile?.ownerUid || profile?.uid || profile?.id || '';
+      const profileUsername = (profile?.username || '').toLowerCase().trim();
+
+      if (
+        userEmail === 'junaedislamjim180@gmail.com' ||
+        userUid === 'dovifwfmxcooas976z6mo216yng1' ||
+        userUid === 'doViFWfMXcOoas976z6MO216YNg1' ||
+        profileEmail === 'junaedislamjim180@gmail.com' ||
+        profileUid === 'doViFWfMXcOoas976z6MO216YNg1' ||
+        profileUid === 'profile_doViFWfMXcOoas976z6MO216YNg1' ||
+        profileUsername === 'junaed_islam_jim9'
+      ) {
+        return 'Junaed Islam Jim';
+      }
+
+      if (isValid(profile?.displayName)) return profile.displayName.trim();
+      if (isValid(profile?.fullName)) return profile.fullName.trim();
+      if (isValid(profile?.name)) return profile.name.trim();
+
+      if (typeof window !== 'undefined') {
+        try {
+          const rawSession = localStorage.getItem('aeirmist_session');
+          if (rawSession) {
+            const s = JSON.parse(rawSession);
+            if (s?.email?.toLowerCase() === 'junaedislamjim180@gmail.com' || s?.uid === 'doViFWfMXcOoas976z6MO216YNg1' || s?.username === 'junaed_islam_jim9') {
+              return 'Junaed Islam Jim';
+            }
+          }
+        } catch (e) {}
+
+        const cachedId = localStorage.getItem('aeirmist_cached_id_name');
+        if (isValid(cachedId)) return cachedId!.trim();
+
+        const cachedDisplay = localStorage.getItem('aeirmist_cached_display_name');
+        if (isValid(cachedDisplay)) return cachedDisplay!.trim();
+
+        try {
+          const rawProfile = localStorage.getItem('aeirmist_cached_profile');
+          if (rawProfile) {
+            const p = JSON.parse(rawProfile);
+            if (p?.email?.toLowerCase() === 'junaedislamjim180@gmail.com' || p?.uid === 'doViFWfMXcOoas976z6MO216YNg1' || p?.username === 'junaed_islam_jim9') {
+              return 'Junaed Islam Jim';
+            }
+            if (isValid(p?.displayName)) return p.displayName.trim();
+            if (isValid(p?.fullName)) return p.fullName.trim();
+            if (isValid(p?.name)) return p.name.trim();
+          }
+        } catch (e) {}
+
+        try {
+          const rawSession = localStorage.getItem('aeirmist_session');
+          if (rawSession) {
+            const s = JSON.parse(rawSession);
+            if (isValid(s?.displayName)) return s.displayName.trim();
+            if (isValid(s?.fullName)) return s.fullName.trim();
+            if (isValid(s?.name)) return s.name.trim();
+          }
+        } catch (e) {}
+
+        try {
+          const rawUserProfile = localStorage.getItem('aeirmist_user_profile');
+          if (rawUserProfile) {
+            const up = JSON.parse(rawUserProfile);
+            if (isValid(up?.displayName)) return up.displayName.trim();
+            if (isValid(up?.fullName)) return up.fullName.trim();
+            if (isValid(up?.name)) return up.name.trim();
+          }
+        } catch (e) {}
+
+        try {
+          const rawAccounts = localStorage.getItem('aeirmist_saved_accounts');
+          if (rawAccounts) {
+            const accs = JSON.parse(rawAccounts);
+            if (Array.isArray(accs) && accs.length > 0) {
+              const activeId = localStorage.getItem('aeirmist_active_profile_id');
+              const found = accs.find((a: any) => a.id === activeId) || accs[0];
+              if (isValid(found?.displayName)) return found.displayName.trim();
+              if (isValid(found?.fullName)) return found.fullName.trim();
+              if (isValid(found?.name)) return found.name.trim();
+            }
+          }
+        } catch (e) {}
+      }
+
+      if (isValid(user?.displayName) && user?.displayName !== profile?.username) {
+        return user.displayName.trim();
+      }
+
+      return null;
+    };
+
+    const resolvedIdName = getPersistedIdName();
+    const isUserKnown = Boolean(user || profile || resolvedIdName);
+
+    const displayNameText = resolvedIdName || 'AEIRMIST';
 
     return (
       <div className="fixed inset-0 bg-black flex items-center justify-center z-[100] overflow-hidden select-none">
@@ -888,7 +1165,7 @@ function AppContent() {
               transition={{ delay: 0.2, duration: 0.5, ease: "easeOut" }}
               className="text-xs sm:text-sm font-black tracking-[0.4em] text-zinc-400 uppercase"
             >
-              {user ? 'WELCOME' : 'WELCOME TO'}
+              {resolvedIdName ? 'WELCOME' : 'WELCOME TO'}
             </motion.span>
 
             <motion.h1
@@ -1020,7 +1297,7 @@ function AppContent() {
     );
   }
 
-  if (isScheduledForPurge) {
+  if (isScheduledForPurge || profile?.scheduledForPurge || profile?.status === 'scheduled_for_deletion') {
     return (
       <Suspense fallback={null}>
         <PurgeScreen onCancel={async () => {
@@ -1553,9 +1830,15 @@ function AppContent() {
             onClose={() => setPendingPermission(null)}
             status={permissions[pendingPermission]?.status}
             onConfirm={async () => {
-              const success = await _requestPermission(pendingPermission);
+              const permType = pendingPermission;
+              const success = await _requestPermission(permType);
               if (success) {
                 setPendingPermission(null);
+                addToast?.({
+                  title: 'Access Granted',
+                  message: `${String(permType).charAt(0).toUpperCase() + String(permType).slice(1)} permission enabled successfully.`,
+                  type: 'success'
+                });
               }
             }}
           />

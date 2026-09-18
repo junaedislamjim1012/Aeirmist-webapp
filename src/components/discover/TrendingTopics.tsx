@@ -22,7 +22,9 @@ export const TrendingTopics: React.FC = () => {
         const hashCounts: Record<string, number> = {};
         
         snap.forEach(doc => {
-          const content = doc.data().content || '';
+          const d = doc.data();
+          if (d.isDeletedAuthor || d.scheduledForPurge || d.isDeleted || d.hidden || d.authorName === 'Aeirmist User' || d.userName === 'Aeirmist User') return;
+          const content = d.content || '';
           const foundHashes = content.match(/#[\w\d]+/g) || [];
           foundHashes.forEach((h: string) => {
             const tag = h.replace('#', '');

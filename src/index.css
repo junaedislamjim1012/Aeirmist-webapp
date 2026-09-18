@@ -67,7 +67,8 @@
     background-color: var(--color-aeirmist-bg);
     display: flex;
     flex-direction: column;
-    transition: background-color 0.8s ease-in-out, color 0.8s ease-in-out;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
   }
 
   body {
@@ -75,42 +76,49 @@
     cursor: default;
     -webkit-text-size-adjust: 100%;
     overscroll-behavior-y: none;
+    -webkit-touch-callout: none;
   }
 
-  /* Core smooth theme switching transitions - scoped to container surfaces to eliminate layout thrashing */
+  /* Core smooth theme transitions - fast & GPU-friendly */
   body, .glass-panel, .glass-card, .glass-button, .theme-transition {
-    transition: background-color 0.4s cubic-bezier(0.4, 0, 0.2, 1), 
-                border-color 0.4s cubic-bezier(0.4, 0, 0.2, 1), 
-                color 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: background-color 0.2s ease, 
+                border-color 0.2s ease, 
+                color 0.2s ease;
   }
 
-  /* Mobile Phone UI Hardware Acceleration & Ultra Fast Rendering Overrides */
+  /* Universal Touch & Click Responsiveness */
+  button, a, input, select, textarea, [role="button"], [tabindex], .cursor-pointer, .glass-button, .ui-card-interactive {
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Mobile Phone UI Hardware Acceleration & Ultra Fast Touch Rendering */
   @media (max-width: 768px) {
-    /* Fast touch response */
+    /* Fast zero-delay touch response */
     * {
       -webkit-tap-highlight-color: transparent;
-      touch-action: manipulation;
     }
 
     /* Reduce heavy multi-layer backdrop blurs on mobile GPU for 60-120fps scrolling */
     .backdrop-blur-3xl,
     .backdrop-blur-2xl,
     .backdrop-blur-xl {
-      backdrop-filter: blur(10px) !important;
-      -webkit-backdrop-filter: blur(10px) !important;
+      backdrop-filter: blur(8px) !important;
+      -webkit-backdrop-filter: blur(8px) !important;
     }
 
     .glass-panel, .glass-card {
-      backdrop-filter: blur(12px) !important;
-      -webkit-backdrop-filter: blur(12px) !important;
+      backdrop-filter: blur(8px) !important;
+      -webkit-backdrop-filter: blur(8px) !important;
       transform: translateZ(0);
+      -webkit-transform: translateZ(0);
       will-change: transform;
       contain: layout style paint;
     }
 
     .glass-button {
-      backdrop-filter: blur(8px) !important;
-      -webkit-backdrop-filter: blur(8px) !important;
+      backdrop-filter: blur(6px) !important;
+      -webkit-backdrop-filter: blur(6px) !important;
     }
 
     /* Hardware accelerate key scroll containers & feeds */
@@ -124,18 +132,19 @@
       -webkit-transform: translateZ(0);
       backface-visibility: hidden;
       -webkit-backface-visibility: hidden;
+      will-change: scroll-position;
     }
 
     /* Hardware acceleration & layout containment for cards */
     .feed-post-card, .ui-card {
-      contain: layout style;
+      contain: layout style paint;
       transform: translateZ(0);
       -webkit-transform: translateZ(0);
     }
 
     /* Optimize expensive multi-stop shadows on phone displays */
     .shadow-2xl, .shadow-xl {
-      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5) !important;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4) !important;
     }
 
     /* Universal Mobile Safe Area Helpers */
@@ -182,6 +191,7 @@
   /* Mobile Touch Momentum Scrolling */
   .overflow-y-auto, .overflow-x-auto, .overflow-auto {
     -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
   }
 }
 
@@ -354,11 +364,11 @@
   .glass-panel {
     background-color: var(--aeirmist-panel);
     @apply backdrop-blur-3xl border border-white/5 shadow-[0_32px_64px_-15px_rgba(0,0,0,0.6)];
-    transition: background-color 0.8s ease-in-out, border-color 0.8s ease-in-out;
+    transition: background-color 0.2s ease, border-color 0.2s ease;
   }
   
   .glass-card {
-    @apply bg-white/[0.01] backdrop-blur-2xl border border-white/[0.04] rounded-3xl overflow-hidden transition-all duration-700 shadow-[0_20px_50px_rgba(0,0,0,0.4)];
+    @apply bg-white/[0.01] backdrop-blur-2xl border border-white/[0.04] rounded-3xl overflow-hidden transition-all duration-200 shadow-[0_20px_50px_rgba(0,0,0,0.4)];
   }
 
   .neon-border-cyan {
@@ -367,7 +377,7 @@
   }
 
   .glass-button {
-    @apply bg-white/[0.03] backdrop-blur-xl border border-white/10 rounded-full flex items-center justify-center transition-all duration-500 hover:bg-white/10 hover:border-white/20 hover:scale-110 active:scale-95;
+    @apply bg-white/[0.03] backdrop-blur-xl border border-white/10 rounded-full flex items-center justify-center transition-all duration-150 hover:bg-white/10 hover:border-white/20 active:scale-95 cursor-pointer select-none;
   }
 
   .neon-glow-magenta {

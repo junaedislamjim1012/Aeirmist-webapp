@@ -947,8 +947,8 @@ export const AuthSystem: React.FC = () => {
                       </div>
                     </div>
 
-                    {/* Remember Me and Device Pairing Button */}
-                    <div className="flex items-center justify-between pt-1">
+                    {/* Remember Me */}
+                    <div className="flex items-center justify-start pt-1">
                       <label className="flex items-center gap-2.5 cursor-pointer group">
                         <input 
                           type="checkbox"
@@ -961,19 +961,6 @@ export const AuthSystem: React.FC = () => {
                         </div>
                         <span className="text-xs font-bold uppercase text-slate-200 tracking-wider select-none">Remember Me</span>
                       </label>
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setView('pairing');
-                          setError(null);
-                          setSuccess(null);
-                        }}
-                        className="text-xs font-bold uppercase text-cyan-300 hover:text-white flex items-center gap-1.5 transition-colors cursor-pointer"
-                      >
-                        <QrCode size={14} className="text-[var(--color-aeirmist-cyan)]" />
-                        <span>Pair Device</span>
-                      </button>
                     </div>
 
                     <button

@@ -31,17 +31,17 @@ const RuleIndicator = ({ active, label }: { active: boolean | number; label: str
 const FeatureItem = ({ icon: Icon, title, desc }: { icon: any, title: string, desc: string }) => (
   <motion.div 
     whileHover={{ x: 5 }}
-    className="flex items-start gap-4 p-4 rounded-2xl bg-white/[0.02] border border-white/5 hover:bg-white/[0.04] hover:border-white/10 transition-all duration-300"
+    className="flex items-start gap-3.5 p-3.5 rounded-2xl bg-white/[0.02] border border-white/5 hover:bg-white/[0.04] hover:border-white/10 transition-all duration-300"
   >
-    <div className="p-2.5 rounded-xl bg-[var(--color-aeirmist-cyan)]/10 text-[var(--color-aeirmist-cyan)]">
-      <Icon size={18} />
+    <div className="p-2 rounded-xl bg-[var(--color-aeirmist-cyan)]/10 text-[var(--color-aeirmist-cyan)] shrink-0">
+      <Icon size={16} />
     </div>
-    <div className="space-y-1">
-      <h4 className="text-sm font-black uppercase tracking-wider text-white flex items-center gap-1.5">
+    <div className="space-y-0.5 min-w-0">
+      <h4 className="text-xs font-black uppercase tracking-wider text-white flex items-center gap-1.5">
         {title}
-        {title === "Connection Security" && <ShieldCheck className="text-[var(--color-aeirmist-cyan)] shrink-0" size={14} />}
+        {title === "Connection Security" && <ShieldCheck className="text-[var(--color-aeirmist-cyan)] shrink-0" size={13} />}
       </h4>
-      <p className="text-xs text-white/50 leading-relaxed">{desc}</p>
+      <p className="text-[11px] text-white/50 leading-relaxed">{desc}</p>
     </div>
   </motion.div>
 );
@@ -568,35 +568,35 @@ export const AuthSystem: React.FC = () => {
   };
 
   return (
-    <div className={`relative min-h-[100dvh] w-full flex overflow-x-hidden ${activeTheme.isLight ? 'bg-slate-50 text-slate-900' : 'bg-[#050505] text-white'}`}>
+    <div className={`relative min-h-screen h-full w-full flex overflow-x-hidden ${activeTheme.isLight ? 'bg-slate-50 text-slate-900' : 'bg-[#050505] text-white'}`}>
       
       {/* Universal light animated drifting background */}
       <DriftingBg />
 
       {/* Dual Pane split-screen layout */}
-      <div className="w-full min-h-[100dvh] flex flex-col lg:flex-row">
+      <div className="w-full min-h-screen flex flex-col lg:flex-row overflow-y-auto">
         
         {/* Left Side: Branding and Features (Hidden on mobile) */}
-        <div className="hidden lg:flex lg:w-1/2 p-10 xl:p-16 flex-col justify-between relative border-r border-white/5 bg-gradient-to-br from-black/20 to-transparent">
+        <div className="hidden lg:flex lg:w-1/2 p-6 lg:p-8 xl:p-12 flex-col justify-between relative border-r border-white/5 bg-gradient-to-br from-black/20 to-transparent">
           {/* subtle grid background overlay */}
           <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_80%_at_50%_-20%,rgba(0,242,255,0.02),rgba(255,255,255,0))]" />
           
-          <div className="relative space-y-4">
+          <div className="relative space-y-3">
             <div className="flex items-center gap-3">
-              <AeirmistLogo className="w-12 h-12 drop-shadow-[0_0_20px_rgba(0,242,255,0.4)]" variant="compact" />
-              <div className="h-6 w-px bg-white/10" />
+              <AeirmistLogo className="w-10 h-10 drop-shadow-[0_0_20px_rgba(0,242,255,0.4)]" variant="compact" />
+              <div className="h-5 w-px bg-white/10" />
               <span className="text-[10px] tracking-[0.2em] font-mono text-white/40 uppercase">Global Device</span>
             </div>
             
-            <div className="space-y-1.5 pt-8">
-              <h1 className="font-display font-black text-4xl xl:text-5xl tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-[var(--color-aeirmist-cyan)] to-[var(--color-aeirmist-magenta)] drop-shadow-[0_0_35px_rgba(0,242,255,0.25)]">
+            <div className="space-y-1 pt-4 xl:pt-6">
+              <h1 className="font-display font-black text-3xl xl:text-4xl tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-[var(--color-aeirmist-cyan)] to-[var(--color-aeirmist-magenta)] drop-shadow-[0_0_35px_rgba(0,242,255,0.25)]">
                 AEIRMIST
               </h1>
-              <p className="text-xs font-mono uppercase tracking-[0.3em] text-white/30">Communication Platform</p>
+              <p className="text-[10px] font-mono uppercase tracking-[0.3em] text-white/30">Communication Platform</p>
             </div>
           </div>
 
-          <div className="relative space-y-4 xl:space-y-5 max-w-md my-auto">
+          <div className="relative space-y-3 xl:space-y-4 max-w-md my-auto py-4">
             <FeatureItem 
               icon={Sparkles} 
               title="App Theme" 
@@ -614,30 +614,30 @@ export const AuthSystem: React.FC = () => {
             />
           </div>
 
-          <div className="relative text-[10px] font-mono uppercase tracking-widest text-white/20">
+          <div className="relative text-[9px] font-mono uppercase tracking-widest text-white/20">
             System Network: ACTIVE // LATENCY 12MS
           </div>
         </div>
 
         {/* Right Side: Interactive Auth Cards & Notices */}
-        <div className="flex-1 flex flex-col items-center px-3.5 sm:px-6 lg:px-12 xl:px-16 py-6 sm:py-10 overflow-y-auto z-10 relative w-full min-h-[100dvh]">
+        <div className="flex-1 flex flex-col items-center justify-center px-4 sm:px-6 lg:px-8 py-4 sm:py-6 overflow-y-auto z-10 relative w-full min-h-screen lg:min-h-0">
           
           {/* Keyboard safe, responsive card container */}
-          <div className="w-full max-w-[460px] flex flex-col items-center my-auto py-2">
+          <div className="w-full max-w-[440px] flex flex-col items-center my-auto py-2">
             
             {/* Mobile Header Branding (Shown on small devices only) */}
-            <div className="lg:hidden flex flex-col items-center text-center mb-5 sm:mb-6">
-              <AeirmistLogo className="w-12 h-12 sm:w-14 sm:h-14 drop-shadow-[0_0_30px_rgba(0,242,255,0.7)] mb-2.5 sm:mb-3" variant="compact" />
+            <div className="lg:hidden flex flex-col items-center text-center mb-4 sm:mb-5">
+              <AeirmistLogo className="w-11 h-11 sm:w-12 sm:h-12 drop-shadow-[0_0_30px_rgba(0,242,255,0.7)] mb-2" variant="compact" />
               <h1 className="font-display font-black text-2xl sm:text-3xl tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-[var(--color-aeirmist-cyan)] to-[var(--color-aeirmist-magenta)]">
                 AEIRMIST
               </h1>
-              <span className="text-[11px] tracking-widest font-mono text-slate-300 font-bold uppercase mt-1">Aeirmist User Entry</span>
+              <span className="text-[10px] tracking-widest font-mono text-slate-300 font-bold uppercase mt-0.5">Aeirmist User Entry</span>
             </div>
 
             {/* Offline Alert */}
             {!isOnline && (
-              <div className="w-full bg-amber-500/10 border border-amber-500/20 p-3 rounded-2xl flex items-center gap-2.5 text-amber-400 text-xs font-bold uppercase tracking-wider mb-3 sm:mb-4 animate-pulse">
-                <WifiOff size={16} className="shrink-0" />
+              <div className="w-full bg-amber-500/10 border border-amber-500/20 p-2.5 rounded-2xl flex items-center gap-2.5 text-amber-400 text-xs font-bold uppercase tracking-wider mb-3 animate-pulse">
+                <WifiOff size={15} className="shrink-0" />
                 <span>Connection interrupted. Running in offline mode.</span>
               </div>
             )}
@@ -649,17 +649,17 @@ export const AuthSystem: React.FC = () => {
                 idle: { x: 0 }
               }}
               animate={shakeActive ? "shake" : "idle"}
-              className={`w-full overflow-hidden rounded-[24px] sm:rounded-[28px] border ${
+              className={`w-full overflow-hidden rounded-[22px] sm:rounded-[26px] border ${
                 activeTheme.isLight 
                   ? 'bg-white border-slate-300 shadow-[0_20px_50px_rgba(15,23,42,0.15)]' 
                   : 'bg-[#121520]/95 border-white/20 shadow-[0_25px_60px_rgba(0,0,0,0.85)]'
-              } p-5 sm:p-7 backdrop-blur-2xl transition-all duration-300 relative`}
+              } p-4 sm:p-6 backdrop-blur-2xl transition-all duration-300 relative`}
             >
               
               {/* Card Title Header */}
               {view === 'login' && (
-                <div className="mb-5 sm:mb-6 flex flex-col items-center justify-center text-center border-b border-white/10 pb-3 sm:pb-4">
-                  <h2 className="text-xl sm:text-2xl font-black uppercase tracking-wider text-center text-white">Welcome</h2>
+                <div className="mb-4 sm:mb-5 flex flex-col items-center justify-center text-center border-b border-white/10 pb-2.5 sm:pb-3">
+                  <h2 className="text-lg sm:text-xl font-black uppercase tracking-wider text-center text-white">Welcome</h2>
                 </div>
               )}
 
@@ -1382,7 +1382,7 @@ export const AuthSystem: React.FC = () => {
                 activeTheme.isLight 
                   ? 'bg-white border-slate-300 shadow-md' 
                   : 'bg-[#121520]/95 border-white/20 shadow-lg'
-              } rounded-2xl p-3.5 sm:p-4 flex items-center justify-center`}>
+              } rounded-2xl p-3 sm:p-3.5 flex items-center justify-center`}>
                 <p className="text-xs text-slate-200 font-semibold uppercase tracking-wider text-center">
                   {view === 'login' ? "New to Aeirmist? " : "Already have an account? "}
                   <button
@@ -1398,20 +1398,6 @@ export const AuthSystem: React.FC = () => {
                     {view === 'login' ? "Create Account" : "Log In"}
                   </button>
                 </p>
-              </div>
-            )}
-
-            {/* Sandboxed Demo fallback Link */}
-            {!isSuccess && (
-              <div className="w-full mt-3 sm:mt-5 text-center pb-4 sm:pb-2">
-                <button
-                  type="button"
-                  onClick={loginAsGuestSandbox}
-                  disabled={loading}
-                  className="text-xs font-bold uppercase tracking-widest text-slate-300 hover:text-white transition-colors py-1.5 cursor-pointer underline decoration-white/20"
-                >
-                  Enter Local Sandbox Mode
-                </button>
               </div>
             )}
 

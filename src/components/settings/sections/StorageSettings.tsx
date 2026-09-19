@@ -14,6 +14,8 @@ import {
 } from 'lucide-react';
 import { useAeirmist } from '../../../context/AeirmistContext';
 import { DigitalModule } from '../../ui/DigitalComponents';
+import { cloudinaryService } from '../../../services/cloudinaryService';
+
 
 const StorageSettings = () => {
   const { addToast, mediaSettings, setMediaSettings } = useAeirmist();
@@ -86,6 +88,10 @@ const StorageSettings = () => {
           />
         </div>
       </section>
+
+      {/* Cloudinary CDN Storage Config */}
+      <CloudinaryConfigSection addToast={addToast} />
+
 
       {/* Cache & Maintenance */}
       <section className="space-y-6">
@@ -185,4 +191,99 @@ const ToggleItem = ({ icon, title, desc, enabled, onChange }: any) => (
   </button>
 );
 
+const CloudinaryConfigSection = ({ addToast }: { addToast: any }) => {
+  const [cloudName, setCloudName] = React.useState(cloudinaryService.getCloudName());
+  const [preset, setPreset] = React.useState(cloudinaryService.getUploadPreset());
+  const [isEditing, setIsEditing] = React.useState(false);
+
+  const handleSave = () => {
+    cloudinaryService.setConfig(cloudName.trim(), preset.trim());
+    setIsEditing(false);
+    addToast?.({
+      title: 'STORAGE UPDATED',
+      message: 'Cloudinary CDN Storage configured and enabled!',
+      type: 'success'
+    });
+  };
+
+  return (
+    <section className="space-y-6">
+      <div className="flex items-center gap-3 mb-6">
+        <div className="w-8 h-8 rounded-lg bg-aeirmist-lime/10 flex items-center justify-center text-aeirmist-lime">
+          <Cloud size={18} />
+        </div>
+        <div>
+          <h3 className="text-sm font-bold uppercase tracking-wider text-white/80">Cloudinary CDN Storage</h3>
+          <span className="text-[9px] font-bold text-aeirmist-lime uppercase tracking-widest bg-aeirmist-lime/10 px-2 py-0.5 rounded-full inline-block mt-0.5">
+            Active / High-Speed Storage
+          </span>
+        </div>
+      </div>
+
+      <div className="p-6 rounded-3xl bg-white/[0.02] border border-white/5 space-y-6">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h4 className="text-xs font-bold uppercase tracking-widest text-white/90">Unlimited CDN Media Acceleration</h4>
+            <p className="text-[10px] text-white/40 mt-1 leading-relaxed">
+              Zero-cost image and video storage via Cloudinary CDN with automatic fallback to Firebase.
+            </p>
+          </div>
+          <button
+            onClick={() => setIsEditing(!isEditing)}
+            className="px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-[9px] font-bold uppercase tracking-widest hover:bg-white/10 text-white/70 transition-all shrink-0"
+          >
+            {isEditing ? 'Cancel' : 'Configure Account'}
+          </button>
+        </div>
+
+        {isEditing ? (
+          <div className="space-y-4 pt-2 border-t border-white/5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="text-[9px] font-bold uppercase tracking-widest text-white/50 block mb-1.5">Cloud Name</label>
+                <input
+                  type="text"
+                  value={cloudName}
+                  onChange={(e) => setCloudName(e.target.value)}
+                  placeholder="e.g. aeirmist"
+                  className="w-full px-4 py-3 rounded-xl bg-black/40 border border-white/10 text-xs text-white placeholder:text-white/20 focus:outline-none focus:border-aeirmist-cyan"
+                />
+              </div>
+              <div>
+                <label className="text-[9px] font-bold uppercase tracking-widest text-white/50 block mb-1.5">Unsigned Upload Preset</label>
+                <input
+                  type="text"
+                  value={preset}
+                  onChange={(e) => setPreset(e.target.value)}
+                  placeholder="e.g. aeirmist_uploads"
+                  className="w-full px-4 py-3 rounded-xl bg-black/40 border border-white/10 text-xs text-white placeholder:text-white/20 focus:outline-none focus:border-aeirmist-cyan"
+                />
+              </div>
+            </div>
+
+            <button
+              onClick={handleSave}
+              className="w-full py-3 rounded-xl bg-aeirmist-cyan/20 border border-aeirmist-cyan/40 text-aeirmist-cyan text-[10px] font-black uppercase tracking-widest hover:bg-aeirmist-cyan hover:text-black transition-all"
+            >
+              Save & Enable Cloudinary Storage
+            </button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-4 pt-2 border-t border-white/5">
+            <div className="p-4 rounded-2xl bg-white/[0.01] border border-white/5">
+              <span className="text-[9px] font-bold uppercase tracking-widest text-white/40 block">Cloud Name</span>
+              <span className="text-xs font-mono text-aeirmist-cyan font-bold mt-1 block">{cloudName || 'aeirmist'}</span>
+            </div>
+            <div className="p-4 rounded-2xl bg-white/[0.01] border border-white/5">
+              <span className="text-[9px] font-bold uppercase tracking-widest text-white/40 block">Upload Preset</span>
+              <span className="text-xs font-mono text-aeirmist-cyan font-bold mt-1 block">{preset || 'aeirmist_uploads'}</span>
+            </div>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+};
+
 export default StorageSettings;
+

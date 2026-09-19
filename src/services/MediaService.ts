@@ -1,6 +1,7 @@
 import { ref, uploadBytesResumable, getDownloadURL, uploadBytes } from 'firebase/storage';
 import { aeirmistCache } from './CacheService';
 import { logger } from '@/src/utils/logger';
+import { cloudinaryService } from './cloudinaryService';
 
 
 export enum MediaQuality {
@@ -261,6 +262,24 @@ class MediaService {
         reader.readAsDataURL(fileToConvert);
       });
     };
+
+    // Try Cloudinary CDN Upload First if configured
+    if (cloudinaryService.isConfigured()) {
+      try {
+        const folderName = path.split('/')[0] || 'aeirmist';
+        const cdnUrl = await cloudinaryService.upload(uploadFile, {
+          folder: `aeirmist/${folderName}`,
+          onProgress: (p, status) => onProgress(p, status)
+        });
+        if (cdnUrl) {
+          aeirmistCache.saveMedia(cdnUrl, uploadFile, uploadFile.type).catch(e => logger.warn("Cache save failed", e));
+          aeirmistCache.removePendingUpload(task.id).catch(e => logger.warn("Cache remove failed", e));
+          return cdnUrl;
+        }
+      } catch (cErr) {
+        logger.warn("[MediaService] Cloudinary upload failed, falling back to Firebase Storage:", cErr);
+      }
+    }
 
     try {
       return await new Promise<string>((resolve, reject) => {

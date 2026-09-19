@@ -228,22 +228,18 @@ class MediaService {
     // Step 1: Pre-compression if image
     let uploadFile = file;
     if (file.type.startsWith('image/')) {
-      if (file.size > 100 * 1024 || task.quality === MediaQuality.WALLPAPER_LITE || task.quality === MediaQuality.LITE) {
-        logger.info(`[MediaService] Image detected (>100KB or lite mode), compressing with quality: ${task.quality}...`);
-        onProgress(0, 'Optimizing...');
-        uploadFile = await this.compressImage(file, task.quality);
-        logger.info(`[MediaService] Compression complete. New size: ${uploadFile.size}`);
-      } else {
-        logger.info(`[MediaService] Image under 100KB (${file.size} bytes), skipping compression for max speed.`);
-      }
+      logger.info(`[MediaService] Image detected, compressing for max speed (Quality: ${task.quality})...`);
+      onProgress(5, 'Optimizing...');
+      uploadFile = await this.compressImage(file, task.quality);
+      logger.info(`[MediaService] Compression complete. New size: ${uploadFile.size} bytes`);
     } else {
-        logger.info(`[MediaService] No compression needed for ${file.type}`);
+      logger.info(`[MediaService] No compression needed for ${file.type}`);
     }
 
     // Persist for potential recovery
     await aeirmistCache.savePendingUpload(task.id, path, uploadFile);
 
-    onProgress(10, 'Uploading...');
+    onProgress(15, 'Uploading...');
     const metadata = {
       contentType: uploadFile.type || 'application/octet-stream',
       customMetadata: {
@@ -269,7 +265,7 @@ class MediaService {
         const folderName = path.split('/')[0] || 'aeirmist';
         const cdnUrl = await cloudinaryService.upload(uploadFile, {
           folder: `aeirmist/${folderName}`,
-          onProgress: (p, status) => onProgress(p, status)
+          onProgress: (p, status) => onProgress(Math.min(95, Math.floor(15 + p * 0.8)), status)
         });
         if (cdnUrl) {
           aeirmistCache.saveMedia(cdnUrl, uploadFile, uploadFile.type).catch(e => logger.warn("Cache save failed", e));
@@ -277,14 +273,14 @@ class MediaService {
           return cdnUrl;
         }
       } catch (cErr) {
-        logger.warn("[MediaService] Cloudinary upload failed, falling back to Firebase Storage:", cErr);
+        logger.warn("[MediaService] Cloudinary upload failed/timed out, falling back to Firebase Storage:", cErr);
       }
     }
 
     try {
       return await new Promise<string>((resolve, reject) => {
-        // Step: PROGRESS-ACTIVITY WATCHDOG (15s inactivity limit for fast failover)
-        const inactivityLimit = 15000;
+        // Step: PROGRESS-ACTIVITY WATCHDOG (3.5s inactivity limit for instant zero-stall failover)
+        const inactivityLimit = 3500;
         let watchdogId: any = null;
 
         const resetWatchdog = () => {

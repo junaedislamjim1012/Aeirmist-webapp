@@ -266,20 +266,70 @@ export const PostStudio: React.FC<PostStudioProps> = React.memo(({ onClose, init
       if (mediaFiles.length > 0) {
         setUploadStatus(`Uploading ${mediaFiles.length} media file(s)...`);
         const progressArray = new Array(mediaFiles.length).fill(0);
+        
+        // Fast progress indicator simulation
+        const progressInterval = setInterval(() => {
+          setUploadProgress((prev) => (prev < 85 ? prev + 15 : prev));
+        }, 300);
+
         const uploadPromises = mediaFiles.map((item, idx) => {
-          if (item.file) {
-            return uploadMedia(item.file, 'posts', (progress) => {
-              progressArray[idx] = progress;
-              const averageProgress = progressArray.reduce((sum, val) => sum + val, 0) / mediaFiles.length;
-              setUploadProgress(Math.min(90, Math.floor(10 + (averageProgress * 0.8))));
-            });
-          } else if (item.dataUrl || item.url) {
-            return Promise.resolve(item.dataUrl || item.url);
-          }
-          return Promise.resolve('');
+          return new Promise<string>(async (resolve) => {
+            let completed = false;
+
+            const timer = setTimeout(() => {
+              if (!completed) {
+                completed = true;
+                if (item.dataUrl || item.url) {
+                  resolve(item.dataUrl || item.url);
+                } else if (item.file) {
+                  const reader = new FileReader();
+                  reader.onload = () => resolve(reader.result as string);
+                  reader.onerror = () => resolve('');
+                  reader.readAsDataURL(item.file);
+                } else {
+                  resolve('');
+                }
+              }
+            }, 3500);
+
+            try {
+              if (item.file) {
+                const url = await uploadMedia(item.file, 'posts', (progress) => {
+                  progressArray[idx] = progress;
+                  const averageProgress = progressArray.reduce((sum, val) => sum + val, 0) / mediaFiles.length;
+                  setUploadProgress(Math.min(90, Math.floor(10 + (averageProgress * 0.8))));
+                });
+                if (!completed) {
+                  completed = true;
+                  clearTimeout(timer);
+                  resolve(url);
+                }
+              } else {
+                completed = true;
+                clearTimeout(timer);
+                resolve(item.dataUrl || item.url || '');
+              }
+            } catch (e) {
+              if (!completed) {
+                completed = true;
+                clearTimeout(timer);
+                if (item.dataUrl || item.url) {
+                  resolve(item.dataUrl || item.url);
+                } else if (item.file) {
+                  const reader = new FileReader();
+                  reader.onload = () => resolve(reader.result as string);
+                  reader.onerror = () => resolve('');
+                  reader.readAsDataURL(item.file);
+                } else {
+                  resolve('');
+                }
+              }
+            }
+          });
         });
 
         uploadedUrls = (await Promise.all(uploadPromises)).filter(Boolean);
+        clearInterval(progressInterval);
       }
 
       setUploadStatus('Publishing post...');

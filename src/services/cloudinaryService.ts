@@ -96,6 +96,12 @@ export class CloudinaryService {
         }
       };
 
+      xhr.timeout = 3500;
+      xhr.ontimeout = () => {
+        try { xhr.abort(); } catch(e) {}
+        reject(new Error('Cloudinary upload request timed out (3.5s limit)'));
+      };
+
       xhr.onerror = () => {
         reject(new Error('Network error during Cloudinary upload'));
       };

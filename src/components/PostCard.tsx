@@ -167,7 +167,7 @@ export const PostCard: React.FC<PostProps> = React.memo(({ post, onUserClick }) 
 
         {/* Media Carousel */}
         {images.length > 0 && (
-          <div className={`relative overflow-hidden bg-white/[0.02] group ${
+          <div className={`relative overflow-hidden bg-white/[0.02] group max-h-[min(50vh,390px)] sm:max-h-[min(65vh,490px)] ${
             post.aspectRatio === '1/1' ? 'aspect-square' : 
             post.aspectRatio === '4/5' ? 'aspect-[4/5]' : 
             post.aspectRatio === '16/9' ? 'aspect-video' : 

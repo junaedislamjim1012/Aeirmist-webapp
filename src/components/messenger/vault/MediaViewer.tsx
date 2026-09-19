@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence, useMotionValue, useTransform } from 'motion/react';
 import { 
     ChevronLeft, ChevronRight, Heart, Trash, Edit2, Share2, Download, 
-    MoreVertical, Move, Pin, X, Info, Maximize2, Trash2, ArrowLeft, ShieldCheck, RefreshCw
+    MoreVertical, Move, Pin, X, Info, Maximize2, Trash2, ArrowLeft, ShieldCheck, RefreshCw, FileText
 } from 'lucide-react';
 import { useAeirmist } from '../../../context/AeirmistContext';
 import { logger } from '@/src/utils/logger';
@@ -182,7 +182,21 @@ export const MediaViewer = ({
                         className="w-full h-full flex items-center justify-center p-4 md:p-12"
                         onDoubleClick={handleDoubleTap}
                     >
-                        {currentMedia.type === 'image' ? (
+                        {currentMedia.type === 'text' || (!currentMedia.url && currentMedia.content) ? (
+                            <div className="max-w-xl w-full p-8 rounded-3xl bg-gradient-to-br from-[#1b1226] via-[#0f0917] to-black border border-[#c77dff]/30 shadow-2xl space-y-6">
+                                <div className="flex items-center gap-3 text-[#c77dff]">
+                                    <FileText size={28} />
+                                    <h3 className="text-sm font-mono font-bold uppercase tracking-widest">Encrypted Vault Text</h3>
+                                </div>
+                                <p className="text-base text-white/90 leading-relaxed font-sans select-text whitespace-pre-wrap">
+                                    {currentMedia.content || currentMedia.name}
+                                </p>
+                                <div className="pt-4 border-t border-white/10 flex justify-between items-center text-[10px] font-mono text-white/40">
+                                    <span>Protected in Neural Vault</span>
+                                    <span>AES-256</span>
+                                </div>
+                            </div>
+                        ) : currentMedia.type === 'image' ? (
                             <motion.img 
                                 src={currentMedia.url} 
                                 animate={{ scale: isZoomed ? 2 : 1 }}

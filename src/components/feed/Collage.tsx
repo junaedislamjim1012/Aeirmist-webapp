@@ -21,6 +21,7 @@ export const Collage: React.FC<CollageProps> = ({ items, fitMode = 'cover', onIt
   const [modalOpen, setModalOpen] = useState(false);
   const [activeIdx, setActiveIdx] = useState(0);
   const [isFirstImageLandscape, setIsFirstImageLandscape] = useState<boolean | null>(true);
+  const [mediaAspectRatio, setMediaAspectRatio] = useState<'portrait' | 'square' | 'landscape'>('portrait');
   const hasSidebar = !!renderLightboxSidebar;
 
   useEffect(() => {
@@ -28,12 +29,25 @@ export const Collage: React.FC<CollageProps> = ({ items, fitMode = 'cover', onIt
       const img = new Image();
       img.src = items[0].url;
       img.onload = () => {
-        setIsFirstImageLandscape(img.width >= img.height);
+        const ratio = img.naturalWidth / img.naturalHeight;
+        if (ratio >= 1.2) {
+          setMediaAspectRatio('landscape');
+          setIsFirstImageLandscape(true);
+        } else if (ratio >= 0.85 && ratio < 1.2) {
+          setMediaAspectRatio('square');
+          setIsFirstImageLandscape(true);
+        } else {
+          // Portrait (strictly capped at Instagram standard 4:5 max height)
+          setMediaAspectRatio('portrait');
+          setIsFirstImageLandscape(false);
+        }
       };
       img.onerror = () => {
-        setIsFirstImageLandscape(true);
+        setMediaAspectRatio('portrait');
+        setIsFirstImageLandscape(false);
       };
     } else {
+      setMediaAspectRatio('portrait');
       setIsFirstImageLandscape(true);
     }
   }, [items?.[0]?.url, items?.[0]?.type]);
@@ -61,8 +75,11 @@ export const Collage: React.FC<CollageProps> = ({ items, fitMode = 'cover', onIt
 
   const handleThumbnailClick = (idx: number) => {
     setActiveIdx(idx);
-    setModalOpen(true);
-    if (onItemClick) onItemClick(idx);
+    if (onItemClick) {
+      onItemClick(idx);
+    } else {
+      setModalOpen(true);
+    }
   };
 
   const renderMediaCell = (item: MediaItem, idx: number, customClass: string = `w-full h-full ${fitMode === 'contain' ? 'object-contain bg-black/40' : 'object-cover object-center'}`) => {
@@ -80,7 +97,7 @@ export const Collage: React.FC<CollageProps> = ({ items, fitMode = 'cover', onIt
           <SafeImage 
             src={item.url} 
             alt="Media Cell" 
-            className={`${customClass} transition-transform duration-[1.5s] group-hover:scale-105`} 
+            className={`${customClass} transition-transform duration-[1.2s] group-hover:scale-105`} 
             referrerPolicy="no-referrer"
             useCache
           />
@@ -89,80 +106,142 @@ export const Collage: React.FC<CollageProps> = ({ items, fitMode = 'cover', onIt
     );
   };
 
+  // Single post aspect ratio class following Instagram standards:
+  // - Landscape: 16:9 / 1.91:1
+  // - Square: 1:1
+  // - Portrait: 4:5 (Instagram's maximum vertical height)
+  // Max-height clamped so the full post (header + caption + image + action buttons) fits on screen without cutting off!
+  const singleAspectClass = 
+    mediaAspectRatio === 'landscape'
+      ? 'aspect-[16/9] sm:aspect-[1.91/1] max-h-[min(48vh,360px)] sm:max-h-[min(55vh,440px)]'
+      : mediaAspectRatio === 'square'
+      ? 'aspect-square max-h-[min(50vh,390px)] sm:max-h-[min(65vh,490px)]'
+      : 'aspect-[4/5] max-h-[min(50vh,390px)] sm:max-h-[min(65vh,490px)]';
+
   return (
     <div className="w-full relative overflow-hidden bg-black/20">
       {count === 1 ? (
-        <div className="w-full h-full min-h-[280px] max-h-[580px] flex items-center justify-center bg-black/30">
-          {renderMediaCell(items[0], 0, "w-full h-full object-contain bg-black/30 max-h-[580px]")}
+        <div className={`w-full ${singleAspectClass} mx-auto flex items-center justify-center relative overflow-hidden bg-black/40`}>
+          {fitMode === 'contain' ? (
+            <div className="relative w-full h-full flex items-center justify-center overflow-hidden bg-black/60" onClick={() => handleThumbnailClick(0)}>
+              <img 
+                src={items[0].url} 
+                alt="" 
+                aria-hidden="true" 
+                className="absolute inset-0 w-full h-full object-cover blur-2xl opacity-25 scale-110 pointer-events-none" 
+              />
+              <div className="relative z-10 w-full h-full flex items-center justify-center">
+                {items[0].type === 'video' ? (
+                  <VideoPlayer src={items[0].url} className="w-full h-full object-contain" useCache />
+                ) : (
+                  <SafeImage 
+                    src={items[0].url} 
+                    alt="Post Media" 
+                    className="w-full h-full object-contain cursor-pointer" 
+                    referrerPolicy="no-referrer"
+                    useCache
+                  />
+                )}
+              </div>
+            </div>
+          ) : (
+            renderMediaCell(items[0], 0, "w-full h-full object-cover object-center")
+          )}
         </div>
       ) : count === 2 ? (
-        <div className="grid grid-cols-2 gap-1.5 h-[320px] sm:h-[400px]">
-          {renderMediaCell(items[0], 0)}
-          {renderMediaCell(items[1], 1)}
+        <div className="w-full aspect-[4/5] sm:aspect-square max-h-[min(50vh,390px)] sm:max-h-[min(65vh,490px)] grid grid-cols-2 gap-1 overflow-hidden">
+          <div className="w-full h-full overflow-hidden">
+            {renderMediaCell(items[0], 0, "w-full h-full object-cover object-center")}
+          </div>
+          <div className="w-full h-full overflow-hidden">
+            {renderMediaCell(items[1], 1, "w-full h-full object-cover object-center")}
+          </div>
         </div>
       ) : count === 3 ? (
-        isFirstImageLandscape !== false ? (
-          /* Landscape 1st image: Top row full-width + Bottom row 2 columns */
-          <div className="grid grid-rows-[1.25fr_1fr] gap-1.5 h-[380px] sm:h-[480px]">
-            <div className="w-full h-full overflow-hidden">
-              {renderMediaCell(items[0], 0)}
+        <div className="w-full aspect-[4/5] sm:aspect-square max-h-[min(50vh,390px)] sm:max-h-[min(65vh,490px)] overflow-hidden">
+          {isFirstImageLandscape !== false ? (
+            /* Landscape 1st image: Top row full-width + Bottom row 2 columns */
+            <div className="grid grid-rows-[1.2fr_1fr] gap-1 h-full w-full">
+              <div className="w-full h-full overflow-hidden">
+                {renderMediaCell(items[0], 0, "w-full h-full object-cover object-center")}
+              </div>
+              <div className="grid grid-cols-2 gap-1 h-full overflow-hidden">
+                <div className="w-full h-full overflow-hidden">
+                  {renderMediaCell(items[1], 1, "w-full h-full object-cover object-center")}
+                </div>
+                <div className="w-full h-full overflow-hidden">
+                  {renderMediaCell(items[2], 2, "w-full h-full object-cover object-center")}
+                </div>
+              </div>
             </div>
-            <div className="grid grid-cols-2 gap-1.5 h-full overflow-hidden">
-              {renderMediaCell(items[1], 1)}
-              {renderMediaCell(items[2], 2)}
+          ) : (
+            /* Portrait 1st image: Left column 1 photo + Right column 2 stacked rows */
+            <div className="grid grid-cols-[1.2fr_1fr] gap-1 h-full w-full">
+              <div className="w-full h-full overflow-hidden">
+                {renderMediaCell(items[0], 0, "w-full h-full object-cover object-center")}
+              </div>
+              <div className="grid grid-rows-2 gap-1 h-full overflow-hidden">
+                <div className="w-full h-full overflow-hidden">
+                  {renderMediaCell(items[1], 1, "w-full h-full object-cover object-center")}
+                </div>
+                <div className="w-full h-full overflow-hidden">
+                  {renderMediaCell(items[2], 2, "w-full h-full object-cover object-center")}
+                </div>
+              </div>
             </div>
-          </div>
-        ) : (
-          /* Portrait 1st image: Left column 1 photo + Right column 2 stacked rows */
-          <div className="grid grid-cols-[1.1fr_1fr] gap-1.5 h-[360px] sm:h-[440px]">
-            <div className="w-full h-full overflow-hidden">
-              {renderMediaCell(items[0], 0)}
-            </div>
-            <div className="grid grid-rows-2 gap-1.5 h-full overflow-hidden">
-              {renderMediaCell(items[1], 1)}
-              {renderMediaCell(items[2], 2)}
-            </div>
-          </div>
-        )
+          )}
+        </div>
       ) : count === 4 ? (
-        <div className="grid grid-cols-2 gap-1.5 h-[360px] sm:h-[440px]">
-          {renderMediaCell(items[0], 0)}
-          {renderMediaCell(items[1], 1)}
-          {renderMediaCell(items[2], 2)}
-          {renderMediaCell(items[3], 3)}
+        <div className="w-full aspect-square sm:aspect-[4/5] max-h-[min(50vh,390px)] sm:max-h-[min(65vh,490px)] grid grid-cols-2 grid-rows-2 gap-1 overflow-hidden">
+          <div className="w-full h-full overflow-hidden">
+            {renderMediaCell(items[0], 0, "w-full h-full object-cover object-center")}
+          </div>
+          <div className="w-full h-full overflow-hidden">
+            {renderMediaCell(items[1], 1, "w-full h-full object-cover object-center")}
+          </div>
+          <div className="w-full h-full overflow-hidden">
+            {renderMediaCell(items[2], 2, "w-full h-full object-cover object-center")}
+          </div>
+          <div className="w-full h-full overflow-hidden">
+            {renderMediaCell(items[3], 3, "w-full h-full object-cover object-center")}
+          </div>
         </div>
       ) : (
         // 5 or more items
-        <div className="grid grid-cols-6 gap-1.5 h-[360px] sm:h-[440px]">
-          <div className="col-span-3 h-full">
-            {renderMediaCell(items[0], 0)}
+        <div className="w-full aspect-square sm:aspect-[4/5] max-h-[min(50vh,390px)] sm:max-h-[min(65vh,490px)] grid grid-rows-2 gap-1 overflow-hidden">
+          <div className="grid grid-cols-2 gap-1 h-full overflow-hidden">
+            <div className="w-full h-full overflow-hidden">
+              {renderMediaCell(items[0], 0, "w-full h-full object-cover object-center")}
+            </div>
+            <div className="w-full h-full overflow-hidden">
+              {renderMediaCell(items[1], 1, "w-full h-full object-cover object-center")}
+            </div>
           </div>
-          <div className="col-span-3 h-full">
-            {renderMediaCell(items[1], 1)}
-          </div>
-          <div className="col-span-2 h-full">
-            {renderMediaCell(items[2], 2)}
-          </div>
-          <div className="col-span-2 h-full">
-            {renderMediaCell(items[3], 3)}
-          </div>
-          <div 
-            onClick={() => handleThumbnailClick(4)}
-            className="col-span-2 h-full relative cursor-pointer overflow-hidden group border border-white/5 bg-black/20"
-          >
-            {items[4].type === 'video' ? (
-              <video src={items[4].url} className="w-full h-full object-cover object-center opacity-40 group-hover:scale-105 duration-[1s]" />
-            ) : (
-              <SafeImage 
-                src={items[4].url} 
-                alt="More preview" 
-                className="w-full h-full object-cover object-center opacity-40 group-hover:scale-105 duration-[1s]" 
-                useCache 
-              />
-            )}
-            <div className="absolute inset-0 bg-[#020712]/75 flex flex-col items-center justify-center border-l border-white/5 backdrop-blur-[2px] shadow-inner">
-              <span className="text-xl sm:text-2xl font-black font-display text-aeirmist-cyan drop-shadow-[0_0_12px_rgba(0,242,255,1)]">+{count - 4}</span>
-              <span className="text-[7.5px] sm:text-[9px] font-black uppercase tracking-[0.25em] text-white/50 group-hover:text-white mt-1">More Items</span>
+          <div className="grid grid-cols-3 gap-1 h-full overflow-hidden">
+            <div className="w-full h-full overflow-hidden">
+              {renderMediaCell(items[2], 2, "w-full h-full object-cover object-center")}
+            </div>
+            <div className="w-full h-full overflow-hidden">
+              {renderMediaCell(items[3], 3, "w-full h-full object-cover object-center")}
+            </div>
+            <div 
+              onClick={() => handleThumbnailClick(4)}
+              className="relative h-full w-full cursor-pointer overflow-hidden group bg-black/20"
+            >
+              {items[4].type === 'video' ? (
+                <video src={items[4].url} className="w-full h-full object-cover object-center opacity-40 group-hover:scale-105 duration-[1s]" />
+              ) : (
+                <SafeImage 
+                  src={items[4].url} 
+                  alt="More preview" 
+                  className="w-full h-full object-cover object-center opacity-40 group-hover:scale-105 duration-[1s]" 
+                  useCache 
+                />
+              )}
+              <div className="absolute inset-0 bg-[#020712]/75 flex flex-col items-center justify-center border-l border-white/5 backdrop-blur-[2px] shadow-inner">
+                <span className="text-xl sm:text-2xl font-black font-display text-aeirmist-cyan drop-shadow-[0_0_12px_rgba(0,242,255,1)]">+{count - 4}</span>
+                <span className="text-[7.5px] sm:text-[9px] font-black uppercase tracking-[0.25em] text-white/50 group-hover:text-white mt-1">More Items</span>
+              </div>
             </div>
           </div>
         </div>

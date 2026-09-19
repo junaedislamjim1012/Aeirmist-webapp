@@ -342,6 +342,11 @@ interface AeirmistContextType {
   setIsSafeMode: React.Dispatch<React.SetStateAction<boolean>>;
   needsPasswordOnboarding: boolean;
   setNeedsPasswordOnboarding: React.Dispatch<React.SetStateAction<boolean>>;
+  isVaultOpen: boolean;
+  setIsVaultOpen: React.Dispatch<React.SetStateAction<boolean>>;
+  isVaultUnlocked: boolean;
+  setIsVaultUnlocked: React.Dispatch<React.SetStateAction<boolean>>;
+  openVault: () => void;
 }
 
 const handleFirestoreError = (error: any, op: any, path: string | null) => {
@@ -528,6 +533,13 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return false;
   });
   const [connectionError, setConnectionError] = useState<string | null>(null);
+
+  const [isVaultOpen, setIsVaultOpen] = useState(false);
+  const [isVaultUnlocked, setIsVaultUnlocked] = useState(false);
+
+  const openVault = useCallback(() => {
+    setIsVaultOpen(true);
+  }, []);
 
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
 
@@ -3917,7 +3929,7 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
       profileIdsSet.add(uid);
       profileIdsSet.add(`profile_${uid}`);
-      if (profile?.id) profileIdsSet.add(profile.id);
+      if (profile?.id && (profile.uid === uid || profile.id === uid)) profileIdsSet.add(profile.id);
 
       // Query profiles by ownerUid
       try {
@@ -4234,35 +4246,52 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   };
 
-  const updateUserStatus = async (uid: string, status: AccountStatus) => {
+  const updateUserStatus = async (uid: string, status: AccountStatus, targetProfileId?: string) => {
     if (!db) return;
     try {
       const isRestricted = ['SUSPENDED', 'BANNED', 'DEACTIVATED', 'DELETED', 'UNDER_REVIEW'].includes(status);
+      const cleanUid = uid.startsWith('profile_') ? uid.replace(/^profile_/, '') : uid;
       const profilesRef = collection(db, 'profiles');
-      const q = query(profilesRef, where('ownerUid', '==', uid));
-      const snap = await getDocs(q);
+      
+      const [snapOwner, snapUid] = await Promise.all([
+        getDocs(query(profilesRef, where('ownerUid', '==', cleanUid))).catch(() => null),
+        getDocs(query(profilesRef, where('uid', '==', cleanUid))).catch(() => null)
+      ]);
       
       const batch = writeBatch(db);
-      snap.forEach(p => {
-        batch.update(doc(db, 'profiles', p.id), { 
-          status,
-          isBanned: isRestricted
-        });
-      });
+      const touchedIds = new Set<string>();
 
-      const directRef = doc(db, 'profiles', uid);
-      const directSnap = await getDoc(directRef);
-      if (directSnap.exists()) {
-        batch.update(directRef, { 
-          status,
-          isBanned: isRestricted
+      if (snapOwner) {
+        snapOwner.forEach(p => {
+          batch.update(doc(db, 'profiles', p.id), { status, isBanned: isRestricted });
+          touchedIds.add(p.id);
+        });
+      }
+      if (snapUid) {
+        snapUid.forEach(p => {
+          if (!touchedIds.has(p.id)) {
+            batch.update(doc(db, 'profiles', p.id), { status, isBanned: isRestricted });
+            touchedIds.add(p.id);
+          }
         });
       }
 
-      await batch.commit(); logger.security("User Ban Toggled", { action: "toggle_ban" });
+      for (const candidateId of [uid, cleanUid, `profile_${cleanUid}`, targetProfileId]) {
+        if (candidateId && !touchedIds.has(candidateId)) {
+          const directRef = doc(db, 'profiles', candidateId);
+          const directSnap = await getDoc(directRef).catch(() => null);
+          if (directSnap && directSnap.exists()) {
+            batch.update(directRef, { status, isBanned: isRestricted });
+            touchedIds.add(candidateId);
+          }
+        }
+      }
+
+      await batch.commit(); 
+      logger.security("User Ban Toggled", { action: "toggle_ban" });
 
       try {
-        await updateDoc(doc(db, 'users', uid), { 
+        await updateDoc(doc(db, 'users', cleanUid), { 
           status,
           isBanned: isRestricted
         });
@@ -5846,6 +5875,11 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setIsSafeMode,
     needsPasswordOnboarding,
     setNeedsPasswordOnboarding,
+    isVaultOpen,
+    setIsVaultOpen,
+    isVaultUnlocked,
+    setIsVaultUnlocked,
+    openVault,
     featureFlags,
     updateFeatureFlag,
     appBranding,
@@ -5874,7 +5908,8 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     clearChat, togglePinMessage, deleteMessage, editMessage,
     deviceLinkingStatus, generateDeviceLink, consumePairingCode,
     localAvatarURL, localCoverURL, profileUploadProgress, coverUploadProgress,
-    isSafeMode, setIsSafeMode, needsPasswordOnboarding, setNeedsPasswordOnboarding
+    isSafeMode, setIsSafeMode, needsPasswordOnboarding, setNeedsPasswordOnboarding,
+    isVaultOpen, setIsVaultOpen, isVaultUnlocked, setIsVaultUnlocked, openVault
   ]);
 
   return (

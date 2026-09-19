@@ -47,16 +47,31 @@ export function getCanonicalUid(record: any): string | null {
     }
   }
 
-  // 3. Check record.id or record.docId starting with 'profile_'
+  // 3. Check record.profileId
+  if (typeof record.profileId === 'string' && record.profileId.trim()) {
+    const p = record.profileId.trim();
+    if (p.startsWith('profile_')) {
+      const extracted = p.replace(/^profile_/, '').trim();
+      if (extracted) return extracted;
+    }
+  }
+
+  // 4. Check record.id or record.docId starting with 'profile_'
   const docId = typeof record.id === 'string' ? record.id.trim() : typeof record.docId === 'string' ? record.docId.trim() : '';
   if (docId.startsWith('profile_')) {
     const extracted = docId.replace(/^profile_/, '').trim();
     if (extracted) return extracted;
   }
 
-  // 4. Fallback if record.id is a non-profile raw docId
+  // 5. Fallback if record.id is a non-profile raw docId
   if (docId && !docId.startsWith('profile_')) {
     return docId;
+  }
+
+  // 6. Check record.rawRecord fallback
+  if (record.rawRecord && typeof record.rawRecord === 'object') {
+    const rawUid = getCanonicalUid(record.rawRecord);
+    if (rawUid) return rawUid;
   }
 
   return null;
@@ -93,6 +108,7 @@ export function getProfileId(record: any): string | null {
 }
 
 export interface NormalizedAdminUser {
+  id: string;
   profileId: string;
   uid: string | null;
   username: string | null;
@@ -115,6 +131,7 @@ export interface NormalizedAdminUser {
 export function normalizeAdminUser(record: any): NormalizedAdminUser {
   if (!record) {
     return {
+      id: '',
       profileId: '',
       uid: null,
       username: null,
@@ -134,6 +151,7 @@ export function normalizeAdminUser(record: any): NormalizedAdminUser {
 
   const uid = getCanonicalUid(record);
   const profileId = getProfileId(record) || (typeof record.id === 'string' ? record.id : '');
+  const id = (typeof record.id === 'string' && record.id) ? record.id : (profileId || uid || '');
   
   const isAnonymized = record.isAnonymized || record.status === 'ANONYMIZED';
   const username = isAnonymized ? null : (record.username || null);
@@ -142,6 +160,8 @@ export function normalizeAdminUser(record: any): NormalizedAdminUser {
   const displayName = isAnonymized ? 'Aeirmist User' : (record.displayName || username || 'Aeirmist User');
 
   return {
+    ...record,
+    id,
     profileId,
     uid,
     username,
@@ -154,6 +174,8 @@ export function normalizeAdminUser(record: any): NormalizedAdminUser {
     status: record.status || (record.isBanned ? 'BANNED' : 'ACTIVE'),
     role: record.role || (record.isAdmin ? 'Administrator' : 'USER'),
     aeirmistLevel: record.aeirmistLevel || 0,
+    createdAt: record.createdAt || record.created_at || record.joinedAt || record.timestamp || record.dateCreated || record.metadata?.creationTime || null,
+    bio: record.bio || '',
     needsIdentityReview: !uid || Boolean(record.needsIdentityReview),
     rawRecord: record
   };

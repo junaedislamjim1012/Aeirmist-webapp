@@ -709,23 +709,27 @@ export const Vault: React.FC<VaultProps> = ({
     if (!item) return;
 
     try {
-      // Add to public posts
+      const restoredContent = item.content || (item.name ? `Restored from Vault: ${item.name}` : 'Restored Post');
+      const hasMediaUrl = !!item.url;
+
       await addDoc(collection(db, 'posts'), {
         userId: profile.id,
         userDisplayName: profile.displayName || profile.username,
         userPhoto: profile.photoURL || '',
         userRank: profile.aeirmistRank || 'IRON',
-        content: `Restored from Vault: ${item.name || ''}`,
-        media: [{
+        content: restoredContent,
+        media: hasMediaUrl ? [{
           url: item.url,
-          type: item.type
-        }],
+          type: item.type || 'image'
+        }] : [],
+        mediaUrls: hasMediaUrl ? [item.url] : [],
+        mediaType: hasMediaUrl ? (item.type || 'image') : 'text',
         type: 'post',
         createdAt: serverTimestamp(),
         likes: 0,
         comments: 0,
         shares: 0,
-        isPrivate: true // Restore as private post by default
+        isPrivate: true
       });
 
       // Remove from vault

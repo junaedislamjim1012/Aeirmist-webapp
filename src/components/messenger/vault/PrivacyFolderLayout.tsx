@@ -360,7 +360,18 @@ export const PrivacyFolderLayout = ({
                                             }}
                                             className={`relative aspect-square bg-white/5 rounded-2xl md:rounded-3xl border border-white/5 overflow-hidden cursor-pointer group hover:shadow-xl transition-all ${selectedIds.includes(item.id) ? 'ring-4 ring-[#c77dff]' : ''}`}
                                         >
-                                            {item.type === 'image' ? (
+                                            {item.type === 'text' || (!item.url && item.content) ? (
+                                                <div className="relative w-full h-full p-4 bg-gradient-to-br from-[#1a1025] to-[#0a0512] flex flex-col justify-between group-hover:scale-105 transition-transform duration-500">
+                                                    <div className="flex items-center gap-2 text-[#c77dff]">
+                                                        <FileText size={18} />
+                                                        <span className="text-[9px] font-mono font-bold uppercase tracking-wider">Encrypted Note</span>
+                                                    </div>
+                                                    <p className="text-xs text-white/80 line-clamp-4 font-sans leading-relaxed">
+                                                        {item.content || item.name}
+                                                    </p>
+                                                    <span className="text-[8px] font-mono text-white/30">TEXT ITEM</span>
+                                                </div>
+                                            ) : item.type === 'image' ? (
                                                 <img src={item.url} loading="lazy" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
                                             ) : (
                                                 <div className="relative w-full h-full">

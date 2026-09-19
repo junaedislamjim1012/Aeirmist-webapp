@@ -113,6 +113,7 @@ const CompleteYourAccountScreen = lazyWithRetry(() => import('./components/auth/
 const PasswordOnboardingModal = lazyWithRetry(() => import('./components/auth/PasswordOnboardingModal').then((m: any) => ({ default: m.PasswordOnboardingModal || m.default })));
 const SetupRequiredScreen = lazyWithRetry(() => import('./components/auth/SetupScreens').then((m: any) => ({ default: m.SetupRequiredScreen || m.default })));
 const PairingFailedScreen = lazyWithRetry(() => import('./components/auth/SetupScreens').then((m: any) => ({ default: m.PairingFailedScreen || m.default })));
+const Vault = lazyWithRetry(() => import('./components/messenger/Vault').then((m: any) => ({ default: m.Vault || m.default })));
 const PurgeScreen = lazyWithRetry(() => import('./components/auth/SetupScreens').then((m: any) => ({ default: m.PurgeScreen || m.default })));
 const DeactivatedScreen = lazyWithRetry(() => import('./components/auth/SetupScreens').then((m: any) => ({ default: m.DeactivatedScreen || m.default })));
 const BannedScreen = lazyWithRetry(() => import('./components/auth/BannedScreen').then((m: any) => ({ default: m.BannedScreen || m.default })));
@@ -208,6 +209,7 @@ const ComingSoonScreen = ({ sectorName, onHomeClick }: { sectorName: string; onH
 function AppContent() {
   const { settings, updateAppearanceSettings } = useAppearance();
   const location = useLocation();
+  const navigate = useNavigate();
   const isGuidelinesPage = location.pathname === '/community-guidelines';
   const { 
     loading, 
@@ -235,7 +237,13 @@ function AppContent() {
     storyUpload,
     needsPasswordOnboarding,
     featureFlags,
-    addToast
+    addToast,
+    isVaultOpen,
+    setIsVaultOpen,
+    isVaultUnlocked,
+    setIsVaultUnlocked,
+    allProfiles,
+    chats
   } = useAeirmist();
   const { isLoading: isThemeLoading } = useTheme();
 
@@ -911,8 +919,8 @@ function AppContent() {
 
     // Push state ONLY when the target URL pathname changes!
     // If the path is identical, use replaceState to prevent duplicate history loops.
-    if (window.location.pathname !== targetUrl) {
-      window.history.pushState(stateToPush, '', targetUrl);
+    if (location.pathname !== targetUrl) {
+      navigate(targetUrl, { state: stateToPush });
     } else {
       window.history.replaceState(stateToPush, '', targetUrl);
     }
@@ -928,7 +936,9 @@ function AppContent() {
     isNotificationsOpen, 
     isAccountSwitcherOpen, 
     storyState, 
-    settingsSection
+    settingsSection,
+    location.pathname,
+    navigate
   ]);
 
   // Listen to popstate event (back/forward button)
@@ -1548,7 +1558,6 @@ function AppContent() {
               <Routes>
                 <Route path="/payment-success" element={<Suspense fallback={null}><PaymentResult status="success" /></Suspense>} />
                 <Route path="/payment-failure" element={<Suspense fallback={null}><PaymentResult status="failure" /></Suspense>} />
-                <Route path="/admin-panel" element={<AdminPanel />} />
                 <Route path="/community-guidelines" element={<CommunityGuidelines />} />
                 <Route path="*" element={
                   <AnimatePresence mode="wait">
@@ -1691,9 +1700,9 @@ function AppContent() {
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
                     transition={{ duration: 0.1, ease: "easeOut" }}
-                    className="flex-1 h-full overflow-y-auto scroll-container"
+                    className="flex-1 h-full overflow-hidden flex flex-col"
                   >
-                    <div className="w-full min-h-full">
+                    <div className="w-full h-full flex-1 overflow-hidden flex flex-col">
                       <ErrorBoundary inline>
                         <Suspense fallback={<LazyFallback />}>
                           <AdminPanel />
@@ -1851,6 +1860,35 @@ function AppContent() {
               }
             }}
           />
+
+          {/* Global Vault Modal Overlay */}
+          <AnimatePresence>
+            {isVaultOpen && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.98 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.98 }}
+                transition={{ duration: 0.2 }}
+                className="fixed inset-0 z-[120] bg-black/95 backdrop-blur-2xl flex flex-col overflow-hidden"
+              >
+                <Suspense fallback={<LazyFallback />}>
+                  <Vault
+                    db={db}
+                    profile={profile}
+                    chats={chats || []}
+                    onSelectChat={(chatId) => {
+                      setActiveTab('messenger');
+                      setIsVaultOpen(false);
+                    }}
+                    onClose={() => setIsVaultOpen(false)}
+                    isUnlocked={isVaultUnlocked}
+                    setIsUnlocked={setIsVaultUnlocked}
+                    allProfiles={allProfiles || []}
+                  />
+                </Suspense>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           {/* Development / Debugging UI */}
         </motion.div>

@@ -16,7 +16,7 @@ import {
 import { useAeirmist } from '../../../context/AeirmistContext';
 
 const VaultSettings = () => {
-  const { addToast } = useAeirmist();
+  const { addToast, openVault } = useAeirmist();
 
   return (
     <motion.div 
@@ -45,7 +45,10 @@ const VaultSettings = () => {
             </p>
           </div>
           <button 
-            onClick={() => addToast({ title: 'Vault Unlocked', message: 'Welcome to your secure vault.', type: 'success' })}
+            onClick={() => {
+              openVault();
+              addToast({ title: 'Vault Unlocked', message: 'Welcome to your secure vault.', type: 'success' });
+            }}
             className="px-8 py-3 rounded-2xl bg-aeirmist-cyan text-black text-[10px] font-black uppercase tracking-widest hover:scale-105 active:scale-95 transition-all cursor-pointer"
           >
             Open Vault

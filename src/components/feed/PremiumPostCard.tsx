@@ -30,6 +30,7 @@ import { writingAssistant } from '../../services/WritingAssistantService';
 import { WritingToolsMenu } from '../common/WritingToolsMenu';
 import { ModerationWarningModal } from '../common/ModerationWarningModal';
 import { MessengerShare } from './MessengerShare';
+import { PostMusicPlayer, getPostMusicData } from './PostMusicPlayer';
 import { logger } from '@/src/utils/logger';
 
 const InsightsDashboard = React.lazy(() => import('../analytics/InsightsDashboard').then(m => ({ default: m.InsightsDashboard })));
@@ -127,6 +128,8 @@ export const PremiumPostCard = React.memo<PostCardProps>(({ post, onUserClick, o
 
   const type = (post.mediaItems?.length || 0) > 1 ? 'collage' : (post.mediaItems?.length === 1 ? (post.mediaType || 'photo') : 'text') as any;
   usePostAnalytics({ postId: post.id, type });
+
+  const postMusicData = getPostMusicData(post);
 
   const isDeletedAuthor = Boolean(
     (post as any).isDeletedAuthor || 
@@ -824,19 +827,36 @@ export const PremiumPostCard = React.memo<PostCardProps>(({ post, onUserClick, o
       return;
     }
     try {
-      // 1. Move media to vault_media
-      for (const item of collageItems) {
+      if (collageItems && collageItems.length > 0) {
+        // Move each media item to vault_media with post text content attached
+        for (const item of collageItems) {
+          await addDoc(collection(db, 'vault_media'), {
+            userId: profile.id,
+            url: item.url,
+            type: item.type || 'image',
+            name: `Vaulted Post from @${post.authorName || post.userName || 'User'}`,
+            content: post.content || '',
+            createdAt: serverTimestamp(),
+            isFavorite: false
+          });
+        }
+      } else {
+        // Text-only post or single media fallback
+        const mediaUrl = post.mediaUrl || post.mediaURL || (post.mediaUrls && post.mediaUrls[0]) || '';
+        const mediaType = post.mediaType || (mediaUrl ? 'image' : 'text');
+        
         await addDoc(collection(db, 'vault_media'), {
           userId: profile.id,
-          url: item.url,
-          type: item.type,
-          name: `Vaulted Post from @${post.authorName || post.userName || 'User'}`,
+          url: mediaUrl,
+          type: mediaType,
+          content: post.content || '',
+          name: post.content ? (post.content.length > 30 ? post.content.slice(0, 30) + '...' : post.content) : `Vaulted Post from @${post.authorName || post.userName || 'User'}`,
           createdAt: serverTimestamp(),
           isFavorite: false
         });
       }
 
-      // 2. Delete original post
+      // Delete original post
       await deletePost(post.id);
       
       if (addToast) {
@@ -1426,15 +1446,19 @@ export const PremiumPostCard = React.memo<PostCardProps>(({ post, onUserClick, o
               )}
             </div>
             
-            <p className="text-[8px] sm:text-[10px] font-black uppercase tracking-[0.1em] text-white/20 mt-0.5 flex items-center gap-1 select-none font-mono truncate">
-              {post.location ? (
-                <>
-                  <Compass size={9} className="text-white/30 sm:w-[10px] sm:h-[10px]" />
-                  {post.location} • 
-                </>
-              ) : null}
-              {formatAeirmistTimestamp(post.createdAt || post.timestamp)}
-            </p>
+            {postMusicData ? (
+              <PostMusicPlayer music={postMusicData} variant="header-sub" />
+            ) : (
+              <p className="text-[8px] sm:text-[10px] font-black uppercase tracking-[0.1em] text-white/20 mt-0.5 flex items-center gap-1 select-none font-mono truncate">
+                {post.location ? (
+                  <>
+                    <Compass size={9} className="text-white/30 sm:w-[10px] sm:h-[10px]" />
+                    {post.location} • 
+                  </>
+                ) : null}
+                {formatAeirmistTimestamp(post.createdAt || post.timestamp)}
+              </p>
+            )}
           </div>
         </div>
         
@@ -1540,21 +1564,6 @@ export const PremiumPostCard = React.memo<PostCardProps>(({ post, onUserClick, o
             </div>
           )}
 
-          {/* Floating waveforms tag for music items */}
-          {post.music && (
-            <div className="flex items-center gap-2.5 px-3 py-1.5 rounded-full bg-white/[0.03] border border-white/5 w-fit ml-4 sm:ml-6 mb-3 select-none">
-              <div className="flex items-center gap-0.5 h-3">
-                <span className="w-0.5 h-2 my-auto bg-aeirmist-cyan animate-[pulse_1s_infinite_100ms] rounded-full" />
-                <span className="w-0.5 h-3.5 my-auto bg-aeirmist-cyan animate-[pulse_1s_infinite_400ms] rounded-full" />
-                <span className="w-0.5 h-1.5 my-auto bg-aeirmist-cyan animate-[pulse_1s_infinite_200ms] rounded-full" />
-                <span className="w-0.5 h-3 my-auto bg-aeirmist-cyan animate-[pulse_1s_infinite_600ms] rounded-full" />
-              </div>
-              <span className="text-[8px] sm:text-[9.5px] font-mono font-black uppercase text-white/30 tracking-wider">
-                Resonating Beat: <span className="text-white font-sans font-bold">{post.music.title}</span> • {post.music.artist}
-              </span>
-            </div>
-          )}
-
           {/* Interactive premium Voice Note Player for recorded audio */}
           {(post as any).voice && (
             <div className="mx-4 sm:mx-6 mb-4 p-3 sm:p-4 rounded-2xl bg-[#00f3ff]/5 border border-[#00f3ff]/15 flex items-center justify-between gap-4 select-none">
@@ -1647,18 +1656,15 @@ export const PremiumPostCard = React.memo<PostCardProps>(({ post, onUserClick, o
           )}
 
           {/* Facebook-style Multi-photo collage grid */}
-          {hasMedia && (
+          {hasMedia ? (
             <div
-              className="w-full border-y border-white/5 bg-black/20 cursor-pointer"
+              className="w-full border-y border-white/5 bg-black/20 cursor-pointer relative"
               onClickCapture={(e) => {
                 if ((post as any).type === 'video') {
                   e.preventDefault();
                   e.stopPropagation();
                   onNavigate?.('videos');
                 } else if (!showComments) {
-                  // If not a video and we are in feed view, we might want to open detail view
-                  // But Collage has its own lightbox. Let's see.
-                  // If we want a separate URL, we should trigger onPostClick
                   onPostClick?.(post.id);
                 }
               }}
@@ -1666,29 +1672,42 @@ export const PremiumPostCard = React.memo<PostCardProps>(({ post, onUserClick, o
               <Collage 
                 items={collageItems} 
                 fitMode={(post as any).fitMode || 'cover'} 
+                onItemClick={() => onPostClick?.(post.id)}
                 renderLightboxSidebar={renderLightboxSidebar}
               />
+
+              {/* Instagram-Style Small Round Mute Button on bottom right of media */}
+              {postMusicData && (
+                <div className="absolute bottom-3 right-3 z-30 pointer-events-auto">
+                  <PostMusicPlayer music={postMusicData} variant="small-mute" />
+                </div>
+              )}
+            </div>
+          ) : postMusicData && (
+            /* Text-only post with music: Render small round mute button on bottom right of post body */
+            <div className="flex justify-end px-4 mb-2">
+              <PostMusicPlayer music={postMusicData} variant="small-mute" />
             </div>
           )}
         </div>
       </div>
 
       {/* Engagement Buttons Row */}
-      <div className="p-4 sm:p-5">
+      <div className="px-3.5 py-2.5 sm:px-5 sm:py-3.5 border-t border-white/5 bg-white/[0.01]">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2">
             <button 
               type="button"
               aria-label={isLiked ? "Unlike post" : "Like post"}
               aria-pressed={isLiked}
               onClick={handleLike}
-              className={`flex items-center gap-2 px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl border transition-all duration-300 active:scale-95 group font-black uppercase text-[10px] sm:text-xs tracking-wider focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-aeirmist-magenta ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl border transition-all duration-300 active:scale-95 group font-black uppercase text-[10px] sm:text-xs tracking-wider focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-aeirmist-magenta ${
                 isLiked 
                   ? 'bg-aeirmist-magenta/10 border-aeirmist-magenta/30 text-aeirmist-magenta shadow-[0_0_15px_rgba(255,0,234,0.15)]' 
                   : 'bg-white/5 border-white/5 text-white/40 hover:text-white hover:border-white/20 hover:bg-white/10'
               }`}
             >
-              <Heart size={16} fill={isLiked ? "currentColor" : "none"} className={`transition-transform group-hover:scale-110 ${isLiked ? 'text-aeirmist-magenta' : 'text-current'}`} aria-hidden="true" />
+              <Heart size={15} fill={isLiked ? "currentColor" : "none"} className={`transition-transform group-hover:scale-110 ${isLiked ? 'text-aeirmist-magenta' : 'text-current'}`} aria-hidden="true" />
               <span>{post.likesCount?.toLocaleString() || '0'}</span>
             </button>
 
@@ -1697,13 +1716,13 @@ export const PremiumPostCard = React.memo<PostCardProps>(({ post, onUserClick, o
               aria-label="Toggle comments"
               aria-expanded={showComments}
               onClick={() => setShowComments(!showComments)}
-              className={`flex items-center gap-2 px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl border transition-all duration-300 active:scale-95 group font-black uppercase text-[10px] sm:text-xs tracking-wider focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-aeirmist-cyan ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl border transition-all duration-300 active:scale-95 group font-black uppercase text-[10px] sm:text-xs tracking-wider focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-aeirmist-cyan ${
                 showComments 
                   ? 'bg-aeirmist-cyan/10 border-aeirmist-cyan/30 text-aeirmist-cyan shadow-[0_0_15px_rgba(0,242,255,0.15)]' 
                   : 'bg-white/5 border-white/5 text-white/40 hover:text-white hover:border-white/20 hover:bg-white/10'
               }`}
             >
-              <MessageSquare size={16} className={`transition-transform group-hover:scale-110 ${showComments ? 'text-aeirmist-cyan' : 'text-current'}`} aria-hidden="true" />
+              <MessageSquare size={15} className={`transition-transform group-hover:scale-110 ${showComments ? 'text-aeirmist-cyan' : 'text-current'}`} aria-hidden="true" />
               <span>{post.commentsCount?.toLocaleString() || '0'}</span>
             </button>
 
@@ -1711,16 +1730,14 @@ export const PremiumPostCard = React.memo<PostCardProps>(({ post, onUserClick, o
               type="button"
               aria-label="Share post"
               onClick={handleShare}
-              className="flex items-center gap-2 px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl border border-white/5 bg-white/5 text-white/40 hover:text-white hover:border-white/25 transition-all duration-300 active:scale-95 font-black uppercase text-[10px] sm:text-xs tracking-wider group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+              className="flex items-center gap-1.5 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl border border-white/5 bg-white/5 text-white/40 hover:text-white hover:border-white/25 transition-all duration-300 active:scale-95 font-black uppercase text-[10px] sm:text-xs tracking-wider group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
             >
-              <Share2 size={16} className="transition-transform group-hover:scale-110 group-hover:rotate-12" aria-hidden="true" />
+              <Share2 size={15} className="transition-transform group-hover:scale-110 group-hover:rotate-12" aria-hidden="true" />
               <span>Share</span>
             </button>
 
-
-
-            <div className="flex items-center gap-1.5 px-3 py-1.5 text-white/30 hover:text-white transition-colors">
-              <Eye size={16} className="text-white/20" />
+            <div className="flex items-center gap-1 px-2.5 py-1 text-white/30 hover:text-white transition-colors">
+              <Eye size={15} className="text-white/20" />
               <span className="text-[10px] font-bold font-mono">{(post.viewsCount || 0).toLocaleString()}</span>
             </div>
           </div>
@@ -1730,14 +1747,14 @@ export const PremiumPostCard = React.memo<PostCardProps>(({ post, onUserClick, o
             aria-label={isBookmarked ? "Remove from bookmarks" : "Save post to bookmarks"}
             aria-pressed={isBookmarked}
             onClick={handleBookmarkToggle}
-            className={`w-9 h-9 sm:w-11 sm:h-11 rounded-xl flex items-center justify-center transition-all duration-300 active:scale-95 border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-aeirmist-cyan ${
+            className={`w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center transition-all duration-300 active:scale-95 border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-aeirmist-cyan ${
               isBookmarked 
                 ? 'bg-aeirmist-cyan/10 border-aeirmist-cyan/30 text-aeirmist-cyan shadow-[0_0_15px_rgba(0,242,255,0.15)]' 
                 : 'bg-white/5 border-white/5 text-white/30 hover:text-white hover:border-white/25 hover:bg-white/10'
             }`}
             title="Save post"
           >
-            <Bookmark size={15} fill={isBookmarked ? "currentColor" : "none"} className="sm:w-4 sm:h-4" aria-hidden="true" />
+            <Bookmark size={14} fill={isBookmarked ? "currentColor" : "none"} className="sm:w-3.5 sm:h-3.5" aria-hidden="true" />
           </button>
         </div>
 

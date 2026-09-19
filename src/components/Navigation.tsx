@@ -206,14 +206,18 @@ export const Navigation = React.memo(({ onCreate, activeTab, onTabChange, isExpa
           {(user?.email?.toLowerCase() === 'junaedislamjim180@gmail.com' || 
              profile?.email?.toLowerCase() === 'junaedislamjim180@gmail.com' || 
              profile?.username?.toLowerCase() === 'junaed_islam_jim9' ||
-             profile?.role === 'admin' ||
-             profile?.isAdmin === true) && (
+             user?.uid === 'dovifwfmxcooas976z6mo216yng1' ||
+             user?.uid === 'doViFWfMXcOoas976z6MO216YNg1' ||
+             profile?.ownerUid === 'doViFWfMXcOoas976z6MO216YNg1' ||
+             profile?.id === 'doViFWfMXcOoas976z6MO216YNg1' ||
+             profile?.isAdmin === true ||
+             ['admin', 'owner', 'super_admin', 'administrator', 'moderator'].includes((profile?.role || '').toLowerCase())) && (
             <NavItem 
               icon={<ShieldCheck />} 
               label="Control Panel" 
               active={activeTab === 'admin'} 
               isExpanded={isCurrentlyExpanded} 
-              onClick={() => handleItemClick(() => { onTabChange('admin' as any); if (window.location.pathname !== '/admin-panel') { window.history.pushState({}, '', '/admin-panel'); } })} 
+              onClick={() => handleItemClick(() => onTabChange('admin' as any))} 
             />
           )}
         </div>

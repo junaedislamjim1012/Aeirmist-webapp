@@ -144,7 +144,8 @@ const ProfileSystem = ({ targetProfile, onMessageClick, onEditProfile, onUserCli
     setLocalCoverURL,
     setProfileUploadProgress,
     setCoverUploadProgress,
-    optimisticStories
+    optimisticStories,
+    openVault
   } = useAeirmist();
   
   const [liveTargetProfile, setLiveTargetProfile] = useState<any>(null);
@@ -2362,6 +2363,9 @@ const ProfileSystem = ({ targetProfile, onMessageClick, onEditProfile, onUserCli
               )}
               {isOwnProfile && (
                 <TabButton active={activeTab === 'archive'} onClick={() => setActiveTab('archive')} icon={<Archive size={20} />} label="ARCHIVE" />
+              )}
+              {isOwnProfile && (
+                <TabButton active={activeTab === 'vault'} onClick={() => { setActiveTab('vault'); openVault(); }} icon={<Lock size={20} />} label="VAULT" />
               )}
             </div>
           </div>

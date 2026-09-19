@@ -234,7 +234,6 @@ export const VideoPlayerComponent: React.FC<VideoPlayerProps> = ({
             }
             onEnded?.();
           }}
-          playsInline
         />
       )}
 

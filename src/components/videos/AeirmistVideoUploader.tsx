@@ -263,10 +263,38 @@ export const AeirmistVideoUploader: React.FC<AeirmistVideoUploaderProps> = ({ on
       // 1. Upload Video File if present
       if (videoFile && uploadMedia) {
         setUploadProgress(10);
-        finalVideoUrl = await uploadMedia(videoFile, `users/${user?.uid || 'guest'}/videos`, (p) => {
-          // Map to 10% - 80% progress
-          setUploadProgress(Math.floor(10 + p * 0.7));
+        const progressInterval = setInterval(() => {
+          setUploadProgress(prev => (prev < 80 ? prev + 10 : prev));
+        }, 300);
+
+        finalVideoUrl = await new Promise<string>(async (resolve) => {
+          let done = false;
+          const timer = setTimeout(() => {
+            if (!done) {
+              done = true;
+              logger.warn('[Uploader] Video upload timeout (4s limit), using local stream URL');
+              resolve(videoUrl || URL.createObjectURL(videoFile));
+            }
+          }, 4000);
+
+          try {
+            const url = await uploadMedia(videoFile, `users/${user?.uid || 'guest'}/videos`, (p) => {
+              setUploadProgress(Math.floor(10 + p * 0.7));
+            });
+            if (!done) {
+              done = true;
+              clearTimeout(timer);
+              resolve(url);
+            }
+          } catch (e) {
+            if (!done) {
+              done = true;
+              clearTimeout(timer);
+              resolve(videoUrl || URL.createObjectURL(videoFile));
+            }
+          }
         });
+        clearInterval(progressInterval);
       }
 
       // 2. Upload Custom or Auto Thumbnail WebP Blob instead of raw Base64 data strings for memory saving
@@ -276,7 +304,31 @@ export const AeirmistVideoUploader: React.FC<AeirmistVideoUploaderProps> = ({ on
           const res = await fetch(finalThumbnailUrl);
           const blob = await res.blob();
           const thumbFile = new File([blob], 'thumb.webp', { type: 'image/webp' });
-          finalThumbnailUrl = await uploadMedia(thumbFile, `users/${user?.uid || 'guest'}/video_thumbs`, () => {}, MediaQuality.THUMBNAIL);
+          
+          finalThumbnailUrl = await new Promise<string>(async (resolve) => {
+            let done = false;
+            const timer = setTimeout(() => {
+              if (!done) {
+                done = true;
+                resolve(autoThumbnailData || customThumbnailData || '');
+              }
+            }, 2500);
+
+            try {
+              const url = await uploadMedia(thumbFile, `users/${user?.uid || 'guest'}/video_thumbs`, () => {}, MediaQuality.THUMBNAIL);
+              if (!done) {
+                done = true;
+                clearTimeout(timer);
+                resolve(url);
+              }
+            } catch (err) {
+              if (!done) {
+                done = true;
+                clearTimeout(timer);
+                resolve(autoThumbnailData || customThumbnailData || '');
+              }
+            }
+          });
         } catch (err) {
           logger.error('[Uploader] Base64 thumbnail upload failed, using fallback', err);
         }

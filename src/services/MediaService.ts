@@ -279,8 +279,9 @@ class MediaService {
 
     try {
       return await new Promise<string>((resolve, reject) => {
-        // Step: PROGRESS-ACTIVITY WATCHDOG (3.5s inactivity limit for instant zero-stall failover)
-        const inactivityLimit = 3500;
+        // Step: PROGRESS-ACTIVITY WATCHDOG (dynamic: 5s for images, 30s for videos)
+        const isVideoUpload = uploadFile.type.startsWith('video/');
+        const inactivityLimit = isVideoUpload ? 30000 : 5000;
         let watchdogId: any = null;
 
         const resetWatchdog = () => {

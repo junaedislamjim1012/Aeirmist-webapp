@@ -96,10 +96,12 @@ export class CloudinaryService {
         }
       };
 
-      xhr.timeout = 3500;
+      // Dynamic timeout: 5s for images, 120s for videos (videos are much larger)
+      const timeoutMs = isVideo ? 120000 : 5000;
+      xhr.timeout = timeoutMs;
       xhr.ontimeout = () => {
         try { xhr.abort(); } catch(e) {}
-        reject(new Error('Cloudinary upload request timed out (3.5s limit)'));
+        reject(new Error(`Cloudinary upload timed out (${timeoutMs/1000}s limit for ${isVideo ? 'video' : 'image'})`));
       };
 
       xhr.onerror = () => {

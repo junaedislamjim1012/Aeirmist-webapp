@@ -205,6 +205,9 @@ export const VideoPlayerComponent: React.FC<VideoPlayerProps> = ({
           ref={videoRef}
           src={video.videoURL}
           poster={video.thumbnailURL || 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&q=80&w=1200'}
+          crossOrigin="anonymous"
+          preload="auto"
+          playsInline
           className="w-full h-full object-contain cursor-pointer"
           onClick={togglePlay}
           onTimeUpdate={() => {

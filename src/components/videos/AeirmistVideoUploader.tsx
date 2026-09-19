@@ -260,77 +260,37 @@ export const AeirmistVideoUploader: React.FC<AeirmistVideoUploaderProps> = ({ on
       let finalVideoUrl = videoUrl;
       let finalThumbnailUrl = thumbnailType === 'custom' ? (customThumbnailData || autoThumbnailData) : autoThumbnailData;
 
-      // 1. Upload Video File if present
+      // 1. Upload Video File to Cloudinary CDN
       if (videoFile && uploadMedia) {
         setUploadProgress(10);
+        // Smooth progress animation (slower for video - increment every 1.5s)
         const progressInterval = setInterval(() => {
-          setUploadProgress(prev => (prev < 80 ? prev + 10 : prev));
-        }, 300);
+          setUploadProgress(prev => (prev < 85 ? prev + 3 : prev));
+        }, 1500);
 
-        finalVideoUrl = await new Promise<string>(async (resolve) => {
-          let done = false;
-          const timer = setTimeout(() => {
-            if (!done) {
-              done = true;
-              logger.warn('[Uploader] Video upload timeout (4s limit), using local stream URL');
-              resolve(videoUrl || URL.createObjectURL(videoFile));
-            }
-          }, 4000);
-
-          try {
-            const url = await uploadMedia(videoFile, `users/${user?.uid || 'guest'}/videos`, (p) => {
-              setUploadProgress(Math.floor(10 + p * 0.7));
-            });
-            if (!done) {
-              done = true;
-              clearTimeout(timer);
-              resolve(url);
-            }
-          } catch (e) {
-            if (!done) {
-              done = true;
-              clearTimeout(timer);
-              resolve(videoUrl || URL.createObjectURL(videoFile));
-            }
-          }
-        });
+        try {
+          finalVideoUrl = await uploadMedia(videoFile, `users/${user?.uid || 'guest'}/videos`, (p) => {
+            // Real progress from Cloudinary/Firebase overrides fake progress
+            const mapped = Math.floor(10 + p * 0.75);
+            setUploadProgress(mapped);
+          });
+        } catch (e) {
+          logger.warn('[Uploader] Video cloud upload failed, using local stream URL', e);
+          finalVideoUrl = videoUrl || URL.createObjectURL(videoFile);
+        }
         clearInterval(progressInterval);
       }
 
-      // 2. Upload Custom or Auto Thumbnail WebP Blob instead of raw Base64 data strings for memory saving
+      // 2. Upload Thumbnail to CDN
       if (finalThumbnailUrl && finalThumbnailUrl.startsWith('data:') && uploadMedia) {
-        setUploadProgress(85);
+        setUploadProgress(88);
         try {
           const res = await fetch(finalThumbnailUrl);
           const blob = await res.blob();
           const thumbFile = new File([blob], 'thumb.webp', { type: 'image/webp' });
-          
-          finalThumbnailUrl = await new Promise<string>(async (resolve) => {
-            let done = false;
-            const timer = setTimeout(() => {
-              if (!done) {
-                done = true;
-                resolve(autoThumbnailData || customThumbnailData || '');
-              }
-            }, 2500);
-
-            try {
-              const url = await uploadMedia(thumbFile, `users/${user?.uid || 'guest'}/video_thumbs`, () => {}, MediaQuality.THUMBNAIL);
-              if (!done) {
-                done = true;
-                clearTimeout(timer);
-                resolve(url);
-              }
-            } catch (err) {
-              if (!done) {
-                done = true;
-                clearTimeout(timer);
-                resolve(autoThumbnailData || customThumbnailData || '');
-              }
-            }
-          });
+          finalThumbnailUrl = await uploadMedia(thumbFile, `users/${user?.uid || 'guest'}/video_thumbs`, () => {}, MediaQuality.THUMBNAIL);
         } catch (err) {
-          logger.error('[Uploader] Base64 thumbnail upload failed, using fallback', err);
+          logger.warn('[Uploader] Thumbnail CDN upload failed, keeping base64 fallback', err);
         }
       }
 

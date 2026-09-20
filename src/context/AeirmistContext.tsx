@@ -2376,17 +2376,14 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
          }).catch(() => {});
        };
        
-       // Keep alive interval
+       // Keep alive interval — every 30s update lastSeen while tab is visible
        const interval = setInterval(() => {
-         if (document.visibilityState === 'visible') {
-           const profileRef = doc(db, 'profiles', profile.id);
-           updateDoc(profileRef, {
-             status: 'online',
-             lastSeen: serverTimestamp(),
-             lastActiveAt: serverTimestamp()
-           }).catch(() => {});
-         }
-       }, 60000);
+          if (document.visibilityState === 'visible') {
+            // Reset status ref so goOnline() can re-write even if already 'online'
+            lastPresenceStatus.current = '';
+            goOnline();
+          }
+        }, 30000);
 
        // Set up Capacitor App state listener for native Android/iOS backgrounding
        let capListenerRemove: (() => void) | undefined;
@@ -2724,8 +2721,8 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     // Optimization: Don't write if already in desired state
     if (lastPresenceStatus.current === status) return;
 
-    // Minimal throttle to prevent spamming but allow accurate updates (e.g. 1 minute)
-    if (!canWrite('presence', 60000)) return; 
+    // Throttle: max once per 30s (was 60s — too slow, causes stale "Active now")
+    if (!canWrite('presence', 30000)) return; 
     
     try {
       lastPresenceStatus.current = status;

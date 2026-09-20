@@ -1158,7 +1158,7 @@ export const NotesSystem = ({ chats, onChatSelect, onReplyNote }: { chats: any[]
                       roundedClassName="rounded-[19px]"
                     />
                   </div>
-                  {isOnline && chat.messagingSettings?.onlineStatus !== false && (
+                  {isOnline && (
                     <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-aeirmist-lime rounded-lg border-[3px] border-[#0a0a0d] shadow-sm animate-pulse" />
                   )}
                 </div>

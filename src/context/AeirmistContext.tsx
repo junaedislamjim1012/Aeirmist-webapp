@@ -2488,17 +2488,27 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       where('read', '==', false)
     );
 
+    // Record the exact moment this listener starts — only show toasts for notifications
+    // created AFTER this point, so old unread notifications never pop up on refresh/page load
+    const listenerStartTime = Date.now();
+    let isInitialLoad = true;
+
     const unsubscribe = onSnapshot(q, (snap) => {
-      // If count increased, play sound and show toast (or system/browser notification) for the new ones
+      // Skip the very first batch (historical data loaded on startup)
+      if (isInitialLoad) {
+        isInitialLoad = false;
+        return;
+      }
+
       snap.docChanges().forEach(change => {
         if (change.type === 'added') {
           const data = change.doc.data();
-          // Avoid triggering on initial load of historical unread notifications
+          // Only show toast for notifications that actually arrived AFTER we started listening
           const createdAt = data.createdAt?.toMillis 
             ? data.createdAt.toMillis() 
-            : (data.createdAt?.seconds ? data.createdAt.seconds * 1000 : Date.now());
+            : (data.createdAt?.seconds ? data.createdAt.seconds * 1000 : 0);
 
-          if (Date.now() - createdAt < 30000) {
+          if (createdAt >= listenerStartTime) {
             playNotificationSound();
 
             // Internal Toast Notification for all types
@@ -2576,7 +2586,15 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       where('profileIds', 'array-contains', profile.id)
     );
 
+    let isInitialLoad = true;
+
     const unsubscribe = onSnapshot(q, (snap) => {
+      // Skip the very first batch on startup to avoid old request toasts
+      if (isInitialLoad) {
+        isInitialLoad = false;
+        return;
+      }
+
       snap.docChanges().forEach(change => {
         if (change.type === 'added') {
           const data = change.doc.data();
@@ -2588,17 +2606,13 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             const restricted = senderId ? (profile.social?.restricted || []).includes(senderId) : false;
 
             if (!blocked && !restricted) {
-              const createdAt = data.createdAt?.toMillis() || Date.now();
-              // 20 second window to avoid history trigger
-              if (Date.now() - createdAt < 20000) {
-                playNotificationSound();
-                const senderDetails = data.participantDetails?.[senderId];
-                addToast({
-                  title: 'Request Received',
-                  message: `${senderDetails?.displayName || 'Someone'} sent a message request`,
-                  type: 'info'
-                });
-              }
+              playNotificationSound();
+              const senderDetails = data.participantDetails?.[senderId];
+              addToast({
+                title: 'Request Received',
+                message: `${senderDetails?.displayName || 'Someone'} sent a message request`,
+                type: 'info'
+              });
             }
           }
         }

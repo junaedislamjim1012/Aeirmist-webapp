@@ -2676,8 +2676,8 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         const data = docSnap.data();
         if (data.status === 'online') {
           const lastSeen = extractTimestampMs(data.lastSeen) || extractTimestampMs(data.lastActiveAt);
-          // Server-time threshold: active within 180 seconds (3 mins)
-          if (lastSeen > 0 && (now - lastSeen < 180000)) {
+          // Threshold: 75s (heartbeat is 30s → 2.5 missed beats = definitely offline)
+          if (lastSeen > 0 && (now - lastSeen < 75000)) {
             onlineUsersMap.current.set(docSnap.id, lastSeen);
             active.add(docSnap.id);
           }
@@ -2692,7 +2692,7 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       const now = Date.now();
       const active = new Set<string>();
       onlineUsersMap.current.forEach((lastSeen, id) => {
-        if (now - lastSeen < 180000) {
+        if (now - lastSeen < 75000) {
           active.add(id);
         } else {
           changed = true;
@@ -2702,7 +2702,7 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       if (changed || active.size !== onlineUsers.size) {
         setOnlineUsers(active);
       }
-    }, 20000);
+    }, 15000);
 
     return () => {
       unsubscribe();

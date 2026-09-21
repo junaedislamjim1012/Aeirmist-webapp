@@ -204,8 +204,8 @@ const AccountSettings: React.FC<AccountSettingsProps> = ({
       }
     } catch (err: any) {
       addToast?.({
-        title: 'DEACTIVATION ERROR',
-        message: 'Could not deactivate account.',
+        title: 'Deactivation Error',
+        message: 'Could not deactivate account. Please try again.',
         type: 'warning'
       });
     } finally {
@@ -216,8 +216,8 @@ const AccountSettings: React.FC<AccountSettingsProps> = ({
   const handleConfirmDeletionScheduleSubmit = async () => {
     if (deleteInputText.trim() !== 'DELETE') {
       addToast?.({
-        title: 'CONFIRMATION MISMATCH',
-        message: 'Please type DELETE to confirm permanent deletion schedule.',
+        title: 'Confirmation Mismatch',
+        message: 'Please type DELETE to confirm scheduled deletion.',
         type: 'warning'
       });
       return;
@@ -228,8 +228,8 @@ const AccountSettings: React.FC<AccountSettingsProps> = ({
       await requestDeleteAccount();
     } catch (err: any) {
       addToast?.({
-        title: 'DELETION SCHEDULE ERROR',
-        message: 'Could not schedule account deletion.',
+        title: 'Deletion Schedule Error',
+        message: 'Could not schedule account deletion. Please try again.',
         type: 'warning'
       });
     } finally {

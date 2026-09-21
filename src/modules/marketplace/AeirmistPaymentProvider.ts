@@ -4,7 +4,7 @@ export class AeirmistPaymentProvider {
     try {
       // TEMPORARY: Full Feature Unlock Override
       // Payments are disabled; all premium UI features are already unlocked via AeirmistContext.
-      alert("Payment system coming soon. Enjoy free premium access during our beta phase!");
+      logger.info('[Payment] Payment system coming soon. Free premium access during beta phase.');
       return;
     } catch (e) {
       logger.error('Digital Transaction Interrupted:', e);

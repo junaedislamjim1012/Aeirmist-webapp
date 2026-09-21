@@ -13,17 +13,12 @@ import { auth } from "../lib/firebase";
 export function registerUser(email: string, password: string): Promise<User | null> {
   return createUserWithEmailAndPassword(auth, email, password)
     .then((userCredential) => {
-      // সাইন-আপ সফল হলে
       const user = userCredential.user;
-      console.log("সফলভাবে অ্যাকাউন্ট তৈরি হয়েছে:", user.email);
-      alert("রেজিস্ট্রেশন সফল হয়েছে!");
+      console.info("[AuthHelpers] Account created successfully:", user.email);
       return user;
     })
     .catch((error) => {
-      const errorCode = error.code;
-      const errorMessage = error.message;
-      console.error("ত্রুটি:", errorCode, errorMessage);
-      alert("সমস্যা হয়েছে: " + errorMessage);
+      console.error("[AuthHelpers] Registration error:", error.code, error.message);
       return null;
     });
 }
@@ -34,17 +29,12 @@ export function registerUser(email: string, password: string): Promise<User | nu
 export function loginUser(email: string, password: string): Promise<User | null> {
   return signInWithEmailAndPassword(auth, email, password)
     .then((userCredential) => {
-      // লগইন সফল হলে
       const user = userCredential.user;
-      console.log("সফলভাবে লগইন হয়েছে:", user.email);
-      alert("লগইন সফল হয়েছে!");
+      console.info("[AuthHelpers] Login successful:", user.email);
       return user;
     })
     .catch((error) => {
-      const errorCode = error.code;
-      const errorMessage = error.message;
-      console.error("লগইন ত্রুটি:", errorCode, errorMessage);
-      alert("লগইন ব্যর্থ হয়েছে: " + errorMessage);
+      console.error("[AuthHelpers] Login error:", error.code, error.message);
       return null;
     });
 }
@@ -55,11 +45,9 @@ export function loginUser(email: string, password: string): Promise<User | null>
 export function initAuthStateObserver(callback?: (user: User | null) => void) {
   return onAuthStateChanged(auth, (user) => {
     if (user) {
-      // ইউজার লগইন করা অবস্থায় থাকলে
-      console.log("বর্তমান ইউজার:", user.email);
+      console.info("[AuthHelpers] Auth state: signed in as", user.email);
     } else {
-      // ইউজার লগআউট অবস্থায় থাকলে
-      console.log("কোনো ইউজার লগইন করা নেই।");
+      console.info("[AuthHelpers] Auth state: signed out");
     }
     if (callback) {
       callback(user);
@@ -67,9 +55,4 @@ export function initAuthStateObserver(callback?: (user: User | null) => void) {
   });
 }
 
-// Global window exposure for direct access/testing in browser console
-if (typeof window !== 'undefined') {
-  (window as any).registerUser = registerUser;
-  (window as any).loginUser = loginUser;
-  (window as any).auth = auth;
-}
+export { firebaseSignOut };

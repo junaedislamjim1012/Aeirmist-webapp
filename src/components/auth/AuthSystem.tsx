@@ -474,7 +474,7 @@ export const AuthSystem: React.FC = () => {
         await handleForgotPassword(trimmed);
       } else {
         await resetPassword(trimmed);
-        alert("পাসওয়ার্ড রিসেট লিংক আপনার ইমেলে পাঠানো হয়েছে। দয়া করে ইনবক্স চেক করুন।");
+        setSuccess("Password reset link sent to your email. Please check your inbox.");
       }
       setForgotStep(2);
       analytics.trackEvent({ action: 'password_reset_request', category: 'Auth' });
@@ -1104,7 +1104,7 @@ export const AuthSystem: React.FC = () => {
                             disabled={loading || !identifier}
                             className="w-full h-12 rounded-2xl text-xs uppercase tracking-widest font-black transition-all flex items-center justify-center gap-2 cursor-pointer mt-2 shadow-lg bg-gradient-to-r from-[var(--color-aeirmist-cyan)] to-cyan-300 text-black hover:brightness-105 active:scale-[0.98] disabled:bg-[#252a38] disabled:from-transparent disabled:to-transparent disabled:text-slate-400 disabled:border disabled:border-white/10 disabled:shadow-none disabled:cursor-not-allowed"
                           >
-                            {loading ? <Loader2 size={16} className="animate-spin text-current" /> : "Dispatch Reset Key"}
+                            {loading ? <Loader2 size={16} className="animate-spin text-current" /> : "Send Reset Link"}
                           </button>
                         </motion.div>
                       ) : (
@@ -1112,9 +1112,9 @@ export const AuthSystem: React.FC = () => {
                           <div className="w-14 h-14 rounded-full bg-[var(--color-aeirmist-cyan)]/15 border border-[var(--color-aeirmist-cyan)] flex items-center justify-center mx-auto text-[var(--color-aeirmist-cyan)] mb-2 shadow-[0_0_20px_rgba(0,242,255,0.15)] animate-pulse">
                             <Mail size={24} />
                           </div>
-                          <h3 className="text-sm font-black uppercase tracking-wider text-white">Reset Handshake Dispatched</h3>
+                          <h3 className="text-sm font-black uppercase tracking-wider text-white">Reset Link Sent</h3>
                           <p className="text-xs text-white/70 leading-relaxed max-w-[320px] mx-auto">
-                            A secure, system-signed validation link was sent to your inbox. Click the link inside to Configure a new credentials settings.
+                            A secure password reset link has been sent to your email. Check your inbox and click the link to set a new password.
                           </p>
                         </motion.div>
                       )}

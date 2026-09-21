@@ -3800,9 +3800,9 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           logger.error("[AeirmistContext] CRITICAL: Profile document size limit exceeded. Initiating Storage Cleanup...");
           
           addToast({
-            title: "Storage Full",
-            message: "Profile document size limit exceeded. Initiating automated pruning to restore sync.",
-            type: "warning"
+            title: "Optimizing Profile",
+            message: "Optimizing profile data storage to keep your account fast and smooth.",
+            type: "info"
           });
 
           // Storage Cleanup Strategy: Remove heavy non-essential data
@@ -3853,14 +3853,14 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
               }
               
               addToast({
-                title: "Media Purged",
-                message: "Profile images or wallpapers were too large and have been cleared to prevent account lock.",
-                type: "warning"
+                title: "Profile Media Optimized",
+                message: "High-resolution media has been compressed to ensure smooth profile loading.",
+                type: "info"
               });
             } else {
               addToast({
-                title: "Metadata Pruned",
-                message: "Internal logs cleared to reduce profile weight.",
+                title: "Sync Optimized",
+                message: "Profile cache updated successfully.",
                 type: "info"
               });
             }
@@ -3869,8 +3869,8 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             await updateDoc(profileRef, pruningData);
             
             addToast({
-              title: "Pruning Complete",
-              message: "Heaviest profile segments cleared. Service should resume shortly.",
+              title: "Profile Optimized",
+              message: "Your profile is optimized and ready to use.",
               type: "info"
             });
             

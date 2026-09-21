@@ -336,7 +336,3 @@ export async function consolidateAndSyncUserProfiles(
   }
 }
 
-// Global window exposure for browser testing and console access
-if (typeof window !== 'undefined') {
-  (window as any).consolidateAndSyncUserProfiles = consolidateAndSyncUserProfiles;
-}

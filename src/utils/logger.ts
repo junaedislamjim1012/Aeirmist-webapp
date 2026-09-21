@@ -1,5 +1,5 @@
-const isProd = typeof process !== 'undefined' && process.env && process.env.NODE_ENV === 'production' 
-  || (typeof import.meta !== 'undefined' && (import.meta as any).env && (import.meta as any).env.PROD);
+const isProd = (typeof process !== 'undefined' && process.env && process.env.NODE_ENV === 'production')
+  || Boolean((globalThis as any)?.__PROD_ENV__);
 
 const SENSITIVE_KEYS = [
   'password', 'token', 'secret', 'credential', 

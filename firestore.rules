@@ -383,7 +383,8 @@ service cloud.firestore {
 
     // 12. VAULT FOLDERS: Owner only
     match /vault_folders/{folderId} {
-      allow read, write: if isSignedIn() && request.auth.uid == resource.data.userId;
+      allow read, update, delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
     }
 
     // 13. CHAT NICKNAMES: Owner only
@@ -665,7 +666,8 @@ service cloud.firestore {
 
     // 33. ACTIVITIES: User owner only
     match /activities/{activityId} {
-      allow read, write: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow read, update, delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
     }
 
     // 34. SOUND LIBRARY: Public read; uploader-bound creation; uploader or admin write

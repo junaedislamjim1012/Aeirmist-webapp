@@ -89,6 +89,7 @@ import { messagingService } from '../modules/messaging/MessagingService';
 import { aeirmistCall } from '../modules/calls/CallService';
 import { logger } from '@/src/utils/logger';
 import { useBackHandler } from '../utils/backNavigation';
+import { useSharedProfile } from '../hooks/useSharedProfile';
 
 export const getChatActivityMs = (chat: any): number => {
   if (!chat) return 0;
@@ -175,34 +176,12 @@ const LiveParticipantAvatar = ({
   innerRoundedClassName?: string
 }) => {
   const { db } = useAeirmist();
-  const [livePhoto, setLivePhoto] = useState<string>(fallbackPhoto || BLANK_DP);
-  const [isDeleted, setIsDeleted] = useState(false);
-
-  useEffect(() => {
-    if (!db || !participantId || typeof participantId !== 'string' || !participantId.trim()) return;
-    const unsub = onSnapshot(doc(db, 'profiles', participantId.trim()), (docSnap) => {
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        if (data.isDeleted === true || data.status === 'deleted') {
-          setLivePhoto(BLANK_DP);
-          setIsDeleted(true);
-        } else if (data.photoURL) {
-          setLivePhoto(getAvatarUrl(data.photoURL));
-          setIsDeleted(false);
-        } else {
-          setLivePhoto(fallbackPhoto || BLANK_DP);
-          setIsDeleted(false);
-        }
-      } else {
-        // Document does not exist in Firestore (account deleted/purged)
-        setLivePhoto(BLANK_DP);
-        setIsDeleted(true);
-      }
-    }, (err) => {
-      logger.warn("Error syncing participant live avatar:", err);
-    });
-    return () => unsub();
-  }, [db, participantId, fallbackPhoto]);
+  const profileData = useSharedProfile(db, participantId);
+  
+  const isDeleted = profileData?.isDeleted === true;
+  const livePhoto = isDeleted 
+    ? BLANK_DP 
+    : (profileData?.photoURL ? getAvatarUrl(profileData.photoURL) : (fallbackPhoto || BLANK_DP));
 
   return (
     <Avatar 
@@ -218,82 +197,43 @@ const LiveParticipantAvatar = ({
 };
 
 export const LiveParticipantName = ({ participantId, fallbackName, className = "", chatId }: { participantId: string, fallbackName: string, className?: string, chatId?: string }) => {
-  const { db, profile } = useAeirmist();
-  const [profileName, setProfileName] = useState<string>(fallbackName || 'Aeirmist User');
+  const { db } = useAeirmist();
+  const profileData = useSharedProfile(db, participantId);
   const [nickname, setNickname] = useState<string>('');
-  const [isDeleted, setIsDeleted] = useState(false);
+
+  const isDeleted = profileData?.isDeleted === true;
+  const profileName = isDeleted 
+    ? 'Aeirmist User' 
+    : (profileData?.displayName || profileData?.username || fallbackName || 'Aeirmist User');
 
   useEffect(() => {
-    if (!db || !participantId || typeof participantId !== 'string' || !participantId.trim()) return;
-    
-    // Listen for profile changes
-    const unsubProfile = onSnapshot(doc(db, 'profiles', participantId.trim()), (docSnap) => {
+    if (!db || !chatId || typeof chatId !== 'string' || !chatId.trim()) return;
+    // Nickname listener (separate collection — cannot be shared via profile cache)
+    const unsubNickname = onSnapshot(doc(db, 'chat_settings', chatId.trim()), (docSnap) => {
       if (docSnap.exists()) {
-        const data = docSnap.data();
-        if (data.isDeleted === true || data.status === 'deleted') {
-          setProfileName('Aeirmist User');
-          setIsDeleted(true);
-        } else {
-          setProfileName(data.displayName || data.username || fallbackName || 'Aeirmist User');
-          setIsDeleted(false);
-        }
+        const nicks = docSnap.data().nicknames || {};
+        setNickname(nicks[participantId] || '');
       } else {
-        // Document does not exist (account deleted/purged)
-        setProfileName('Aeirmist User');
-        setIsDeleted(true);
+        setNickname('');
       }
+    }, (err) => {
+      logger.error("Error listening for shared nickname:", err);
     });
-
-    // Listen for shared nickname changes
-    let unsubNickname: any;
-    if (db && chatId && typeof chatId === 'string' && chatId.trim()) {
-        unsubNickname = onSnapshot(doc(db, 'chat_settings', chatId.trim()), (docSnap) => {
-            if (docSnap.exists()) {
-                const nicks = docSnap.data().nicknames || {};
-                setNickname(nicks[participantId] || '');
-            } else {
-                setNickname('');
-            }
-        }, (err) => {
-            logger.error("Error listening for shared nickname:", err);
-        });
-    }
-
-    return () => {
-        unsubProfile();
-        if (unsubNickname) unsubNickname();
-    };
-  }, [db, participantId, fallbackName, chatId]);
+    return () => unsubNickname();
+  }, [db, participantId, chatId]);
 
   return <span className={className}>{isDeleted ? 'Aeirmist User' : (nickname || profileName)}</span>;
 };
 
 const LiveParticipantPresenceDot = ({ participantId }: { participantId: string }) => {
   const { db, onlineUsers } = useAeirmist();
-  const [showPresence, setShowPresence] = useState(false);
+  const profileData = useSharedProfile(db, participantId);
 
-  useEffect(() => {
-    if (!db || !participantId || typeof participantId !== 'string' || !participantId.trim()) return;
-    
-    const unsub = onSnapshot(doc(db, 'profiles', participantId.trim()), (docSnap) => {
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        if (data.isDeleted === true || data.status === 'deleted') {
-          setShowPresence(false);
-          return;
-        }
-        const isOnline = !!onlineUsers?.has?.(participantId);
-        const hasShowActivity = data.privacySettings?.showActivity !== false;
-        const isOnlineStatusOn = data.messagingSettings?.onlineStatus !== false;
-        setShowPresence(isOnline && hasShowActivity && isOnlineStatusOn);
-      } else {
-        setShowPresence(false);
-      }
-    }, (err) => {
-      logger.warn("PresenceDot sync delayed", err);
-    });
-    return () => unsub();
-  }, [db, participantId, onlineUsers]);
+  const isDeleted = profileData?.isDeleted === true;
+  const isOnline = !!onlineUsers?.has?.(participantId);
+  const hasShowActivity = profileData?.privacySettings?.showActivity !== false;
+  const isOnlineStatusOn = profileData?.messagingSettings?.onlineStatus !== false;
+  const showPresence = !isDeleted && profileData != null && isOnline && hasShowActivity && isOnlineStatusOn;
 
   if (!showPresence) return null;
 
@@ -304,55 +244,42 @@ const LiveParticipantPresenceDot = ({ participantId }: { participantId: string }
 
 const LiveParticipantSubDetails = ({ participantId, chatId }: { participantId: string, chatId: string }) => {
   const { db, onlineUsers, profile } = useAeirmist();
-  const [username, setUsername] = useState<string>('');
-  const [showPresence, setShowPresence] = useState(true);
-  const [isOnlineStatusOn, setIsOnlineStatusOn] = useState(true);
-  const [lastSeen, setLastSeen] = useState<any>(null);
+  const profileData = useSharedProfile(db, participantId);
   const [isTyping, setIsTyping] = useState(false);
 
   // My own online status setting
   const myOnlineStatusOn = profile?.messagingSettings?.onlineStatus !== false;
 
+  // Derive from shared cache instead of individual listener
+  const username = profileData?.username || '';
+  const lastSeen = profileData?.lastSeen || null;
+  const showPresence = profileData?.privacySettings?.showActivity !== false;
+  const isOnlineStatusOn = profileData?.messagingSettings?.onlineStatus !== false;
+
   useEffect(() => {
-    if (!db || !participantId || typeof participantId !== 'string' || !participantId.trim()) return;
+    if (!db || !participantId || !chatId || typeof chatId !== 'string' || !chatId.trim()) return;
 
-    const unsubProfile = onSnapshot(doc(db, 'profiles', participantId.trim()), (docSnap) => {
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        setUsername(data.username || '');
-        setLastSeen(data.lastSeen || null);
-        setShowPresence(data.privacySettings?.showActivity !== false);
-        setIsOnlineStatusOn(data.messagingSettings?.onlineStatus !== false);
-      }
-    });
-
-    let unsubTyping: (() => void) | undefined;
-    if (chatId && typeof chatId === 'string' && chatId.trim()) {
-      const indicatorId = `${chatId.trim()}_${participantId.trim()}`;
-      unsubTyping = onSnapshot(doc(db, 'typing_indicators', indicatorId), (snap) => {
-        if (snap.exists()) {
-          const data = snap.data();
-          if (data.updatedAt) {
-            try {
-              const date = typeof data.updatedAt.toDate === 'function' ? data.updatedAt.toDate() : new Date(data.updatedAt);
-              const isCurrentlyTyping = (Date.now() - date.getTime()) < 4000;
-              setIsTyping(isCurrentlyTyping);
-            } catch (e) {
-              setIsTyping(false);
-            }
-          } else {
+    const indicatorId = `${chatId.trim()}_${participantId.trim()}`;
+    const unsubTyping = onSnapshot(doc(db, 'typing_indicators', indicatorId), (snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+        if (data.updatedAt) {
+          try {
+            const date = typeof data.updatedAt.toDate === 'function' ? data.updatedAt.toDate() : new Date(data.updatedAt);
+            const isCurrentlyTyping = (Date.now() - date.getTime()) < 4000;
+            setIsTyping(isCurrentlyTyping);
+          } catch (e) {
             setIsTyping(false);
           }
         } else {
           setIsTyping(false);
         }
-      });
-    }
+      } else {
+        setIsTyping(false);
+      }
+    });
 
-    return () => {
-      unsubProfile();
-      if (unsubTyping) unsubTyping();
-    };
+    return () => unsubTyping();
   }, [db, participantId, chatId]);
 
   const isOnline = !!onlineUsers?.has?.(participantId);

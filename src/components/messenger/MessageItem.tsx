@@ -99,8 +99,8 @@ export const MessageItem = React.memo<{
     }
     if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 8) {
       setIsSwiping(true);
-      const allowedDirection = isMe ? dx > 0 : dx < 0;
-      const clamped = allowedDirection ? Math.max(-72, Math.min(72, dx)) : 0;
+      // Both sent & received: swipe RIGHT (dx > 0) to reply, like WhatsApp/Instagram
+      const clamped = dx > 0 ? Math.min(72, dx) : 0;
       setSwipeX(clamped);
     }
   };
@@ -276,10 +276,10 @@ export const MessageItem = React.memo<{
       onTouchCancel={handleTouchEnd}
       style={{ WebkitTouchCallout: 'none' }}
     >
-      {isSwiping && Math.abs(swipeX) > 4 && (
+      {isSwiping && swipeX > 4 && (
         <div
-          className={`absolute top-1/2 -translate-y-1/2 ${isMe ? 'right-2' : 'left-2'} pointer-events-none flex items-center justify-center w-8 h-8 rounded-full bg-white/10`}
-          style={{ opacity: Math.min(1, Math.abs(swipeX) / SWIPE_REPLY_THRESHOLD) }}
+          className={`absolute top-1/2 -translate-y-1/2 left-0 pointer-events-none flex items-center justify-center w-8 h-8 rounded-full bg-white/10`}
+          style={{ opacity: Math.min(1, swipeX / SWIPE_REPLY_THRESHOLD) }}
         >
           <Reply size={16} className="text-[#00F2FF]" />
         </div>

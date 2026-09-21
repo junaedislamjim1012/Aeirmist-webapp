@@ -4644,8 +4644,9 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const checkUsernameAvailable = async (rawUsername: string, excludeUid?: string) => {
     const norm = normalizeUsername(rawUsername);
-    if (!norm || norm.length < 3) return { available: false };
-    if (isSafeMode || !db) return { available: true };
+    if (!norm || norm.length < 3) return { available: false, error: "Username must be at least 3 characters." };
+    if (!db) return { available: false, error: "Database service unavailable." };
+    if (isSafeMode) return { available: true };
 
     try {
       // 1. Lock document check — verify the owner is still alive

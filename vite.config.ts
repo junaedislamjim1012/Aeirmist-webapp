@@ -22,7 +22,7 @@ export default defineConfig(({mode}) => {
     },
     build: {
       target: 'esnext',
-      sourcemap: true,
+      sourcemap: !isProd, // Disable in production (security: don't expose source)
       // Strip console.log/debug/info and debugger statements from production builds.
       // console.error and console.warn are kept so real runtime problems are still visible.
       minify: 'esbuild',

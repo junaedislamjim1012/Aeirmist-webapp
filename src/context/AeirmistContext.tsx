@@ -1148,14 +1148,6 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }
     }
 
-    logger.info("SEND_MESSAGE_DEBUG:", {
-      conversationId,
-      profileId: profile.id,
-      userUid: user.uid,
-      isNewConversation: conversationId.startsWith('new_'),
-      targetProfile: targetProfile || null
-    });
-
     try {
       const msgId = await messagingService.sendMessage(db, profile, user, conversationId, text, type, mediaUrl, { 
         ...metadata, 

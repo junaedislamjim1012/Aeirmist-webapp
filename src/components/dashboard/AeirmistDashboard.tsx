@@ -978,10 +978,69 @@ export const AeirmistDashboard: React.FC<AeirmistDashboardProps> = ({ onUserClic
                   /* SPECIFIC SUB-TAB CONTENT SHOWN IN standard desktop grid format */
                   <div className="space-y-4">
                     <h3 className="text-xs font-black uppercase tracking-widest text-[#00f2ff]">
-                      {searchQuery.trim() ? `Search Results for "${searchQuery}" (${activeTabProfiles.length})` : `${activeTab} (${activeTabProfiles.length})`}
+                      {searchQuery.trim() ? `Search Results for "${searchQuery}" (${activeTabProfiles.length})` : `${activeTab} (${activeTab === 'blocked' ? (profile?.social?.blocked?.length || 0) : activeTabProfiles.length})`}
                     </h3>
-                    
-                    {activeTabProfiles.length === 0 ? (
+
+                    {/* BLOCKED TAB — special dedicated render with Unblock button */}
+                    {activeTab === 'blocked' ? (
+                      (() => {
+                        const blockedIds: string[] = profile?.social?.blocked || [];
+                        if (blockedIds.length === 0) {
+                          return (
+                            <div className="text-center py-20 border border-dashed border-white/5 rounded-3xl bg-white/[0.01]">
+                              <UserX size={32} className="text-white/20 mx-auto mb-3" />
+                              <span className="text-[10px] font-mono tracking-widest uppercase text-white/30">
+                                No blocked users.
+                              </span>
+                            </div>
+                          );
+                        }
+                        // Get profile data for blocked users (from loaded profiles or stub)
+                        const blockedProfiles = blockedIds.map(bid => {
+                          const found = profiles.find((p: any) => p.id === bid || p.uid === bid);
+                          return found || { id: bid, displayName: 'Aeirmist User', photoURL: null, username: bid.slice(0, 8) };
+                        });
+                        return (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                            {blockedProfiles.map((p: any) => (
+                              <div
+                                key={`blocked-${p.id}`}
+                                className={`${isGlobalBgActive ? 'bg-white/[0.06] backdrop-blur-xl border border-white/10' : 'bg-[#0b0914] border border-white/5'} rounded-2xl p-4 flex flex-col gap-3`}
+                              >
+                                <div className="flex items-center gap-3">
+                                  <img
+                                    src={getAvatarUrl(p.photoURL)}
+                                    alt={p.displayName}
+                                    className="w-11 h-11 rounded-xl object-cover border border-white/10 shrink-0"
+                                  />
+                                  <div className="min-w-0">
+                                    <p className="text-[11px] font-black uppercase tracking-wide text-white truncate">
+                                      {p.displayName || 'Aeirmist User'}
+                                    </p>
+                                    <span className="text-[9px] font-mono text-white/40 truncate block">
+                                      @{p.username || p.id?.slice(0, 10)}
+                                    </span>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-red-500/10 border border-red-500/20">
+                                  <UserX size={10} className="text-red-400 shrink-0" />
+                                  <span className="text-[9px] font-black uppercase tracking-widest text-red-400">Blocked</span>
+                                </div>
+                                <button
+                                  onClick={async () => {
+                                    await toggleBlockUser(p.id);
+                                    addToast({ title: 'Unblocked', message: `${p.displayName || 'User'} has been unblocked.`, type: 'success' });
+                                  }}
+                                  className="w-full py-2 rounded-xl bg-white/5 border border-white/10 text-white/70 hover:text-white hover:bg-white/10 text-[9px] font-black uppercase tracking-widest transition-all cursor-pointer"
+                                >
+                                  Unblock
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })()
+                    ) : activeTabProfiles.length === 0 ? (
                       <div className="text-center py-20 border border-dashed border-white/5 rounded-3xl bg-white/[0.01]">
                         <span className="text-[10px] font-mono tracking-widest uppercase text-white/30">
                           Empty connection vectors. No profiles match this query category.

@@ -784,9 +784,13 @@ const Messenger = ({ initialRecipient, onUserClick }: { initialRecipient?: any, 
         try {
           if (data.updatedAt) {
             const date = data.updatedAt.toDate?.() || new Date(data.updatedAt);
-            timeString = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            if (!isNaN(date.getTime())) {
+              timeString = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            }
           }
-        } catch (e) {}
+        } catch (e) {
+          logger.warn("Chat updatedAt format parsing error:", e);
+        }
 
         const rawLastMsg = data.lastMessage;
         const rawLastText = typeof rawLastMsg === 'string' 

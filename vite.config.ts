@@ -33,6 +33,8 @@ export default defineConfig(({mode}) => {
             'motion-vendor': ['motion/react'],
             'lucide-vendor': ['lucide-react'],
             'emoji-vendor': ['emoji-picker-react'],
+            'charts-vendor': ['recharts'],
+            'stripe-vendor': ['@stripe/stripe-js'],
             'firebase-vendor': ['firebase/app', 'firebase/auth', 'firebase/firestore', 'firebase/storage'],
           }
         }

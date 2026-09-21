@@ -508,7 +508,9 @@ export const HomeFeedSystem: React.FC<{ onUserClick?: (user: any) => void, onPos
                         </motion.div>
                       )}
                       {processedPosts.map((post) => (
-                        <PremiumPostCard key={post.id} post={post} onUserClick={onUserClick} onPostClick={onPostClick} onNavigate={onNavigate} />
+                        <div key={post.id} style={{ contentVisibility: 'auto', containIntrinsicSize: '0 500px' }}>
+                          <PremiumPostCard post={post} onUserClick={onUserClick} onPostClick={onPostClick} onNavigate={onNavigate} />
+                        </div>
                       ))}
                       
                       {/* Infinite Scroll Anchor */}

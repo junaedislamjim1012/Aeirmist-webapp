@@ -330,9 +330,18 @@ class MediaService {
         );
       });
     } catch (storageErr) {
-      logger.warn("[MediaService] Firebase Storage bucket unavailable or upload failed. Falling back to Data URI for instant zero-stall delivery:", storageErr);
-      onProgress(100, 'Instant Fallback...');
-      const fallbackUrl = await convertFileToDataURL(uploadFile);
+      logger.warn("[MediaService] Firebase Storage bucket unavailable or upload failed. Falling back to safe Data URI:", storageErr);
+      onProgress(100, 'Finalizing...');
+      // Safe fallback: compress image tightly so Data URI won't blow Firestore 1MB doc size
+      let safeFile = uploadFile;
+      if (uploadFile.type.startsWith('image/')) {
+        try {
+          safeFile = await this.compressImage(uploadFile, MediaQuality.LITE);
+        } catch (compErr) {
+          logger.warn("[MediaService] Fallback compression failed, using original:", compErr);
+        }
+      }
+      const fallbackUrl = await convertFileToDataURL(safeFile);
       aeirmistCache.removePendingUpload(task.id).catch(e => {});
       return fallbackUrl;
     }

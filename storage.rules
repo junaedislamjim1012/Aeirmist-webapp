@@ -2,54 +2,84 @@ rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
     
-    // -- PRIMITIVES --
-    function isSignedIn() { return request.auth != null; }
-    
-    // -- PATHS --
-    
-    // Allow any signed-in user to upload and read across standard user/media folders
-    match /users/{userId}/{allPaths=**} {
-      allow read: if true;
-      allow write: if isSignedIn();
+    // -- AUTH & IDENTITY HELPERS --
+    function isSignedIn() {
+      return request.auth != null;
     }
     
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // -- CONTENT VALIDATION HELPERS --
+    function isValidImage() {
+      return request.resource.contentType.matches('image/.*')
+        && request.resource.size < 20 * 1024 * 1024; // Max 20MB
+    }
+
+    function isValidVideo() {
+      return request.resource.contentType.matches('video/.*')
+        && request.resource.size < 100 * 1024 * 1024; // Max 100MB
+    }
+
+    function isValidMedia() {
+      return isValidImage() || isValidVideo() || request.resource.contentType.matches('audio/.*');
+    }
+
+    // -- USER ISOLATED PATHS --
+    
+    // User root uploads (avatars, covers, uploads under users/{uid}/...)
+    match /users/{userId}/{allPaths=**} {
+      allow read: if true;
+      allow write: if isOwner(userId) && isValidMedia();
+    }
+    
+    // Specific avatar and profile picture paths
     match /avatars/{userId}/{allPaths=**} {
       allow read: if true;
-      allow write: if isSignedIn();
+      allow write: if isOwner(userId) && isValidImage();
     }
     
     match /profiles/{userId}/{allPaths=**} {
       allow read: if true;
-      allow write: if isSignedIn();
+      allow write: if isOwner(userId) && isValidImage();
     }
     
+    // Posts & Reels media uploaded by user
     match /posts/{userId}/{allPaths=**} {
       allow read: if true;
-      allow write: if isSignedIn();
+      allow write: if isOwner(userId) && isValidMedia();
     }
 
     match /videos/{userId}/{allPaths=**} {
       allow read: if true;
-      allow write: if isSignedIn();
+      allow write: if isOwner(userId) && isValidVideo();
     }
 
     match /stories/{userId}/{allPaths=**} {
       allow read: if true;
-      allow write: if isSignedIn();
+      allow write: if isOwner(userId) && isValidMedia();
     }
 
-    match /chats/{chatId}/{allPaths=**} {
-      allow read, write: if isSignedIn();
-    }
-    
     match /notes/{userId}/{allPaths=**} {
       allow read: if true;
-      allow write: if isSignedIn();
+      allow write: if isOwner(userId) && isValidMedia();
     }
 
-    // Catch-all fallback for any other storage paths
+    // Private Vault files
+    match /vault/{userId}/{allPaths=**} {
+      allow read, write: if isOwner(userId);
+    }
+
+    // Chat attachments - isolated to authenticated users uploading with standard limits
+    match /chats/{chatId}/{allPaths=**} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && isValidMedia();
+    }
+
+    // Default deny for everything else
     match /{allPaths=**} {
-      allow read, write: if isSignedIn();
+      allow read, write: if false;
     }
   }
 }

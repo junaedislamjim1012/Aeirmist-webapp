@@ -842,8 +842,8 @@ export const PremiumPostCard = React.memo<PostCardProps>(({ post, onUserClick, o
         }
       } else {
         // Text-only post or single media fallback
-        const mediaUrl = post.mediaUrl || post.mediaURL || (post.mediaUrls && post.mediaUrls[0]) || '';
-        const mediaType = post.mediaType || (mediaUrl ? 'image' : 'text');
+        const mediaUrl = post.mediaUrl || (post as any).mediaURL || (post.mediaUrls && post.mediaUrls[0]) || '';
+        const mediaType = (post as any).mediaType || (mediaUrl ? 'image' : 'text');
         
         await addDoc(collection(db, 'vault_media'), {
           userId: profile.id,

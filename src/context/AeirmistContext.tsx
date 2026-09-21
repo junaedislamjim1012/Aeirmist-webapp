@@ -221,7 +221,7 @@ interface AeirmistContextType {
   editMessage: (conversationId: string, messageId: string, newText: string) => Promise<void>;
   clearChat: (conversationId: string, clearType: 'me' | 'both') => Promise<void>;
   togglePinMessage: (conversationId: string, messageId: string, messageText: string, isPinned: boolean) => Promise<void>;
-  toggleLike: (postId: string, isCurrentlyLiked: boolean) => Promise<void>;
+  toggleLike: (postId: string, isCurrentlyLiked: boolean, postAuthorId?: string) => Promise<void>;
   toggleBookmark: (postId: string, isCurrentlyBookmarked: boolean) => Promise<void>;
   createPost: (content: string, mediaUrls?: string[]) => Promise<void>;
   editPost: (postId: string, content: string, mediaUrls?: string[]) => Promise<void>;
@@ -3689,6 +3689,12 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     
     allowedFields.forEach(field => {
       if (data[field] !== undefined) {
+        // Guard against massive Base64 strings causing 'Storage Full' document limit (1MB Firestore limit)
+        const val = data[field];
+        if (typeof val === 'string' && val.startsWith('data:image') && val.length > 80000) {
+          logger.warn(`[AeirmistContext] Suppressing oversized base64 for ${field} (${val.length} chars) to prevent document size breach.`);
+          return;
+        }
         updateData[field] = data[field];
       }
     });

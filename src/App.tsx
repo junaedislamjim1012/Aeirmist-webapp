@@ -237,13 +237,13 @@ function AppContent() {
     storyUpload,
     needsPasswordOnboarding,
     featureFlags,
+    db,
     addToast,
     isVaultOpen,
     setIsVaultOpen,
     isVaultUnlocked,
     setIsVaultUnlocked,
-    allProfiles,
-    chats
+    allProfiles
   } = useAeirmist();
   const { isLoading: isThemeLoading } = useTheme();
 
@@ -1875,7 +1875,7 @@ function AppContent() {
                   <Vault
                     db={db}
                     profile={profile}
-                    chats={chats || []}
+                    chats={[] as any}
                     onSelectChat={(chatId) => {
                       setActiveTab('messenger');
                       setIsVaultOpen(false);

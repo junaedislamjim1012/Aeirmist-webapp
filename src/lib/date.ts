@@ -260,10 +260,11 @@ export const formatConversationTime = (timestamp: any): string => {
     return 'Yesterday';
   }
 
-  // Within current week (< 7 days)
-  const diffInMs = now.getTime() - date.getTime();
-  const diffInDays = diffInMs / (1000 * 60 * 60 * 24);
-  if (diffInDays < 7) {
+  // Within current calendar week (since Sunday of the current week)
+  const currentDayOfWeek = now.getDay(); // 0 = Sunday, 1 = Monday ... 6 = Saturday
+  const startOfCurrentWeek = new Date(now.getFullYear(), now.getMonth(), now.getDate() - currentDayOfWeek, 0, 0, 0, 0);
+  
+  if (date.getTime() >= startOfCurrentWeek.getTime()) {
     return date.toLocaleDateString([], { weekday: 'long' });
   }
 

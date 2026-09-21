@@ -8,12 +8,16 @@ interface VideoPlayerProps {
   src: string;
   className?: string;
   useCache?: boolean;
+  controls?: boolean;
+  autoPlay?: boolean;
 }
 
 export const VideoPlayer: React.FC<VideoPlayerProps> = ({ 
   src, 
   className = "w-full h-full object-cover",
-  useCache = false
+  useCache = false,
+  controls = false,
+  autoPlay = false
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);

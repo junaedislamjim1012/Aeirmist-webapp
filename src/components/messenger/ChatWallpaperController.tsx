@@ -208,7 +208,7 @@ export const ChatWallpaperController: React.FC<ChatWallpaperControllerProps> = (
 
     setIsUploading(true);
     try {
-      const downloadURL = await uploadMedia(file, 'wallpapers', (progress) => {
+      const downloadURL = await uploadMedia(file, `users/${profile?.id}/wallpapers`, (progress) => {
         logger.info(`Uploading wallpaper: ${Math.round(progress)}%`);
       }, MediaQuality.WALLPAPER_LITE);
       if (downloadURL) {

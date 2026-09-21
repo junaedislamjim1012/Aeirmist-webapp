@@ -32,13 +32,19 @@ interface CacheEntry {
 
 const profileCache = new Map<string, CacheEntry>();
 
+function getCacheKey(db: Firestore, profileId: string): string {
+  const dbApp = (db as any)?.app?.name || 'default';
+  const dbId = (db as any)?._databaseId?.database || (db as any)?.databaseId || 'default';
+  return `${dbApp}::${dbId}::${profileId.trim()}`;
+}
+
 function subscribe(
   db: Firestore,
   profileId: string,
   callback: (data: SharedProfileData | null) => void
 ): () => void {
-  const key = profileId.trim();
-  if (!key) return () => {};
+  const key = getCacheKey(db, profileId);
+  if (!profileId.trim()) return () => {};
 
   let entry = profileCache.get(key);
 

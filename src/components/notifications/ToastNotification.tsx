@@ -56,6 +56,10 @@ export const ToastNotification: React.FC = () => {
               badgeIcon = <Mail size={8} className="text-white" />;
               badgeBg = 'bg-aeirmist-cyan';
               borderColor = 'border-aeirmist-cyan/30';
+            } else if (actionType.includes('verified') || actionType.includes('verification')) {
+              badgeIcon = <ShieldCheck size={8} className="text-white" />;
+              badgeBg = 'bg-aeirmist-cyan';
+              borderColor = 'border-aeirmist-cyan/50 shadow-[0_0_20px_rgba(0,242,255,0.25)]';
             } else if (actionType.includes('security')) {
               badgeIcon = <ShieldCheck size={8} className="text-white" />;
               badgeBg = 'bg-blue-500';

@@ -82,8 +82,14 @@ export const AeirmistUpgradePanel: React.FC = () => {
     setLoadingId(type);
     try {
       await aeirmistPaymentProvider.startCheckout(user.uid, type);
+      addToast({ 
+        title: 'Coming Soon', 
+        message: `${type === 'verified' ? 'Verification' : 'Premium'} payments are coming soon. All premium features are free during beta!`, 
+        type: 'success' 
+      });
     } catch (e) {
       logger.error(e);
+    } finally {
       setLoadingId(null);
     }
   };

@@ -294,7 +294,7 @@ export const PostStudio: React.FC<PostStudioProps> = React.memo(({ onClose, init
 
             try {
               if (item.file) {
-                const url = await uploadMedia(item.file, 'posts', (progress) => {
+                const url = await uploadMedia(item.file, `posts/${user?.uid}`, (progress) => {
                   progressArray[idx] = progress;
                   const averageProgress = progressArray.reduce((sum, val) => sum + val, 0) / mediaFiles.length;
                   setUploadProgress(Math.min(90, Math.floor(10 + (averageProgress * 0.8))));

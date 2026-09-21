@@ -347,6 +347,8 @@ interface AeirmistContextType {
   isVaultUnlocked: boolean;
   setIsVaultUnlocked: React.Dispatch<React.SetStateAction<boolean>>;
   openVault: () => void;
+  showVerificationCelebration: boolean;
+  setShowVerificationCelebration: React.Dispatch<React.SetStateAction<boolean>>;
 }
 
 const handleFirestoreError = (error: any, op: any, path: string | null) => {
@@ -536,6 +538,7 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const [isVaultOpen, setIsVaultOpen] = useState(false);
   const [isVaultUnlocked, setIsVaultUnlocked] = useState(false);
+  const [showVerificationCelebration, setShowVerificationCelebration] = useState(false);
 
   const openVault = useCallback(() => {
     setIsVaultOpen(true);
@@ -2429,6 +2432,32 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }
     }
   }, [user, profile]);
+
+  // Observer: Detect when user account becomes Verified in real-time
+  const prevVerifiedRef = useRef<boolean | null>(null);
+  useEffect(() => {
+    if (!profile?.id) return;
+    const isNowVerified = profile.isVerified === true;
+    
+    // Check if we've celebrated this profile's verification previously in localStorage
+    const celebratedKey = `aeirmist_verified_celebrated_${profile.id}`;
+    const alreadyCelebrated = typeof window !== 'undefined' && localStorage.getItem(celebratedKey) === 'true';
+
+    if (prevVerifiedRef.current !== null && !prevVerifiedRef.current && isNowVerified && !alreadyCelebrated) {
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(celebratedKey, 'true');
+      }
+      setShowVerificationCelebration(true);
+      addToast({
+        title: "Account Verified!",
+        message: "Congratulations! Your blue checkmark badge has been activated.",
+        type: "success",
+        actionType: "verified"
+      });
+    }
+
+    prevVerifiedRef.current = isNowVerified;
+  }, [profile?.id, profile?.isVerified, addToast]);
 
   const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
   const onlineUsersMap = useRef<Map<string, number>>(new Map());
@@ -5894,6 +5923,8 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     isVaultUnlocked,
     setIsVaultUnlocked,
     openVault,
+    showVerificationCelebration,
+    setShowVerificationCelebration,
     featureFlags,
     updateFeatureFlag,
     appBranding,
@@ -5923,7 +5954,8 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     deviceLinkingStatus, generateDeviceLink, consumePairingCode,
     localAvatarURL, localCoverURL, profileUploadProgress, coverUploadProgress,
     isSafeMode, setIsSafeMode, needsPasswordOnboarding, setNeedsPasswordOnboarding,
-    isVaultOpen, setIsVaultOpen, isVaultUnlocked, setIsVaultUnlocked, openVault
+    isVaultOpen, setIsVaultOpen, isVaultUnlocked, setIsVaultUnlocked, openVault,
+    showVerificationCelebration, setShowVerificationCelebration
   ]);
 
   return (

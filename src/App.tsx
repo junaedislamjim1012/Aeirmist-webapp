@@ -33,6 +33,7 @@ import { followRecommService } from './services/FollowRecommendationService';
 import { NetworkStatusProvider } from './context/NetworkStatusContext';
 import { NetworkBanner } from './components/ui/NetworkBanner';
 import { ToastNotification } from './components/notifications/ToastNotification';
+import { VerificationCelebrationModal } from './components/profile/VerificationCelebrationModal';
 
 // Aeirmist Core Component Architecture
 function toMathBoldScript(text: string): string {
@@ -243,7 +244,9 @@ function AppContent() {
     setIsVaultOpen,
     isVaultUnlocked,
     setIsVaultUnlocked,
-    allProfiles
+    allProfiles,
+    showVerificationCelebration,
+    setShowVerificationCelebration
   } = useAeirmist();
   const { isLoading: isThemeLoading } = useTheme();
 
@@ -1889,6 +1892,15 @@ function AppContent() {
               </motion.div>
             )}
           </AnimatePresence>
+
+          {/* Instagram-style Account Verification Celebration Modal */}
+          <VerificationCelebrationModal
+            isOpen={showVerificationCelebration}
+            onClose={() => setShowVerificationCelebration(false)}
+            username={profile?.username}
+            displayName={profile?.displayName || profile?.fullName}
+            photoURL={profile?.photoURL}
+          />
 
           {/* Development / Debugging UI */}
         </motion.div>

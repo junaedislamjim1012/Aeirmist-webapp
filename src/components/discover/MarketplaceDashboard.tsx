@@ -249,7 +249,7 @@ export const MarketplaceDashboard: React.FC<DashboardProps> = ({
     if (!file) return;
     setUploadingLogo(true);
     try {
-      const url = await uploadMedia(file, 'stores/logos');
+      const url = await uploadMedia(file, `users/${profile?.id}/stores/logos`);
       setSettingsLogo(url);
       addToast({ title: 'Logo updated', message: 'Shop logo staged. Save settings to apply.', type: 'success' });
     } catch (err) {
@@ -266,7 +266,7 @@ export const MarketplaceDashboard: React.FC<DashboardProps> = ({
     if (!file) return;
     setUploadingCover(true);
     try {
-      const url = await uploadMedia(file, 'stores/covers');
+      const url = await uploadMedia(file, `users/${profile?.id}/stores/covers`);
       setSettingsCover(url);
       addToast({ title: 'Banner updated', message: 'Shop banner staged. Save settings to apply.', type: 'success' });
     } catch (err) {
@@ -392,7 +392,7 @@ export const MarketplaceDashboard: React.FC<DashboardProps> = ({
     if (!file) return;
     setUploadingProductMedia(true);
     try {
-      const url = await uploadMedia(file, 'products/media');
+      const url = await uploadMedia(file, `users/${profile?.id}/products/media`);
       const isVideo = file.type.startsWith('video/');
       const newItem: ProductMediaItem = {
         id: 'm_' + Date.now(),

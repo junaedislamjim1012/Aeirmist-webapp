@@ -100,7 +100,7 @@ export const MarketplaceCreateShopModal: React.FC<CreateShopModalProps> = ({
 
     setUploadingLogo(true);
     try {
-      const url = await uploadMedia(file, 'stores/logos');
+      const url = await uploadMedia(file, `users/${profile?.id}/stores/logos`);
       setLogo(url);
       addToast({ title: 'Logo uploaded', message: 'Shop logo staged successfully.', type: 'success' });
     } catch (err: any) {
@@ -121,7 +121,7 @@ export const MarketplaceCreateShopModal: React.FC<CreateShopModalProps> = ({
 
     setUploadingCover(true);
     try {
-      const url = await uploadMedia(file, 'stores/covers');
+      const url = await uploadMedia(file, `users/${profile?.id}/stores/covers`);
       setCover(url);
       addToast({ title: 'Cover uploaded', message: 'Shop banner staged successfully.', type: 'success' });
     } catch (err: any) {

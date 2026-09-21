@@ -292,7 +292,7 @@ service cloud.firestore {
     }
 
     match /post_views/{viewId} {
-      allow create: if true;
+      allow create: if isSignedIn();
       allow read: if isSignedIn() && (
         resource == null || 
         get(/databases/$(database)/documents/posts/$(resource.data.postId)).data.authorUid == request.auth.uid ||

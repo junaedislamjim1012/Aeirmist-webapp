@@ -79,6 +79,7 @@ service cloud.firestore {
     function isProfileOwnerRead(profileId) {
       return isSignedIn() && (
         profileId == 'profile_' + request.auth.uid ||
+        profileId == request.auth.uid ||
         profileId.startsWith('profile_' + request.auth.uid) ||
         (exists(/databases/$(database)/documents/profiles/$(profileId)) && 
          (get(/databases/$(database)/documents/profiles/$(profileId)).data.ownerUid == request.auth.uid ||
@@ -89,6 +90,7 @@ service cloud.firestore {
     function isProfileOwnerWrite(profileId) {
       return isSignedIn() && (
         profileId == 'profile_' + request.auth.uid ||
+        profileId == request.auth.uid ||
         profileId.startsWith('profile_' + request.auth.uid) ||
         (exists(/databases/$(database)/documents/profiles/$(profileId)) && 
          (get(/databases/$(database)/documents/profiles/$(profileId)).data.ownerUid == request.auth.uid ||
@@ -149,7 +151,7 @@ service cloud.firestore {
         notif.userId == ('profile_' + request.auth.uid) ||
         (notif.keys().hasAll(['targetUid']) && notif.targetUid == request.auth.uid) ||
         (notif.keys().hasAll(['targetId']) && (notif.targetId == request.auth.uid || notif.targetId == ('profile_' + request.auth.uid))) ||
-        (notif.keys().hasAll(['targetUserId']) && notif.targetUserId == request.auth.uid) ||
+        (notif.keys().hasAll(['targetUserId']) && (notif.targetUserId == request.auth.uid || notif.targetUserId == ('profile_' + request.auth.uid))) ||
         (notif.keys().hasAll(['recipientUid']) && notif.recipientUid == request.auth.uid) ||
         isAdmin() ||
         isSupport()
@@ -160,25 +162,31 @@ service cloud.firestore {
     // -- COLLECTION RULES --
     // ==========================================
     
-    // 1. USERS: Private account data. Read restricted to self, support, or admin; write to self/admin
+    // 1. USERS: Private account data. Read restricted to self, support, or admin; write to self/admin.
+    // Prevents cross-user ID injection & identity field forgery.
     match /users/{userId} {
       allow get: if isSignedIn() && (request.auth.uid == userId || isAdmin() || isSupport());
       allow list: if isAdmin() || isSupport();
-      allow create: if isSignedIn() && (request.auth.uid == userId || request.resource.data.uid == request.auth.uid);
-      allow update: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      allow create: if isSignedIn() && request.auth.uid == userId && (
+        !request.resource.data.keys().hasAll(['uid']) || request.resource.data.uid == request.auth.uid
+      );
+      allow update: if isSignedIn() && (
+        (request.auth.uid == userId && !incoming().diff(existing()).affectedKeys().hasAny(['uid', 'createdAt'])) || 
+        isAdmin()
+      );
       allow delete: if isAdmin();
     }
 
-    // 2. PROFILES: Public social profile. Read authenticated; write restricted to profile owner or follower counter; vault & settings strictly owner only
+    // 2. PROFILES: Public social profile. Read authenticated; creation bound to auth UID;
+    // updates prevent owner forgery; vault & settings strictly owner only.
     match /profiles/{profileId} {
       allow get, list: if isSignedIn();
       allow create: if isSignedIn() && (
-        request.resource.data.ownerUid == request.auth.uid || 
-        request.resource.data.uid == request.auth.uid ||
-        profileId == 'profile_' + request.auth.uid
+        profileId in ['profile_' + request.auth.uid, request.auth.uid] &&
+        (request.resource.data.ownerUid == request.auth.uid || request.resource.data.uid == request.auth.uid)
       );
       allow update: if isSignedIn() && (
-        isProfileOwnerWrite(profileId) || 
+        (isProfileOwnerWrite(profileId) && !incoming().diff(existing()).affectedKeys().hasAny(['ownerUid', 'uid', 'id'])) || 
         isFollowInteractionWrite(profileId) || 
         isModerator()
       );
@@ -193,7 +201,7 @@ service cloud.firestore {
       }
     }
 
-    // 3. ADMINS & AUTHORIZATION: Admin only
+    // 3. ADMINS & AUTHORIZATION: Super Admin only writes; self or admin reads
     match /admins/{uid} {
       allow read: if isSignedIn() && (request.auth.uid == uid || isAdmin());
       allow write: if isSuperAdmin();
@@ -220,7 +228,7 @@ service cloud.firestore {
       );
     }
 
-    // 5. POSTS: Public read; create bound to authorUid; update/delete by author or moderator
+    // 5. POSTS: Public read; create bound to authorUid; update/delete by author, interaction counters, or moderator
     match /posts/{postId} {
       allow read: if true;
       allow create: if isSignedIn() && (
@@ -228,9 +236,14 @@ service cloud.firestore {
         request.resource.data.userId == request.auth.uid
       );
       allow update: if isSignedIn() && (
-        resource.data.authorUid == request.auth.uid ||
-        resource.data.userId == request.auth.uid ||
-        incoming().diff(existing()).affectedKeys().hasOnly(['likes', 'likesCount', 'bookmarks', 'bookmarksCount', 'sharesCount', 'commentsCount']) ||
+        (
+          (resource.data.authorUid == request.auth.uid || resource.data.userId == request.auth.uid) &&
+          !incoming().diff(existing()).affectedKeys().hasAny(['authorUid', 'userId', 'createdAt'])
+        ) ||
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'likes', 'likesCount', 'likedBy', 'bookmarks', 'bookmarksCount', 'savedBy', 
+          'sharesCount', 'commentsCount', 'viewsCount', 'poll', 'updatedAt'
+        ]) ||
         isModerator()
       );
       allow delete: if isSignedIn() && (
@@ -243,11 +256,23 @@ service cloud.firestore {
         allow read: if true;
         allow create: if isSignedIn() && (
           request.resource.data.authorUid == request.auth.uid ||
-          request.resource.data.userId == request.auth.uid
+          request.resource.data.userId == request.auth.uid ||
+          request.resource.data.authorId == request.auth.uid ||
+          request.resource.data.authorId == ('profile_' + request.auth.uid)
         );
-        allow update, delete: if isSignedIn() && (
+        allow update: if isSignedIn() && (
+          (
+            (resource.data.authorUid == request.auth.uid || resource.data.userId == request.auth.uid || resource.data.authorId == request.auth.uid || resource.data.authorId == ('profile_' + request.auth.uid)) &&
+            !incoming().diff(existing()).affectedKeys().hasAny(['authorUid', 'userId', 'authorId', 'createdAt'])
+          ) ||
+          incoming().diff(existing()).affectedKeys().hasOnly(['likedBy', 'likesCount', 'likes']) ||
+          isModerator()
+        );
+        allow delete: if isSignedIn() && (
           resource.data.authorUid == request.auth.uid ||
           resource.data.userId == request.auth.uid ||
+          resource.data.authorId == request.auth.uid ||
+          resource.data.authorId == ('profile_' + request.auth.uid) ||
           isModerator()
         );
       }
@@ -261,9 +286,14 @@ service cloud.firestore {
         request.resource.data.userId == request.auth.uid
       );
       allow update: if isSignedIn() && (
-        resource.data.authorUid == request.auth.uid ||
-        resource.data.userId == request.auth.uid ||
-        incoming().diff(existing()).affectedKeys().hasOnly(['likes', 'likesCount', 'bookmarks', 'bookmarksCount', 'sharesCount', 'commentsCount']) ||
+        (
+          (resource.data.authorUid == request.auth.uid || resource.data.userId == request.auth.uid) &&
+          !incoming().diff(existing()).affectedKeys().hasAny(['authorUid', 'userId', 'createdAt'])
+        ) ||
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'likes', 'likesCount', 'likedBy', 'bookmarks', 'bookmarksCount', 'savedBy', 
+          'sharesCount', 'commentsCount', 'viewsCount', 'poll', 'updatedAt'
+        ]) ||
         isModerator()
       );
       allow delete: if isSignedIn() && (
@@ -273,14 +303,14 @@ service cloud.firestore {
       );
     }
 
-    // 7. POST INSIGHTS: Read restricted to post author or admin; updates restricted to viewer metrics
+    // 7. POST INSIGHTS: Read restricted to post author or admin; updates restricted to viewer metrics; create verified
     match /post_insights/{postId} {
       allow read: if isSignedIn() && (
         isAdmin() ||
         get(/databases/$(database)/documents/posts/$(postId)).data.authorUid == request.auth.uid ||
         get(/databases/$(database)/documents/posts/$(postId)).data.userId == request.auth.uid
       );
-      allow create: if isSignedIn() && request.resource.data.postId == postId;
+      allow create: if isSignedIn() && request.resource.data.postId == postId && exists(/databases/$(database)/documents/posts/$(postId));
       allow update: if isSignedIn() && (
         incoming().diff(existing()).affectedKeys().hasOnly(['totalViews', 'viewSources', 'audience', 'profileClicks', 'lastUpdated']) ||
         get(/databases/$(database)/documents/posts/$(postId)).data.authorUid == request.auth.uid ||
@@ -291,16 +321,22 @@ service cloud.firestore {
       );
     }
 
+    // 8. POST VIEWS: User can only record view with their own viewerUid; no forge; author or admin reads; immutable
     match /post_views/{viewId} {
-      allow create: if isSignedIn();
+      allow create: if isSignedIn() && (
+        request.resource.data.viewerUid == request.auth.uid ||
+        request.resource.data.viewerId == request.auth.uid ||
+        request.resource.data.viewerId == ('profile_' + request.auth.uid)
+      );
       allow read: if isSignedIn() && (
         resource == null || 
         get(/databases/$(database)/documents/posts/$(resource.data.postId)).data.authorUid == request.auth.uid ||
         isAdmin()
       );
+      allow update, delete: if isAdmin();
     }
 
-    // 8. FOLLOW REQUESTS: Sender-bound creation; participant-only get/list/update/delete
+    // 9. FOLLOW REQUESTS: Sender-bound creation; participant-only get/list/update/delete
     match /follow_requests/{requestId} {
       allow get, list: if isSignedIn() && (
         resource.data.fromId == request.auth.uid ||
@@ -332,11 +368,11 @@ service cloud.firestore {
       );
     }
 
-    // 9. CONVERSATIONS & MESSAGES: Strict participant-only get and list authorization
+    // 10. CONVERSATIONS & MESSAGES: Strict participant-only authorization; prevent hijacking
     match /conversations/{conversationId} {
       allow get, list: if isConversationParticipant(resource.data) || isAdmin();
       allow create: if isConversationParticipant(request.resource.data) || isAdmin();
-      allow update: if (isConversationParticipant(resource.data) || isConversationParticipant(request.resource.data)) || isAdmin();
+      allow update: if isConversationParticipant(resource.data) || isAdmin();
       allow delete: if isConversationParticipant(resource.data) || isAdmin();
 
       match /messages/{messageId} {
@@ -350,7 +386,15 @@ service cloud.firestore {
           request.resource.data.senderUid == request.auth.uid ||
           request.resource.data.senderId.startsWith(request.auth.uid)
         );
-        allow update, delete: if (
+        allow update: if (
+          (
+            resource.data.senderId == request.auth.uid ||
+            resource.data.senderId == 'profile_' + request.auth.uid ||
+            resource.data.senderUid == request.auth.uid
+          ) &&
+          !incoming().diff(existing()).affectedKeys().hasAny(['senderId', 'senderUid', 'createdAt'])
+        ) || isAdmin();
+        allow delete: if (
           resource.data.senderId == request.auth.uid ||
           resource.data.senderId == 'profile_' + request.auth.uid ||
           resource.data.senderUid == request.auth.uid ||
@@ -359,7 +403,7 @@ service cloud.firestore {
       }
     }
 
-    // 10. CHAT SETTINGS (Personal): Owner only
+    // 11. CHAT SETTINGS (Personal): Owner only
     match /chat_settings/{docId} {
       allow read, write: if isSignedIn() && (
         docId.startsWith(request.auth.uid) ||
@@ -369,7 +413,7 @@ service cloud.firestore {
       );
     }
     
-    // 11. SHARED CHAT SETTINGS: Conversation participants only
+    // 12. SHARED CHAT SETTINGS: Conversation participants only
     match /shared_chat_settings/{chatId} {
       allow read: if isSignedIn() && (
         isConversationParticipant(get(/databases/$(database)/documents/conversations/$(chatId)).data) ||
@@ -381,18 +425,31 @@ service cloud.firestore {
       );
     }
 
-    // 12. VAULT FOLDERS: Owner only
+    // 13. VAULT FOLDERS: Owner only (supports both uid and profile_uid)
     match /vault_folders/{folderId} {
-      allow read, update, delete: if isSignedIn() && resource.data.userId == request.auth.uid;
-      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow read, update, delete: if isSignedIn() && (
+        resource.data.userId == request.auth.uid ||
+        resource.data.userId == ('profile_' + request.auth.uid) ||
+        resource.data.ownerUid == request.auth.uid
+      );
+      allow create: if isSignedIn() && (
+        request.resource.data.userId == request.auth.uid ||
+        request.resource.data.userId == ('profile_' + request.auth.uid) ||
+        request.resource.data.ownerUid == request.auth.uid
+      );
     }
 
-    // 13. CHAT NICKNAMES: Owner only
+    // 14. CHAT NICKNAMES: Owner only
     match /chat_nickname/{docId} {
-      allow read, write: if isSignedIn() && (resource == null || resource.data.userId == request.auth.uid || (request.resource != null && request.resource.data.userId == request.auth.uid));
+      allow read, write: if isSignedIn() && (
+        resource == null || 
+        resource.data.userId == request.auth.uid || 
+        resource.data.userId == ('profile_' + request.auth.uid) ||
+        (request.resource != null && (request.resource.data.userId == request.auth.uid || request.resource.data.userId == ('profile_' + request.auth.uid)))
+      );
     }
 
-    // 14. VIDEOS & STORIES: Author only write/delete; viewers update reactions
+    // 15. VIDEOS & STORIES: Author only write/delete; viewers update reactions
     match /videos/{videoId} {
       allow read: if true;
       allow create: if isSignedIn() && (
@@ -400,7 +457,10 @@ service cloud.firestore {
         request.resource.data.userId == request.auth.uid
       );
       allow update: if isSignedIn() && (
-        resource.data.authorUid == request.auth.uid ||
+        (
+          (resource.data.authorUid == request.auth.uid || resource.data.userId == request.auth.uid) &&
+          !incoming().diff(existing()).affectedKeys().hasAny(['authorUid', 'userId', 'createdAt'])
+        ) ||
         incoming().diff(existing()).affectedKeys().hasOnly(['likes', 'views', 'sharesCount']) ||
         isModerator()
       );
@@ -414,21 +474,29 @@ service cloud.firestore {
         request.resource.data.userId == request.auth.uid
       );
       allow update: if isSignedIn() && (
-        resource.data.authorUid == request.auth.uid ||
+        (
+          (resource.data.authorUid == request.auth.uid || resource.data.userId == request.auth.uid) &&
+          !incoming().diff(existing()).affectedKeys().hasAny(['authorUid', 'userId', 'createdAt'])
+        ) ||
         incoming().diff(existing()).affectedKeys().hasOnly(['viewers', 'reactions']) ||
         isModerator()
       );
       allow delete: if isSignedIn() && (existing().authorUid == request.auth.uid || isModerator());
     }
 
-    // 15. NOTIFICATIONS: Strict recipient get and list authorization
+    // 16. NOTIFICATIONS: Strict recipient get and list authorization; sender-bound creation
     match /notifications/{notifId} {
       allow get, list: if isNotificationRecipient(resource.data);
-      allow create: if isSignedIn();
+      allow create: if isSignedIn() && (
+        request.resource.data.fromUserUid == request.auth.uid ||
+        request.resource.data.fromUserId == request.auth.uid ||
+        request.resource.data.fromUserId == ('profile_' + request.auth.uid) ||
+        isAdmin()
+      );
       allow update, delete: if isNotificationRecipient(resource.data);
     }
 
-    // 16. CALLS & CANDIDATES: Strict participant get and list authorization
+    // 17. CALLS & CANDIDATES: Strict participant get and list authorization
     match /calls/{callId} {
       allow get, list: if isCallParticipant(resource.data) || isAdmin();
       allow create: if isSignedIn() && (
@@ -447,7 +515,7 @@ service cloud.firestore {
       }
     }
 
-    // 17. CALL HISTORY: Strict participant get and list authorization
+    // 18. CALL HISTORY: Strict participant get and list authorization
     match /callHistory/{recordId} {
       allow get, list: if isSignedIn() && (
         request.auth.uid in resource.data.participants ||
@@ -465,12 +533,12 @@ service cloud.firestore {
       );
     }
     
-    // 18. ACCOUNTS: Owner only
+    // 19. ACCOUNTS: Owner only
     match /accounts/{uid} {
       allow read, write: if isOwner(uid) || isAdmin();
     }
     
-    // 19. NOTES: Public read; author only update/delete
+    // 20. NOTES: Public read; author only update/delete
     match /notes/{noteId} {
       allow read: if true;
       allow create: if isSignedIn() && (
@@ -493,7 +561,7 @@ service cloud.firestore {
       );
     }
     
-    // 20. HIGHLIGHTS: Public read; author only
+    // 21. HIGHLIGHTS: Public read; author only
     match /highlights/{highlightId} {
       allow read: if true;
       allow create: if isSignedIn() && (
@@ -507,25 +575,37 @@ service cloud.firestore {
       );
     }
     
-    // 21. SONGS: Public read; admin write
+    // 22. SONGS: Public read; admin write
     match /songs/{songId} {
       allow read: if true;
       allow write: if isAdmin();
     }
 
-    // 22. NGL MESSAGES: Recipient only read & manage; signed in send
+    // 23. NGL MESSAGES: Recipient only read & manage; signed in send
     match /ngl_messages/{msgId} {
-      allow get, list: if isSignedIn() && (resource.data.recipientUid == request.auth.uid || resource.data.recipientProfileId == '');
+      allow get, list: if isSignedIn() && (
+        resource.data.recipientUid == request.auth.uid || 
+        resource.data.recipientId == request.auth.uid ||
+        resource.data.recipientProfileId == ('profile_' + request.auth.uid)
+      );
       allow create: if isSignedIn() && 
         incoming().status == 'unread' && 
         incoming().content.size() <= 300 &&
         incoming().createdAt == request.time;
-      allow update: if isSignedIn() && (existing().recipientUid == request.auth.uid) &&
-        incoming().diff(existing()).affectedKeys().hasOnly(['status', 'storyReplyId', 'repliedAt']);
-      allow delete: if isSignedIn() && (existing().recipientUid == request.auth.uid || isModerator());
+      allow update: if isSignedIn() && (
+        existing().recipientUid == request.auth.uid ||
+        existing().recipientId == request.auth.uid ||
+        existing().recipientProfileId == ('profile_' + request.auth.uid)
+      ) && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'storyReplyId', 'repliedAt']);
+      allow delete: if isSignedIn() && (
+        existing().recipientUid == request.auth.uid || 
+        existing().recipientId == request.auth.uid ||
+        existing().recipientProfileId == ('profile_' + request.auth.uid) ||
+        isModerator()
+      );
     }
 
-    // 23. TYPING INDICATORS: Strictly conversation participant / owner only
+    // 24. TYPING INDICATORS: Strictly conversation participant / owner only
     match /typing_indicators/{indicatorId} {
       allow read, write: if isSignedIn() && (
         indicatorId.contains(request.auth.uid) ||
@@ -534,18 +614,27 @@ service cloud.firestore {
       );
     }
 
-    // 24. MARKETPLACE STORES: Public read; owner or marketplace moderator write
+    // 25. MARKETPLACE STORES: Public read; owner or marketplace moderator write
     match /stores/{storeId} {
       allow read: if resource == null || 
                      resource.data.status == 'active' || 
                      !resource.data.keys().hasAll(['status']) ||
                      (isSignedIn() && (resource.data.ownerId == request.auth.uid || resource.data.ownerUid == request.auth.uid || isMarketplaceModerator()));
-      allow create: if isSignedIn() && (request.resource.data.ownerId == request.auth.uid || request.resource.data.ownerUid == request.auth.uid);
-      allow update: if isSignedIn() && (resource.data.ownerId == request.auth.uid || resource.data.ownerUid == request.auth.uid || isMarketplaceModerator());
+      allow create: if isSignedIn() && (
+        request.resource.data.ownerId == request.auth.uid || 
+        request.resource.data.ownerUid == request.auth.uid
+      );
+      allow update: if isSignedIn() && (
+        (
+          (resource.data.ownerId == request.auth.uid || resource.data.ownerUid == request.auth.uid) &&
+          !incoming().diff(existing()).affectedKeys().hasAny(['ownerId', 'ownerUid', 'createdAt'])
+        ) || 
+        isMarketplaceModerator()
+      );
       allow delete: if isSignedIn() && (resource.data.ownerId == request.auth.uid || resource.data.ownerUid == request.auth.uid || isMarketplaceModerator());
     }
 
-    // 25. MARKETPLACE PRODUCTS: Public read; seller/owner or marketplace moderator write
+    // 26. MARKETPLACE PRODUCTS: Public read; seller/owner or marketplace moderator write
     match /products/{productId} {
       allow read: if true;
       allow create: if isSignedIn() && (
@@ -553,7 +642,14 @@ service cloud.firestore {
         request.resource.data.sellerId == request.auth.uid || 
         request.resource.data.ownerUid == request.auth.uid
       );
-      allow update, delete: if isSignedIn() && (
+      allow update: if isSignedIn() && (
+        (
+          (resource.data.sellerUid == request.auth.uid || resource.data.sellerId == request.auth.uid || resource.data.ownerUid == request.auth.uid) &&
+          !incoming().diff(existing()).affectedKeys().hasAny(['sellerUid', 'sellerId', 'ownerUid', 'createdAt'])
+        ) ||
+        isMarketplaceModerator()
+      );
+      allow delete: if isSignedIn() && (
         resource.data.sellerUid == request.auth.uid || 
         resource.data.sellerId == request.auth.uid || 
         resource.data.ownerUid == request.auth.uid || 
@@ -561,7 +657,7 @@ service cloud.firestore {
       );
     }
 
-    // 26. MARKETPLACE SERVICES: Public read; seller/owner or marketplace moderator write
+    // 27. MARKETPLACE SERVICES: Public read; seller/owner or marketplace moderator write
     match /services/{serviceId} {
       allow read: if true;
       allow create: if isSignedIn() && (
@@ -569,7 +665,14 @@ service cloud.firestore {
         request.resource.data.sellerId == request.auth.uid || 
         request.resource.data.ownerUid == request.auth.uid
       );
-      allow update, delete: if isSignedIn() && (
+      allow update: if isSignedIn() && (
+        (
+          (resource.data.sellerUid == request.auth.uid || resource.data.sellerId == request.auth.uid || resource.data.ownerUid == request.auth.uid) &&
+          !incoming().diff(existing()).affectedKeys().hasAny(['sellerUid', 'sellerId', 'ownerUid', 'createdAt'])
+        ) ||
+        isMarketplaceModerator()
+      );
+      allow delete: if isSignedIn() && (
         resource.data.sellerUid == request.auth.uid || 
         resource.data.sellerId == request.auth.uid || 
         resource.data.ownerUid == request.auth.uid || 
@@ -577,7 +680,7 @@ service cloud.firestore {
       );
     }
 
-    // 27. MARKETPLACE STORE POSTS: Public read; store owner or marketplace moderator write
+    // 28. MARKETPLACE STORE POSTS: Public read; store owner or marketplace moderator write
     match /store_posts/{postId} {
       allow read: if true;
       allow create: if isSignedIn() && (
@@ -591,7 +694,7 @@ service cloud.firestore {
       );
     }
 
-    // 28. MARKETPLACE STORE CHATS: Buyer, seller, or participants get and list authorization
+    // 29. MARKETPLACE STORE CHATS: Buyer, seller, or participants get and list authorization
     match /store_chats/{chatId} {
       allow get, list: if isSignedIn() && (
         resource.data.buyerUid == request.auth.uid ||
@@ -622,21 +725,33 @@ service cloud.firestore {
       }
     }
 
-    // 29. FEED COMMENTS: Public read; author or moderator write
+    // 30. FEED COMMENTS: Public read; author or moderator write; interactions
     match /feed_comments/{commentId} {
       allow read: if true;
       allow create: if isSignedIn() && (
         request.resource.data.authorUid == request.auth.uid ||
-        request.resource.data.userId == request.auth.uid
+        request.resource.data.userId == request.auth.uid ||
+        request.resource.data.authorId == request.auth.uid ||
+        request.resource.data.authorId == ('profile_' + request.auth.uid)
       );
-      allow update, delete: if isSignedIn() && (
+      allow update: if isSignedIn() && (
+        (
+          (resource.data.authorUid == request.auth.uid || resource.data.userId == request.auth.uid || resource.data.authorId == request.auth.uid || resource.data.authorId == ('profile_' + request.auth.uid)) &&
+          !incoming().diff(existing()).affectedKeys().hasAny(['authorUid', 'userId', 'authorId', 'createdAt'])
+        ) ||
+        incoming().diff(existing()).affectedKeys().hasOnly(['likedBy', 'likesCount', 'likes']) ||
+        isModerator()
+      );
+      allow delete: if isSignedIn() && (
         resource.data.authorUid == request.auth.uid ||
         resource.data.userId == request.auth.uid ||
+        resource.data.authorId == request.auth.uid ||
+        resource.data.authorId == ('profile_' + request.auth.uid) ||
         isModerator()
       );
     }
 
-    // 30. MARKETPLACE STORE REVIEWS: Public read; author or marketplace moderator write
+    // 31. MARKETPLACE STORE REVIEWS: Public read; author or marketplace moderator write
     match /store_reviews/{reviewId} {
       allow read: if true;
       allow create: if isSignedIn() && (
@@ -650,27 +765,48 @@ service cloud.firestore {
       );
     }
 
-    // 31. MARKETPLACE SAVED ITEMS: User owner only
+    // 32. MARKETPLACE SAVED ITEMS: User owner only (supports uid and profile_uid)
     match /saved_items/{itemId} {
-      allow read: if isSignedIn() && (resource == null || resource.data.userId == request.auth.uid);
-      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
-      allow update, delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow read: if isSignedIn() && (
+        resource == null || 
+        resource.data.userId == request.auth.uid ||
+        resource.data.userId == ('profile_' + request.auth.uid)
+      );
+      allow create: if isSignedIn() && (
+        request.resource.data.userId == request.auth.uid ||
+        request.resource.data.userId == ('profile_' + request.auth.uid)
+      );
+      allow update, delete: if isSignedIn() && (
+        resource.data.userId == request.auth.uid ||
+        resource.data.userId == ('profile_' + request.auth.uid)
+      );
     }
 
-    // 32. BILLING TRANSACTIONS: User owner or admin only
+    // 33. BILLING TRANSACTIONS: User owner or admin only
     match /transactions/{transactionId} {
       allow read: if isSignedIn() && (resource == null || resource.data.userId == request.auth.uid || isAdmin());
       allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
       allow update, delete: if isAdmin();
     }
 
-    // 33. ACTIVITIES: User owner only
+    // 34. ACTIVITIES: User owner only (supports userId and profileId)
     match /activities/{activityId} {
-      allow read, update, delete: if isSignedIn() && resource.data.userId == request.auth.uid;
-      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow read, update, delete: if isSignedIn() && (
+        resource.data.userId == request.auth.uid ||
+        resource.data.userId == ('profile_' + request.auth.uid) ||
+        resource.data.profileId == request.auth.uid ||
+        resource.data.profileId == ('profile_' + request.auth.uid) ||
+        isAdmin()
+      );
+      allow create: if isSignedIn() && (
+        request.resource.data.userId == request.auth.uid ||
+        request.resource.data.userId == ('profile_' + request.auth.uid) ||
+        request.resource.data.profileId == request.auth.uid ||
+        request.resource.data.profileId == ('profile_' + request.auth.uid)
+      );
     }
 
-    // 34. SOUND LIBRARY: Public read; uploader-bound creation; uploader or admin write
+    // 35. SOUND LIBRARY: Public read; uploader-bound creation; uploader or admin write
     match /sound_library/{trackId} {
       allow read: if true;
       allow create: if isSignedIn() && (
@@ -679,26 +815,29 @@ service cloud.firestore {
         isAdmin()
       );
       allow update: if isSignedIn() && (
-        resource.data.uploaderUid == request.auth.uid ||
+        (resource.data.uploaderUid == request.auth.uid && !incoming().diff(existing()).affectedKeys().hasAny(['uploaderUid', 'createdAt'])) ||
         incoming().diff(existing()).affectedKeys().hasOnly(['usageCount']) ||
         isAdmin()
       );
       allow delete: if isSignedIn() && (resource.data.uploaderUid == request.auth.uid || isAdmin());
     }
 
-    // 35. MARKETPLACE ORDERS: Buyer, seller, or marketplace moderator with strict field protections
+    // 36. MARKETPLACE ORDERS: Buyer, seller, or marketplace moderator with strict field protections
     match /orders/{orderId} {
       allow get, list: if isSignedIn() && (
         resource.data.buyerUid == request.auth.uid ||
         resource.data.buyerId == request.auth.uid ||
+        resource.data.buyerId == ('profile_' + request.auth.uid) ||
         resource.data.sellerUid == request.auth.uid ||
         resource.data.sellerId == request.auth.uid ||
-        (resource.data.keys().hasAll(['sellerUids']) && request.auth.uid in resource.data.sellerUids) ||
+        resource.data.sellerId == ('profile_' + request.auth.uid) ||
+        (resource.data.keys().hasAll(['sellerUids']) && (request.auth.uid in resource.data.sellerUids || ('profile_' + request.auth.uid) in resource.data.sellerUids)) ||
         isMarketplaceModerator()
       );
       allow create: if isSignedIn() && (
         request.resource.data.buyerUid == request.auth.uid ||
-        request.resource.data.buyerId == request.auth.uid
+        request.resource.data.buyerId == request.auth.uid ||
+        request.resource.data.buyerId == ('profile_' + request.auth.uid)
       );
       allow update: if isSignedIn() && (
         isAdmin() ||
@@ -708,12 +847,12 @@ service cloud.firestore {
           ]) && (
             // Seller updates fulfillment status and shipping tracking
             (
-              (resource.data.sellerUid == request.auth.uid || resource.data.sellerId == request.auth.uid || (resource.data.keys().hasAll(['sellerUids']) && request.auth.uid in resource.data.sellerUids)) &&
+              (resource.data.sellerUid == request.auth.uid || resource.data.sellerId == request.auth.uid || resource.data.sellerId == ('profile_' + request.auth.uid) || (resource.data.keys().hasAll(['sellerUids']) && (request.auth.uid in resource.data.sellerUids || ('profile_' + request.auth.uid) in resource.data.sellerUids))) &&
               incoming().diff(existing()).affectedKeys().hasOnly(['currentStatus', 'status', 'trackingTimeline', 'trackingNumber', 'notes', 'sellerNotes', 'fulfillmentStatus', 'updatedAt'])
             ) ||
             // Buyer updates cancellation or refund notes
             (
-              (resource.data.buyerUid == request.auth.uid || resource.data.buyerId == request.auth.uid) &&
+              (resource.data.buyerUid == request.auth.uid || resource.data.buyerId == request.auth.uid || resource.data.buyerId == ('profile_' + request.auth.uid)) &&
               incoming().diff(existing()).affectedKeys().hasOnly(['refundStatus', 'refundReason', 'customerNotes', 'buyerNotes', 'cancellationReason', 'rating', 'review', 'updatedAt'])
             )
           )
@@ -722,14 +861,14 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
-    // 36. LOGIN SESSIONS: User owner or admin only
+    // 37. LOGIN SESSIONS: User owner or admin only
     match /login_sessions/{sessionId} {
       allow read: if isSignedIn() && (resource == null || resource.data.userId == request.auth.uid || isAdmin());
       allow create, update: if isSignedIn() && request.resource.data.userId == request.auth.uid;
       allow delete: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
     }
 
-    // 37. CONTENT REPORTS: Reporter or moderator only
+    // 38. CONTENT REPORTS: Reporter or moderator only
     match /reports/{reportId} {
       allow read: if isModerator() || (
         isSignedIn() && resource != null && (
@@ -746,13 +885,13 @@ service cloud.firestore {
       allow update, delete: if isModerator();
     }
 
-    // 38. SYSTEM CONFIGURATION: Public read; admin only write (Moderators/Support CANNOT write)
+    // 39. SYSTEM CONFIGURATION: Public read; admin only write (Moderators/Support CANNOT write)
     match /system_config/{configId} {
       allow read: if true;
       allow write: if isAdmin();
     }
 
-    // 39. GROUPS & PAGES: Owner/creator only write
+    // 40. GROUPS & PAGES: Owner/creator only write
     match /groups/{groupId} {
       allow read: if isSignedIn();
       allow create: if isSignedIn() && (
@@ -779,14 +918,14 @@ service cloud.firestore {
       );
     }
 
-    // 40. APPEALS & MODERATION: Appellant or moderator only
+    // 41. APPEALS & MODERATION: Appellant or moderator only
     match /appeals/{appealId} {
       allow read: if isModerator() || (isSignedIn() && (resource == null || resource.data.userId == request.auth.uid));
       allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
       allow update, delete: if isModerator();
     }
 
-    // 41. MARKETPLACE ITEMS: Public read; seller/owner or marketplace moderator write
+    // 42. MARKETPLACE ITEMS: Public read; seller/owner or marketplace moderator write
     match /marketplace_items/{itemId} {
       allow read: if true;
       allow create: if isSignedIn() && (
@@ -800,7 +939,7 @@ service cloud.firestore {
       );
     }
 
-    // 42. LOGS & EVENTS: Owner or admin only
+    // 43. LOGS & EVENTS: Owner or admin only
     match /login_history/{historyId} {
       allow read: if isSignedIn() && (resource == null || resource.data.userId == request.auth.uid || isAdmin());
       allow create, update: if isSignedIn() && request.resource.data.userId == request.auth.uid;
@@ -816,7 +955,7 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
-    // 43. SUPPORT REPORTS: Reporter or support role only
+    // 44. SUPPORT REPORTS: Reporter or support role only
     match /supportReports/{reportId} {
       allow read: if isSupport() || (
         isSignedIn() && resource != null && (
@@ -836,6 +975,21 @@ service cloud.firestore {
           (resource.data.keys().hasAll(['userId']) && resource.data.userId == request.auth.uid)
         ) &&
         !request.resource.data.diff(resource.data).affectedKeys().hasAny(['status', 'priority', 'adminReply', 'closedAt', 'userUid', 'userId'])
+      );
+      allow delete: if isSupport();
+    }
+
+    // 45. SUPPORT TICKETS: Reporter or support role only (FeedbackSettings)
+    match /supportTickets/{ticketId} {
+      allow read: if isSupport() || (
+        isSignedIn() && resource != null && resource.data.userId == request.auth.uid
+      );
+      allow create: if isSignedIn()
+        && request.resource.data.userId == request.auth.uid
+        && (request.resource.data.status == 'open' || !request.resource.data.keys().hasAll(['status']));
+      allow update: if isSupport() || (
+        isSignedIn() && resource != null && resource.data.userId == request.auth.uid &&
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['status', 'userId'])
       );
       allow delete: if isSupport();
     }

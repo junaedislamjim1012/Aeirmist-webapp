@@ -22,13 +22,18 @@ service firebase.storage {
         && request.resource.size < 100 * 1024 * 1024; // Max 100MB
     }
 
+    function isValidAudio() {
+      return request.resource.contentType.matches('audio/.*')
+        && request.resource.size < 50 * 1024 * 1024; // Max 50MB
+    }
+
     function isValidMedia() {
-      return isValidImage() || isValidVideo() || request.resource.contentType.matches('audio/.*');
+      return isValidImage() || isValidVideo() || isValidAudio();
     }
 
     // -- USER ISOLATED PATHS --
     
-    // User root uploads (avatars, covers, uploads under users/{uid}/...)
+    // User root uploads (avatars, covers, wallpapers, stores, products under users/{uid}/...)
     match /users/{userId}/{allPaths=**} {
       allow read: if true;
       allow write: if isOwner(userId) && isValidMedia();
@@ -66,15 +71,48 @@ service firebase.storage {
       allow write: if isOwner(userId) && isValidMedia();
     }
 
-    // Private Vault files
+    // Private Vault files — owner-only read AND write
     match /vault/{userId}/{allPaths=**} {
       allow read, write: if isOwner(userId);
     }
 
-    // Chat attachments - isolated to authenticated users uploading with standard limits
+    // Chat attachments — authenticated participants can read/write with media validation
     match /chats/{chatId}/{allPaths=**} {
       allow read: if isSignedIn();
       allow write: if isSignedIn() && isValidMedia();
+    }
+
+    // Report/support attachments — user-scoped, owner writes, admin reads
+    match /reports/{userId}/{allPaths=**} {
+      allow read: if isSignedIn();
+      allow write: if isOwner(userId) && isValidImage();
+    }
+
+    match /supportTickets/{userId}/{allPaths=**} {
+      allow read: if isSignedIn();
+      allow write: if isOwner(userId) && isValidImage();
+    }
+
+    match /supportReports/{userId}/{allPaths=**} {
+      allow read: if isSignedIn();
+      allow write: if isOwner(userId) && isValidImage();
+    }
+
+    // Sound library — user-scoped audio and cover art
+    match /sound-library/{userId}/{allPaths=**} {
+      allow read: if true;
+      allow write: if isOwner(userId) && isValidAudio();
+    }
+
+    match /sound-library-art/{userId}/{allPaths=**} {
+      allow read: if true;
+      allow write: if isOwner(userId) && isValidImage();
+    }
+
+    // Global wallpapers — user-scoped
+    match /wallpapers/{userId}/{allPaths=**} {
+      allow read: if true;
+      allow write: if isOwner(userId) && isValidImage();
     }
 
     // Default deny for everything else

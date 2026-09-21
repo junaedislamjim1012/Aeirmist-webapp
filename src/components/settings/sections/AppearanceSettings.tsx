@@ -14,7 +14,7 @@ import { logger } from '@/src/utils/logger';
 
 export default function AppearanceSettings() {
   const { settings, updateAppearanceSettings, resetAppearanceSettings } = useAppearance();
-  const { uploadMedia } = useAeirmist();
+  const { uploadMedia, user } = useAeirmist();
   const { activeTheme } = useTheme();
   const isLight = activeTheme?.isLight;
   
@@ -86,7 +86,7 @@ export default function AppearanceSettings() {
     try {
       if (uploadMedia) {
         try {
-          const downloadURL = await uploadMedia(file, 'wallpapers', (progress) => {
+          const downloadURL = await uploadMedia(file, `wallpapers/${user?.uid}`, (progress) => {
             logger.info(`Global Background Upload: ${Math.round(progress)}%`);
           }, MediaQuality.WALLPAPER_LITE);
           

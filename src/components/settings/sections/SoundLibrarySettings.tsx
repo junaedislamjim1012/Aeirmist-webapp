@@ -133,7 +133,7 @@ export const SoundLibrarySettings = () => {
     try {
       // 1. Upload Audio file
       const trackId = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      const audioPath = `sound-library/${trackId}`;
+      const audioPath = `sound-library/${user?.uid}/${trackId}`;
       
       const audioURL = await uploadMedia(
         audioFile, 
@@ -144,7 +144,7 @@ export const SoundLibrarySettings = () => {
       // 2. Upload Cover Image or use fallback
       let coverArtURL = 'https://images.unsplash.com/photo-1614149162883-504ce4d13909?q=80&w=200&auto=format&fit=crop'; // fallback gradient cover
       if (coverFile) {
-        const coverPath = `sound-library-art/${trackId}`;
+        const coverPath = `sound-library-art/${user?.uid}/${trackId}`;
         coverArtURL = await uploadMedia(
           coverFile,
           coverPath,

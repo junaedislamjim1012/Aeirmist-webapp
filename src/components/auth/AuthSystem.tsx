@@ -568,15 +568,13 @@ export const AuthSystem: React.FC = () => {
           {/* Keyboard safe, responsive card container */}
           <div className="w-full max-w-[440px] flex flex-col items-center my-auto py-2">
             
-            {/* Mobile Header Branding (Shown on small devices only) */}
-            <div className="lg:hidden flex flex-col items-center text-center mb-5">
-              <div className="flex items-center gap-2.5 mb-2">
-                <AeirmistLogo className="w-10 h-10 drop-shadow-[0_0_25px_rgba(0,242,255,0.7)]" variant="compact" />
-                <span className="font-display font-black text-2xl tracking-tight text-white">Aeirmist</span>
-              </div>
-              <p className="text-xs text-slate-300 font-medium max-w-xs">
-                See everyday moments from your <span className="bg-gradient-to-r from-cyan-400 to-pink-500 bg-clip-text text-transparent font-bold">close friends.</span>
-              </p>
+            {/* Mobile Header Branding (Shown on small devices only - matching Image 2) */}
+            <div className="lg:hidden flex flex-col items-center text-center mb-4 sm:mb-5">
+              <AeirmistLogo className="w-11 h-11 sm:w-12 sm:h-12 drop-shadow-[0_0_30px_rgba(0,242,255,0.7)] mb-2" variant="compact" />
+              <h1 className="font-display font-black text-2xl sm:text-3xl tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-[var(--color-aeirmist-cyan)] to-[var(--color-aeirmist-magenta)]">
+                AEIRMIST
+              </h1>
+              <span className="text-[10px] tracking-widest font-mono text-slate-300 font-bold uppercase mt-0.5">Aeirmist User Entry</span>
             </div>
 
             {/* Offline Alert */}
@@ -594,34 +592,29 @@ export const AuthSystem: React.FC = () => {
                 idle: { x: 0 }
               }}
               animate={shakeActive ? "shake" : "idle"}
-              className={`w-full overflow-hidden rounded-[24px] sm:rounded-[28px] border ${
+              className={`w-full overflow-hidden rounded-[22px] sm:rounded-[26px] border ${
                 activeTheme.isLight 
                   ? 'bg-white border-slate-300 shadow-[0_20px_50px_rgba(15,23,42,0.15)]' 
-                  : 'bg-[#0f1322]/95 border-white/15 shadow-[0_25px_65px_rgba(0,0,0,0.85)]'
+                  : 'bg-[#121520]/95 border-white/20 shadow-[0_25px_60px_rgba(0,0,0,0.85)]'
               } p-4 sm:p-6 backdrop-blur-2xl transition-all duration-300 relative`}
             >
               
-              {/* Card Title Header with Logo (matches Image 2) */}
-              <div className="mb-4 flex flex-col items-center justify-center text-center">
-                <div className="flex items-center gap-2.5 mb-2.5">
-                  <AeirmistLogo className="w-9 h-9 drop-shadow-[0_0_20px_rgba(0,242,255,0.5)]" variant="compact" />
-                  <span className="font-display font-black text-2xl tracking-tight bg-gradient-to-r from-white via-cyan-100 to-purple-200 bg-clip-text text-transparent">
-                    Aeirmist
+              {/* Card Title Header - Clean Welcome title (no duplicate logo) */}
+              {view === 'login' && (
+                <div className="mb-4 sm:mb-5 flex flex-col items-center justify-center text-center border-b border-white/10 pb-2.5 sm:pb-3">
+                  <h2 className="text-lg sm:text-xl font-black uppercase tracking-wider text-center text-white">Welcome</h2>
+                </div>
+              )}
+              {view === 'saved_accounts' && (
+                <div className="mb-4 flex items-center justify-between border-b border-white/10 pb-3">
+                  <h2 className="text-sm sm:text-base font-bold text-white tracking-wide">
+                    Saved Profiles
+                  </h2>
+                  <span className="text-white/40 hover:text-white cursor-pointer transition-colors p-1" title="Settings">
+                    <Settings size={16} />
                   </span>
                 </div>
-                {(view === 'login' || view === 'saved_accounts') && (
-                  <div className="w-full flex items-center justify-between border-b border-white/10 pb-3">
-                    <h2 className="text-sm sm:text-base font-bold text-white tracking-wide">
-                      Log into Aeirmist
-                    </h2>
-                    {view === 'saved_accounts' && (
-                      <span className="text-white/40 hover:text-white cursor-pointer transition-colors p-1" title="Settings">
-                        <Settings size={16} />
-                      </span>
-                    )}
-                  </div>
-                )}
-              </div>
+              )}
 
               {/* Status Notifications */}
               <AnimatePresence>
@@ -879,7 +872,7 @@ export const AuthSystem: React.FC = () => {
                     
                     <div className="space-y-1.5 relative">
                       <div className="flex justify-between items-center">
-                        <label htmlFor="login-password" className="text-xs font-bold uppercase text-slate-200 tracking-wider">Password</label>
+                        <label htmlFor="login-password" className="text-xs font-bold uppercase text-slate-200 tracking-wider">Pass Key</label>
                         <button
                           type="button"
                           onClick={() => {
@@ -888,9 +881,9 @@ export const AuthSystem: React.FC = () => {
                             setError(null);
                             setSuccess(null);
                           }}
-                          className="text-xs font-bold text-cyan-400 hover:text-white transition-colors cursor-pointer"
+                          className="text-xs font-bold uppercase text-[var(--color-aeirmist-cyan)] hover:text-white transition-colors cursor-pointer"
                         >
-                          Forgot password?
+                          Forgot key?
                         </button>
                       </div>
                       
@@ -954,42 +947,27 @@ export const AuthSystem: React.FC = () => {
                     <button
                       type="submit"
                       disabled={loading || !identifier || !password}
-                      className="w-full h-12 rounded-2xl text-xs uppercase tracking-widest font-black transition-all flex items-center justify-center gap-2 cursor-pointer mt-1 shadow-lg bg-gradient-to-r from-[var(--color-aeirmist-cyan)] to-cyan-300 text-black hover:brightness-105 active:scale-[0.98] disabled:bg-[#252a38] disabled:from-transparent disabled:to-transparent disabled:text-slate-400 disabled:border disabled:border-white/10 disabled:shadow-none disabled:cursor-not-allowed"
+                      className="w-full h-12 rounded-2xl text-xs uppercase tracking-widest font-black transition-all flex items-center justify-center gap-2 cursor-pointer mt-2 shadow-lg bg-gradient-to-r from-[var(--color-aeirmist-cyan)] to-cyan-300 text-black hover:brightness-105 active:scale-[0.98] disabled:bg-[#252a38] disabled:from-transparent disabled:to-transparent disabled:text-slate-400 disabled:border disabled:border-white/10 disabled:shadow-none disabled:cursor-not-allowed"
                     >
-                      {loading ? <Loader2 size={16} className="animate-spin text-current" /> : "Log In"}
+                      {loading ? <Loader2 size={16} className="animate-spin text-current" /> : "Verify Identity"}
                     </button>
 
-                    {/* Integrated "Create new account" button (matching Image 2) */}
-                    <div className="pt-2 flex flex-col gap-2.5">
-                      <div className="flex items-center gap-3">
-                        <div className="h-px flex-1 bg-white/10" />
-                        <span className="text-[11px] font-medium text-white/40 uppercase tracking-wider">or</span>
-                        <div className="h-px flex-1 bg-white/10" />
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setView('signup');
-                          setSignupStep(1);
-                          setError(null);
-                          setSuccess(null);
-                        }}
-                        className="w-full rounded-2xl border-2 border-transparent bg-gradient-to-r from-cyan-400 via-indigo-500 to-pink-500 p-[2px] transition-all hover:brightness-110 active:scale-[0.99] cursor-pointer"
-                      >
-                        <div className="w-full h-full bg-[#101422] rounded-[14px] flex items-center justify-center py-2.5 px-4">
-                          <span className="text-xs font-black bg-gradient-to-r from-cyan-300 via-sky-200 to-pink-300 bg-clip-text text-transparent">
-                            Create new account
-                          </span>
-                        </div>
-                      </button>
+                    <div className="flex items-center my-3">
+                      <div className="flex-1 h-px bg-white/20"></div>
+                      <span className="px-4 text-xs font-bold text-slate-300 uppercase tracking-widest">or</span>
+                      <div className="flex-1 h-px bg-white/20"></div>
                     </div>
 
-                    {/* Bottom Meta-style Footer branding */}
-                    <div className="pt-3 border-t border-white/5 flex items-center justify-center gap-1.5 text-white/35 text-xs font-semibold">
-                      <span className="text-base leading-none">&infin;</span>
-                      <span>Aeirmist</span>
-                    </div>
+                    {/* Google Sign In Only */}
+                    <button
+                      type="button"
+                      onClick={() => handleSocialLogin('google')}
+                      disabled={loading}
+                      className="w-full h-11 bg-white/10 hover:bg-white/15 border border-white/25 text-white font-bold rounded-2xl text-xs uppercase tracking-widest transition-all disabled:opacity-40 flex items-center justify-center gap-2.5 cursor-pointer shadow-sm"
+                    >
+                      <Chrome size={16} className="text-white" />
+                      Continue with Google
+                    </button>
                   </motion.form>
                 )}
 
@@ -1365,6 +1343,31 @@ export const AuthSystem: React.FC = () => {
               </AnimatePresence>
 
             </motion.div>
+
+            {/* Bottom Card View Switcher Bar */}
+            {!isSuccess && view !== 'pairing' && view !== 'forgot' && view !== 'reset' && view !== 'saved_accounts' && view !== 'saved_accounts_login' && (
+              <div className={`w-full mt-3 sm:mt-4 border ${
+                activeTheme.isLight 
+                  ? 'bg-white border-slate-300 shadow-md' 
+                  : 'bg-[#121520]/95 border-white/20 shadow-lg'
+              } rounded-2xl p-3 sm:p-3.5 flex items-center justify-center`}>
+                <p className="text-xs text-slate-200 font-semibold uppercase tracking-wider text-center">
+                  {view === 'login' ? "New to Aeirmist? " : "Already have an account? "}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setView(view === 'login' ? 'signup' : 'login');
+                      setSignupStep(1);
+                      setError(null);
+                      setSuccess(null);
+                    }}
+                    className="font-black text-[var(--color-aeirmist-cyan)] hover:text-cyan-300 transition-colors ml-1 uppercase underline decoration-[var(--color-aeirmist-cyan)]/40 cursor-pointer"
+                  >
+                    {view === 'login' ? "Create Account" : "Log In"}
+                  </button>
+                </p>
+              </div>
+            )}
 
           </div>
 

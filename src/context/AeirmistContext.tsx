@@ -385,7 +385,10 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         const cached = localStorage.getItem('aeirmist_cached_profile') || localStorage.getItem('aeirmist_user_profile');
         if (cached) {
           const parsed = JSON.parse(cached);
-          if (parsed && typeof parsed === 'object') return parsed;
+          if (parsed && typeof parsed === 'object') {
+            if (parsed.pruningReason) delete parsed.pruningReason;
+            return parsed;
+          }
         }
       } catch (e) {}
     }
@@ -3842,7 +3845,7 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
               recentInteractions: deleteField(),
               activityLogs: deleteField(),
               lastPrunedAt: serverTimestamp(),
-              pruningReason: 'SIZE_LIMIT_EXCEEDED'
+              pruningReason: deleteField()
             };
 
             // Only prune images if they are the likely culprits (Base64)

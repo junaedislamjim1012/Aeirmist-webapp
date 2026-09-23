@@ -271,44 +271,8 @@ export const DesktopProfileLayout = React.memo<DesktopProfileLayoutProps>(({
     }
   };
 
-  const isPruned = displayUser?.pruningReason === 'SIZE_LIMIT_EXCEEDED';
-
   return (
     <div className="w-full">
-      {/* Storage Cleanup Alert */}
-      <AnimatePresence>
-        {isOwnProfile && isPruned && (
-          <motion.div 
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            className="w-full overflow-hidden"
-          >
-            <div className="mb-6 p-6 rounded-[2.5rem] bg-aeirmist-magenta/10 border border-aeirmist-magenta/30 backdrop-blur-3xl flex flex-col sm:flex-row items-center gap-6 group">
-              <div className="w-16 h-16 shrink-0 rounded-full bg-aeirmist-magenta/20 flex items-center justify-center text-aeirmist-magenta shadow-[0_0_30px_rgba(255,0,255,0.2)]">
-                <Zap size={32} className="animate-pulse" />
-              </div>
-              <div className="flex-1 text-center sm:text-left">
-                <h3 className="text-xs font-black uppercase tracking-[0.3em] text-white mb-2 underline decoration-aeirmist-magenta/50 underline-offset-4">Profile Storage Almost Full</h3>
-                <p className="text-[10px] text-white/40 uppercase tracking-widest leading-relaxed max-w-2xl">
-                  Your profile has reached its 1MB limit. To keep things running smoothly, we've optimized some of your older photos. Please re-upload your profile and cover photos to restore them in high quality.
-                </p>
-              </div>
-              <button 
-                onClick={async () => {
-                  try {
-                    await updateProfile({ pruningReason: null });
-                  } catch(e) {}
-                }}
-                className="px-8 py-4 bg-white/5 border border-white/10 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] text-white hover:bg-aeirmist-magenta/20 hover:border-aeirmist-magenta/40 transition-all shrink-0 active:scale-95"
-              >
-                Dismiss
-              </button>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
       {/* COVER BANNER HEIGHT 320px */}
       <div 
         className="w-full h-80 rounded-t-2xl relative overflow-hidden bg-gradient-to-r from-zinc-950 via-[#120e2e] to-black border border-white/5 shadow-2xl group/cover cursor-pointer"

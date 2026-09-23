@@ -191,7 +191,10 @@ const ProfileSystem = ({ targetProfile, onMessageClick, onEditProfile, onUserCli
     if (isOwnProfile && profile?.id) {
       recalculateFollowCounts(profile.id);
     }
-  }, [isOwnProfile, profile?.id]);
+    if (isOwnProfile && profile?.pruningReason) {
+      updateProfile({ pruningReason: null }).catch(() => {});
+    }
+  }, [isOwnProfile, profile?.id, profile?.pruningReason, updateProfile]);
 
   const isFollowingUser = targetProfile ? checkIsFollowing(targetProfile.id) : false;
   const isMessageLocked = false;
@@ -1726,40 +1729,6 @@ const ProfileSystem = ({ targetProfile, onMessageClick, onEditProfile, onUserCli
 
         {/* Mobile Instagram-styled Profile Header View */}
         <div className="block lg:hidden mb-1 px-1">
-          {/* Storage Cleanup Alert (Mobile) */}
-          <AnimatePresence>
-            {isOwnProfile && displayUser?.pruningReason === 'SIZE_LIMIT_EXCEEDED' && (
-              <motion.div 
-                initial={{ height: 0, opacity: 0 }}
-                animate={{ height: 'auto', opacity: 1 }}
-                exit={{ height: 0, opacity: 0 }}
-                className="w-full overflow-hidden px-4 pt-4"
-              >
-                <div className="p-4 rounded-2xl bg-aeirmist-magenta/10 border border-aeirmist-magenta/30 backdrop-blur-xl flex items-center gap-4">
-                  <div className="w-12 h-12 shrink-0 rounded-full bg-aeirmist-magenta/20 flex items-center justify-center text-aeirmist-magenta">
-                    <Zap size={24} className="animate-pulse" />
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="text-[10px] font-black uppercase tracking-widest text-white mb-0.5">Capacity Limit Exceeded</h3>
-                    <p className="text-[8px] text-white/40 uppercase tracking-widest leading-relaxed">
-                      Your profile node reached the 1MB limit. Images were cleared to keep you online. Please re-upload!
-                    </p>
-                  </div>
-                  <button 
-                    onClick={async () => {
-                      try {
-                        await updateProfile({ pruningReason: null });
-                      } catch(e) {}
-                    }}
-                    className="p-2 text-white/20 hover:text-white"
-                  >
-                    <X size={16} />
-                  </button>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-
           {/* Top Navigation Bar with Premium Layout */}
           <div className="flex items-center justify-between pt-[calc(0.625rem+env(safe-area-inset-top,0px))] pb-2.5 px-4 border-b border-white/5 bg-[#01050a]/95 backdrop-blur-xl z-40 sticky top-0">
             {/* Left: Account Switcher if own profile */}

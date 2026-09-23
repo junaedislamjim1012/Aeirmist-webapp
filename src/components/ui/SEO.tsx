@@ -27,6 +27,7 @@ export const SEO: React.FC<SEOProps> = ({
       <title>{fullTitle}</title>
       <meta name="description" content={description} />
       <link rel="canonical" href={canonical} />
+      <meta name="google-site-verification" content="C8R79KZq_NplmrteBI102-DzmleoHBnYrZrzgucI3ns" />
 
       {/* OpenGraph Tags */}
       <meta property="og:site_name" content={siteName} />

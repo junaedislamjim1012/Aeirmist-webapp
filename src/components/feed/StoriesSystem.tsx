@@ -205,8 +205,8 @@ export const StoriesSystem: React.FC = React.memo(() => {
       return false;
     });
 
-    // Merge filtered stories with optimistic ones
-    const combined = [...optimisticStories, ...filteredStories];
+    // Prioritize confirmed Firestore stories, fallback to optimistic
+    const combined = [...filteredStories, ...optimisticStories];
     
     // Deduplicate to avoid flickering when story moves from optimistic to real
     const seenUrls = new Set();
@@ -241,8 +241,8 @@ export const StoriesSystem: React.FC = React.memo(() => {
       if (!acc[uId]) {
         acc[uId] = {
           userId: uId,
-          userName: story.userName,
-          userAvatar: story.userAvatar,
+          userName: uId === user?.uid ? (profile?.displayName || profile?.username || 'You') : story.userName,
+          userAvatar: uId === user?.uid ? (profile?.photoURL || story.userAvatar) : story.userAvatar,
           stories: []
         };
       }
@@ -343,7 +343,7 @@ export const StoriesSystem: React.FC = React.memo(() => {
                 roundedClassName="rounded-[18px]"
                 innerRoundedClassName="rounded-[16px]"
                 showStoryRing={true}
-                storyRingState={myStories ? (myStories.stories.some((s: any) => !s.viewers?.includes(user?.uid)) ? 'active' : 'seen') : 'none'}
+                storyRingState={myStories && myStories.stories?.length > 0 ? 'active' : 'none'}
                 className="transition-all duration-700 relative z-10"
               >
                 {storyUpload?.isUploading && (
@@ -393,7 +393,16 @@ export const StoriesSystem: React.FC = React.memo(() => {
 
 
           </div>
-          <span className="text-[10px] font-bold uppercase tracking-wider text-white/40">Your Story</span>
+          <div className="flex flex-col items-center leading-tight">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-white/50">
+              {myStories && myStories.stories?.length > 0 ? 'Your Story' : 'Add Story'}
+            </span>
+            {myStories && myStories.stories?.length > 0 && (
+              <span className="text-[8px] font-bold text-cyan-400">
+                {myStories.stories[0].viewers?.length || 0} {myStories.stories[0].viewers?.length === 1 ? 'view' : 'views'}
+              </span>
+            )}
+          </div>
         </div>
 
         {/* OTHER USER STORIES */}
@@ -636,6 +645,24 @@ export const StoryViewer = ({
   const navigate = useNavigate();
   const [currentIndex, setCurrentIndex] = useState(0);
   const activeStory = group.stories[currentIndex] || group.stories[0] || { id: '', mediaUrl: '', mediaType: 'image' };
+  const [liveStoryData, setLiveStoryData] = useState<any>(null);
+
+  useEffect(() => {
+    if (!db || !activeStory.id || String(activeStory.id).startsWith('opt_')) {
+      setLiveStoryData(null);
+      return;
+    }
+    const unsub = onSnapshot(doc(db, 'stories', activeStory.id), (docSnap) => {
+      if (docSnap.exists()) {
+        setLiveStoryData({ id: docSnap.id, ...docSnap.data() });
+      }
+    }, (err) => {
+      logger.warn("Live story view sync error:", err);
+    });
+    return () => unsub();
+  }, [db, activeStory.id]);
+
+  const currentStory = liveStoryData ? { ...activeStory, ...liveStoryData } : activeStory;
   const [progress, setProgress] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
   const [showViewers, setShowViewers] = useState(false);
@@ -783,20 +810,20 @@ export const StoryViewer = ({
 
   useEffect(() => {
     if (!activeStory.id || !user?.uid || !db) return;
-    
-    // Track view
-    if (!canWrite(`view_story_${activeStory.id}`, 60000)) return; 
+    if (String(activeStory.id).startsWith('opt_')) return;
+    // Don't track owner as viewer of their own story
+    if (user.uid === group.userId) return;
 
-    const storyRef = doc(db, 'stories', activeStory.id);
-    const viewers = activeStory.viewers || [];
+    const viewers = currentStory.viewers || [];
     if (!viewers.includes(user.uid)) {
+      const storyRef = doc(db, 'stories', activeStory.id);
       updateDoc(storyRef, {
         viewers: arrayUnion(user.uid)
       }).catch(e => {
         logger.error("View tracking failed", e);
       });
     }
-  }, [activeStory.id, user?.uid, db]);
+  }, [activeStory.id, user?.uid, db, group.userId]);
 
   useEffect(() => {
     if (activeStory.activeMusic && activeStory.activeMusic.url && !isPaused) {
@@ -912,14 +939,12 @@ export const StoryViewer = ({
 
   // Fetch profiles for viewers
   useEffect(() => {
-    if (!db || !activeStory.viewers?.length) return;
+    const uids = currentStory.viewers || [];
+    if (!db || !uids.length) return;
     
     const fetchProfiles = async () => {
-      const uids = activeStory.viewers || [];
-      if (uids.length === 0) return;
-      
       const profiles: Record<string, any> = { ...viewerProfiles };
-      const missingUids = uids.filter(uid => !profiles[uid]);
+      const missingUids = uids.filter((uid: string) => !profiles[uid]);
       
       if (missingUids.length === 0) return;
 
@@ -932,9 +957,28 @@ export const StoryViewer = ({
             where('__name__', 'in', chunk)
           );
           const snap = await getDocs(q);
-          snap.forEach(doc => {
-            profiles[doc.id] = doc.data();
+          const foundIds = new Set<string>();
+          snap.forEach(d => {
+            profiles[d.id] = d.data();
+            foundIds.add(d.id);
           });
+
+          // Fallback for profiles where doc ID != uid
+          const stillMissing = chunk.filter((id: string) => !foundIds.has(id));
+          for (const missingId of stillMissing) {
+            try {
+              const singleSnap = await getDoc(doc(db, 'profiles', missingId));
+              if (singleSnap.exists()) {
+                profiles[missingId] = singleSnap.data();
+              } else {
+                const uq = query(collection(db, 'profiles'), where('uid', '==', missingId), limit(1));
+                const usnap = await getDocs(uq);
+                if (!usnap.empty) {
+                  profiles[missingId] = usnap.docs[0].data();
+                }
+              }
+            } catch (_) {}
+          }
         } catch (e) {
           logger.warn("Batch profile fetch failed", e);
         }
@@ -943,7 +987,7 @@ export const StoryViewer = ({
     };
 
     fetchProfiles();
-  }, [activeStory.viewers?.join(','), db]);
+  }, [currentStory.viewers?.join(','), db]);
 
   // Preload next story
   useEffect(() => {
@@ -2008,22 +2052,225 @@ export const StoryViewer = ({
           {isOwner && (
             <div className="p-3 bg-gradient-to-t from-black via-black/95 to-black/40 flex items-center justify-between px-4 z-40">
               <button 
-                onClick={() => setShowViewers(true)}
-                className="flex items-center gap-2 px-4 py-2 rounded-full bg-white/10 hover:bg-white/20 text-white text-xs font-bold transition-all cursor-pointer border border-white/10"
+                onClick={() => {
+                  setIsPaused(true);
+                  setShowViewers(true);
+                }}
+                className="flex items-center gap-2 px-4 py-2 rounded-full bg-white/10 hover:bg-white/20 active:scale-95 text-white text-xs font-bold transition-all cursor-pointer border border-white/10 shadow-lg"
               >
                 <Eye size={16} className="text-cyan-400" />
-                <span>{activeStory.viewers?.length || 0} Viewers</span>
+                <span>{currentStory.viewers?.length || 0} {currentStory.viewers?.length === 1 ? 'Viewer' : 'Viewers'}</span>
               </button>
 
               <button 
-                onClick={() => setShowDeleteConfirmModal(true)}
-                className="w-9 h-9 rounded-full bg-rose-500/15 hover:bg-rose-500/25 text-rose-400 flex items-center justify-center transition-all cursor-pointer border border-rose-500/20"
+                onClick={() => {
+                  setIsPaused(true);
+                  setShowDeleteConfirmModal(true);
+                }}
+                className="w-9 h-9 rounded-full bg-rose-500/15 hover:bg-rose-500/25 text-rose-400 flex items-center justify-center transition-all cursor-pointer border border-rose-500/20 active:scale-95"
                 title="Delete Story"
               >
                 <Trash2 size={16} />
               </button>
             </div>
           )}
+
+          {/* FACEBOOK/INSTAGRAM STYLE STORY VIEWERS BOTTOM SHEET */}
+          <AnimatePresence>
+            {showViewers && (
+              <div className="absolute inset-0 z-[70] flex flex-col justify-end overflow-hidden">
+                {/* Backdrop */}
+                <motion.div 
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="absolute inset-0 bg-black/70 backdrop-blur-sm cursor-pointer"
+                  onClick={() => {
+                    setShowViewers(false);
+                    setIsPaused(false);
+                  }}
+                />
+                {/* Sliding Panel */}
+                <motion.div 
+                  initial={{ y: "100%" }}
+                  animate={{ y: 0 }}
+                  exit={{ y: "100%" }}
+                  transition={{ type: "spring", damping: 28, stiffness: 300 }}
+                  className="relative bg-[#11131a] rounded-t-3xl border-t border-white/15 p-5 max-h-[75%] flex flex-col shadow-2xl z-10"
+                >
+                  {/* Top Drag Pill */}
+                  <div className="w-12 h-1 bg-white/20 rounded-full mx-auto mb-4 shrink-0" />
+
+                  {/* Header */}
+                  <div className="flex items-center justify-between mb-4 pb-3 border-b border-white/10 shrink-0">
+                    <div className="flex items-center gap-2">
+                      <Eye size={18} className="text-cyan-400" />
+                      <h4 className="text-sm font-black uppercase tracking-wider text-white">Story Insights</h4>
+                    </div>
+                    <button 
+                      onClick={() => {
+                        setShowViewers(false);
+                        setIsPaused(false);
+                      }} 
+                      className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white/70 hover:text-white transition-all cursor-pointer"
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+                  
+                  {/* Segmented Control: Viewers vs Reactions */}
+                  <div className="flex gap-2 mb-4 p-1 bg-white/5 rounded-xl shrink-0">
+                    <button 
+                      onClick={() => setInsightTab('viewers')}
+                      className={`flex-1 py-2 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                        insightTab === 'viewers' ? 'bg-cyan-500 text-black shadow-md' : 'text-white/60 hover:text-white'
+                      }`}
+                    >
+                      <Eye size={14} />
+                      <span>Viewers ({currentStory.viewers?.length || 0})</span>
+                    </button>
+                    <button 
+                      onClick={() => setInsightTab('reactions')}
+                      className={`flex-1 py-2 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                        insightTab === 'reactions' ? 'bg-pink-500 text-white shadow-md' : 'text-white/60 hover:text-white'
+                      }`}
+                    >
+                      <Heart size={14} />
+                      <span>Reactions ({Object.keys(currentStory.reactions || {}).length})</span>
+                    </button>
+                  </div>
+
+                  {/* Scrollable Viewers / Reactions List */}
+                  <div className="flex-1 overflow-y-auto space-y-2.5 pr-1 min-h-[160px] max-h-[340px]">
+                    {insightTab === 'viewers' ? (
+                      <>
+                        {(currentStory.viewers || []).map((vId: string) => {
+                          const p = viewerProfiles[vId];
+                          const displayName = p?.displayName || p?.username || `User_${vId.substring(0, 6)}`;
+                          const userTag = p?.username ? `@${p.username}` : '';
+                          const reactionEmoji = currentStory.reactions?.[vId];
+
+                          return (
+                            <div 
+                              key={vId} 
+                              onClick={() => {
+                                if (p?.username) {
+                                  onClose();
+                                  navigate(`/profile/${p.username}`);
+                                }
+                              }}
+                              className="flex items-center justify-between p-2.5 rounded-2xl bg-white/[0.04] hover:bg-white/[0.08] transition-all cursor-pointer border border-white/5 group"
+                            >
+                              <div className="flex items-center gap-3 min-w-0">
+                                <div className="w-10 h-10 rounded-full border border-white/10 overflow-hidden shrink-0">
+                                  <img 
+                                    src={getAvatarUrl(p?.photoURL, displayName)} 
+                                    className="w-full h-full object-cover" 
+                                    alt={displayName} 
+                                  />
+                                </div>
+                                <div className="flex flex-col min-w-0">
+                                  <span className="text-xs font-bold text-white group-hover:text-cyan-400 transition-colors truncate">
+                                    {displayName}
+                                  </span>
+                                  {userTag && (
+                                    <span className="text-[10px] text-white/40 truncate">
+                                      {userTag}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-2 shrink-0">
+                                {reactionEmoji && (
+                                  <span className="text-lg bg-white/10 px-2 py-0.5 rounded-full border border-white/10" title="Reacted">
+                                    {reactionEmoji}
+                                  </span>
+                                )}
+                                <span className="text-[9px] font-bold uppercase text-white/30 tracking-wider">
+                                  Viewed
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+
+                        {(currentStory.viewers || []).length === 0 && (
+                          <div className="flex flex-col items-center justify-center py-10 text-center gap-2">
+                            <div className="w-12 h-12 rounded-full bg-white/5 flex items-center justify-center text-white/20">
+                              <Eye size={24} />
+                            </div>
+                            <span className="text-sm font-bold text-white/70">No viewers yet</span>
+                            <span className="text-xs text-white/30 max-w-[200px]">
+                              When people view your story, they will appear here.
+                            </span>
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        {Object.entries(currentStory.reactions || {}).map(([vId, emoji]: [string, any]) => {
+                          const p = viewerProfiles[vId];
+                          const displayName = p?.displayName || p?.username || `User_${vId.substring(0, 6)}`;
+                          const userTag = p?.username ? `@${p.username}` : '';
+
+                          return (
+                            <div 
+                              key={vId} 
+                              onClick={() => {
+                                if (p?.username) {
+                                  onClose();
+                                  navigate(`/profile/${p.username}`);
+                                }
+                              }}
+                              className="flex items-center justify-between p-2.5 rounded-2xl bg-white/[0.04] hover:bg-white/[0.08] transition-all cursor-pointer border border-white/5 group"
+                            >
+                              <div className="flex items-center gap-3 min-w-0">
+                                <div className="w-10 h-10 rounded-full border border-white/10 overflow-hidden shrink-0">
+                                  <img 
+                                    src={getAvatarUrl(p?.photoURL, displayName)} 
+                                    className="w-full h-full object-cover" 
+                                    alt={displayName} 
+                                  />
+                                </div>
+                                <div className="flex flex-col min-w-0">
+                                  <span className="text-xs font-bold text-white group-hover:text-pink-400 transition-colors truncate">
+                                    {displayName}
+                                  </span>
+                                  {userTag && (
+                                    <span className="text-[10px] text-white/40 truncate">
+                                      {userTag}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-pink-500/10 border border-pink-500/20">
+                                <span className="text-base">{emoji}</span>
+                                <span className="text-[10px] font-bold text-pink-400 uppercase">Reacted</span>
+                              </div>
+                            </div>
+                          );
+                        })}
+
+                        {Object.keys(currentStory.reactions || {}).length === 0 && (
+                          <div className="flex flex-col items-center justify-center py-10 text-center gap-2">
+                            <div className="w-12 h-12 rounded-full bg-white/5 flex items-center justify-center text-white/20">
+                              <Heart size={24} />
+                            </div>
+                            <span className="text-sm font-bold text-white/70">No reactions yet</span>
+                            <span className="text-xs text-white/30 max-w-[200px]">
+                              When someone reacts with an emoji, it will appear here.
+                            </span>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </motion.div>
+              </div>
+            )}
+          </AnimatePresence>
         </div>
 
         {/* Facebook-style Desktop Next Arrow Button */}
@@ -2099,102 +2346,6 @@ export const StoryViewer = ({
                       </div>
                     )}
                   </div>
-                </div>
-              </motion.div>
-            </div>
-          )}
-        </AnimatePresence>
-        <AnimatePresence>
-          {showViewers && (
-            <div className="absolute inset-0 z-[100] flex flex-col justify-end">
-              <motion.div 
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="absolute inset-0 bg-black/60"
-                onClick={() => setShowViewers(false)}
-              />
-              <motion.div 
-                initial={{ y: "100%" }}
-                animate={{ y: 0 }}
-                exit={{ y: "100%" }}
-                className="relative bg-[#0c0d12] rounded-t-[2.5rem] border-t border-white/10 p-8 max-h-[60vh] overflow-y-auto"
-              >
-                <div className="flex items-center justify-between mb-8">
-                  <h4 className="text-lg font-black uppercase tracking-widest text-white">Story Insights</h4>
-                  <button onClick={() => setShowViewers(false)} className="text-white/40 hover:text-white">
-                    <X size={20} />
-                  </button>
-                </div>
-                
-                <div className="flex gap-4 mb-8 p-1 bg-white/5 rounded-2xl">
-                  <button 
-                    onClick={() => setInsightTab('viewers')}
-                    className={`flex-1 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${insightTab === 'viewers' ? 'bg-aeirmist-cyan text-black' : 'text-white/40'}`}
-                  >
-                    Viewers ({activeStory.viewers?.length || 0})
-                  </button>
-                  <button 
-                    onClick={() => setInsightTab('reactions')}
-                    className={`flex-1 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${insightTab === 'reactions' ? 'bg-aeirmist-magenta text-black' : 'text-white/40'}`}
-                  >
-                    Reactions ({Object.keys(activeStory.reactions || {}).length})
-                  </button>
-                </div>
-
-                <div className="space-y-6">
-                  {insightTab === 'viewers' ? (
-                    <div>
-                      <div className="space-y-4">
-                        {(activeStory.viewers || []).map((vId: string) => {
-                          const p = viewerProfiles[vId];
-                          return (
-                            <div key={vId} className="flex items-center justify-between p-3 rounded-2xl bg-white/[0.02] border border-white/5">
-                              <div className="flex items-center gap-3">
-                                <img src={getAvatarUrl(p?.photoURL)} className="w-10 h-10 rounded-xl object-cover" alt="" />
-                                <div className="flex flex-col">
-                                  <span className="text-sm font-bold text-white/80">{p?.username || p?.displayName || `User_${vId.substring(0, 6)}`}</span>
-                                  <span className="text-[9px] text-white/30 uppercase font-black">Viewed Story</span>
-                                </div>
-                              </div>
-                              {activeStory.reactions?.[vId] && (
-                                <span className="text-lg">{activeStory.reactions[vId]}</span>
-                              )}
-                            </div>
-                          );
-                        })}
-                        {(activeStory.viewers || []).length === 0 && (
-                          <div className="py-10 text-center text-white/20 italic text-sm">
-                            No viewers detected yet.
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  ) : (
-                    <div>
-                      <div className="space-y-4">
-                        {Object.entries(activeStory.reactions || {}).map(([vId, emoji]: [string, any]) => {
-                          const p = viewerProfiles[vId];
-                          return (
-                            <div key={vId} className="flex items-center justify-between p-3 rounded-2xl bg-white/[0.02] border border-white/5">
-                              <div className="flex items-center gap-3">
-                                <img src={getAvatarUrl(p?.photoURL)} className="w-10 h-10 rounded-xl object-cover" alt="" />
-                                <div className="flex flex-col">
-                                  <span className="text-sm font-bold text-white/80">{p?.username || p?.displayName || `User_${vId.substring(0, 6)}`}</span>
-                                  <span className="text-[9px] text-white/30 uppercase tracking-widest font-black">Interacted via {emoji}</span>
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })}
-                        {Object.keys(activeStory.reactions || {}).length === 0 && (
-                          <div className="py-10 text-center text-white/20 italic text-sm">
-                            No reactions received yet.
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
                 </div>
               </motion.div>
             </div>

@@ -885,6 +885,10 @@ function AppContent() {
       return;
     }
 
+    if (isGuidelinesPage || location.pathname === '/community-guidelines') {
+      return;
+    }
+
     const stateToPush = {
       activeTab,
       viewingProfile,

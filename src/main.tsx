@@ -24,7 +24,7 @@ applyDeviceOptimizations();
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     try {
-      navigator.serviceWorker.register('./sw.js')
+      navigator.serviceWorker.register('/sw.js')
         .then((registration) => {
           logger.info('Service Worker registered successfully with scope:', registration.scope);
         })

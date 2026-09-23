@@ -939,3 +939,29 @@ html.global-bg-active .layout-shell {
   scroll-behavior: auto !important;
 }
 
+/* Adaptive rendering: lower-end devices get fewer expensive paint/layout passes
+   without changing the product's visual identity. */
+html.device-lite .adaptive-media,
+html.device-lite img,
+html.device-lite video {
+  content-visibility: auto;
+  contain-intrinsic-size: 320px 240px;
+}
+
+html.device-balanced .adaptive-media {
+  content-visibility: auto;
+  contain-intrinsic-size: 420px 315px;
+}
+
+html.adaptive-reduced-motion *,
+html.device-lite .decorative-motion {
+  scroll-behavior: auto !important;
+}
+
+html.adaptive-reduced-blur .glass-panel,
+html.adaptive-reduced-blur .glass-card {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
+

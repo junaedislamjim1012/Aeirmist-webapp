@@ -10,7 +10,8 @@ import {
   Camera,
   ShoppingBag,
   AlertTriangle,
-  ArrowUpRight
+  ArrowUpRight,
+  SlidersHorizontal
 } from 'lucide-react';
 import { useAeirmist } from '../../context/AeirmistContext';
 import { collection, query, orderBy, onSnapshot, limit, where } from 'firebase/firestore';
@@ -36,6 +37,12 @@ export const HomeFeedSystem: React.FC<{ onUserClick?: (user: any) => void, onPos
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<{ message: string; details: string; link?: string } | null>(null);
   const [retryCount, setRetryCount] = useState(0);
+  const [feedMode, setFeedMode] = useState<'smart' | 'latest' | 'following'>(() => {
+    try {
+      const saved = localStorage.getItem('aeirmist_feed_mode');
+      return saved === 'latest' || saved === 'following' ? saved : 'smart';
+    } catch { return 'smart'; }
+  });
   const isInitialLoad = React.useRef(true);
   const { db, user, profile, permissions, requestPermission, setCameraConfig, addToast, unreadNotificationsCount } = useAeirmist();
   const { settings } = useAppearance(); 
@@ -73,19 +80,26 @@ export const HomeFeedSystem: React.FC<{ onUserClick?: (user: any) => void, onPos
       }
     });
 
+    const getTime = (p: any) => {
+      try {
+        if (p.createdAt?.toDate) return p.createdAt.toDate().getTime();
+        if (p.createdAt instanceof Date) return p.createdAt.getTime();
+        if (p.createdAt?.seconds) return p.createdAt.seconds * 1000;
+        if (typeof p.createdAt === 'number') return p.createdAt;
+      } catch (e) { return 0; }
+      return 0;
+    };
+
     return Array.from(uniquePostsMap.values()).sort((a, b) => {
-      const getTime = (p: any) => {
-        try {
-          if (p.createdAt?.toDate) return p.createdAt.toDate().getTime();
-          if (p.createdAt instanceof Date) return p.createdAt.getTime();
-          if (p.createdAt?.seconds) return p.createdAt.seconds * 1000;
-          if (typeof p.createdAt === 'number') return p.createdAt;
-        } catch (e) { return 0; }
-        return 0;
+      if (feedMode === 'latest' || feedMode === 'following') return getTime(b) - getTime(a);
+      const score = (p: any) => {
+        const ageHours = Math.max(1, (Date.now() - getTime(p)) / 3600000);
+        const engagement = Number(p.likesCount || 0) + Number(p.commentsCount || 0) * 2;
+        return (engagement / Math.sqrt(ageHours)) + getTime(p) / 1e12;
       };
-      return getTime(b) - getTime(a);
+      return score(b) - score(a);
     });
-  }, [posts]);
+  }, [posts, feedMode]);
 
   // Persistent Cache Sync
   useEffect(() => {
@@ -115,6 +129,11 @@ export const HomeFeedSystem: React.FC<{ onUserClick?: (user: any) => void, onPos
 
   const [postLimit, setPostLimit] = useState(20);
   const loadMoreRef = React.useRef<HTMLDivElement>(null);
+
+  const handleFeedModeChange = (mode: 'smart' | 'latest' | 'following') => {
+    setFeedMode(mode);
+    try { localStorage.setItem('aeirmist_feed_mode', mode); } catch { /* ignore unavailable storage */ }
+  };
 
   const handleManualRetry = () => {
     setLoading(true);
@@ -408,6 +427,21 @@ export const HomeFeedSystem: React.FC<{ onUserClick?: (user: any) => void, onPos
                  </button>
               </motion.div>
             )}
+
+            <div className="mb-3 px-1">
+              <div className="flex items-center gap-2 overflow-x-auto no-scrollbar" role="toolbar" aria-label="Feed preferences">
+                <div className="flex items-center gap-1.5 px-3 h-9 rounded-xl bg-white/[0.03] border border-white/10 text-white/40 shrink-0">
+                  <SlidersHorizontal size={13} aria-hidden="true" />
+                  <span className="text-[9px] font-black uppercase tracking-widest">Feed</span>
+                </div>
+                {([['smart', 'Smart'], ['latest', 'Latest'], ['following', 'Following']] as const).map(([mode, label]) => (
+                  <button key={mode} type="button" onClick={() => handleFeedModeChange(mode)} aria-pressed={feedMode === mode}
+                    className={`h-9 px-3.5 rounded-xl border text-[9px] font-black uppercase tracking-widest transition-all shrink-0 ${feedMode === mode ? 'bg-aeirmist-cyan text-black border-aeirmist-cyan' : 'bg-white/[0.02] text-white/45 border-white/10 hover:text-white'}`}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
 
             {/* FEED ITEMS */}
             <div className="relative rounded-[2.5rem] backdrop-blur-2xl bg-black/15 py-2">

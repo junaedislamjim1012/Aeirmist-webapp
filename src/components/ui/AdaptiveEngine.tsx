@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useAppearance } from '../../context/AppearanceContext';
+import { observePerformanceProfile, PerformanceProfile } from '../../utils/performanceEngine';
 
 export const AdaptiveEngine: React.FC = () => {
   const { settings, updateAppearanceSettings } = useAppearance();
@@ -11,6 +12,14 @@ export const AdaptiveEngine: React.FC = () => {
   });
 
   useEffect(() => {
+    // Adaptive device/network performance profile. This is intentionally lightweight:
+    // it changes rendering policy, not application behavior or Firebase data flow.
+    const stopPerformanceObserver = observePerformanceProfile((profile: PerformanceProfile) => {
+      if (profile.reducedMotion && !settings.performanceMode) {
+        updateAppearanceSettings({ reduceMotion: true });
+      }
+    });
+
     // 1. Network Awareness Monitoring
     const conn = (navigator as any).connection || (navigator as any).mozConnection || (navigator as any).webkitConnection;
     const updateNetwork = () => {
@@ -99,6 +108,7 @@ export const AdaptiveEngine: React.FC = () => {
     window.addEventListener('resize', handleResize);
 
     return () => {
+      stopPerformanceObserver();
       window.removeEventListener('online', updateNetwork);
       window.removeEventListener('offline', updateNetwork);
       if (conn && conn.removeEventListener) {

@@ -187,6 +187,23 @@ export default function PrivacySettings() {
 
   return (
     <div className="w-full max-w-4xl mx-auto space-y-6 pb-24">
+      {/* Privacy Center snapshot */}
+      <div className="p-5 rounded-3xl bg-white/[0.02] border border-white/5">
+        <div className="flex items-center justify-between gap-4 mb-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 rounded-2xl bg-aeirmist-cyan/10 text-aeirmist-cyan"><ShieldCheck size={18} /></div>
+            <div><h2 className="text-sm font-black uppercase tracking-wider text-white">Privacy Center</h2><p className="text-[10px] text-white/40 font-bold uppercase tracking-wider">Your important privacy controls at a glance</p></div>
+          </div>
+          <span className="hidden sm:inline-flex px-2.5 py-1 rounded-full bg-aeirmist-cyan/10 border border-aeirmist-cyan/20 text-[9px] font-black uppercase tracking-widest text-aeirmist-cyan">User controlled</span>
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+          <div className="p-3 rounded-2xl bg-white/[0.025] border border-white/5"><div className="text-[9px] uppercase tracking-widest text-white/35">Profile</div><div className="mt-1 text-xs font-bold text-white">{profile?.isPrivate ? 'Private' : 'Public'}</div></div>
+          <div className="p-3 rounded-2xl bg-white/[0.025] border border-white/5"><div className="text-[9px] uppercase tracking-widest text-white/35">Activity</div><div className="mt-1 text-xs font-bold text-white">{profile?.showOnlineStatus !== false ? 'Visible' : 'Hidden'}</div></div>
+          <div className="p-3 rounded-2xl bg-white/[0.025] border border-white/5"><div className="text-[9px] uppercase tracking-widest text-white/35">Messages</div><div className="mt-1 text-xs font-bold text-white capitalize">{profile?.messagingSettings?.whoCanMessageMe || 'Followers'}</div></div>
+          <div className="p-3 rounded-2xl bg-white/[0.025] border border-white/5"><div className="text-[9px] uppercase tracking-widest text-white/35">Protected lists</div><div className="mt-1 text-xs font-bold text-white">{blockedUserIds.length + restrictedUserIds.length}</div></div>
+        </div>
+      </div>
+
       {/* Sub-navigation Header */}
       <div className="flex flex-wrap items-center gap-2 p-1.5 rounded-2xl bg-white/[0.02] border border-white/5">
         <button

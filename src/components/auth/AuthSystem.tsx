@@ -17,6 +17,7 @@ import { mapAuthError } from '../../utils/authErrorMapper';
 import { SignupWizard } from './SignupWizard';
 import { logger } from '@/src/utils/logger';
 import { getAvatarUrl } from '../../lib/avatar';
+import { AuthPoster } from './AuthPoster';
 
 
 type AuthView = 'login' | 'signup' | 'forgot' | 'pairing' | 'reset' | 'saved_accounts' | 'saved_accounts_login' | 'two_factor';
@@ -576,48 +577,8 @@ export const AuthSystem: React.FC = () => {
       {/* Dual Pane split-screen layout */}
       <div className="w-full min-h-screen flex flex-col lg:flex-row overflow-y-auto">
         
-        {/* Left Side: Branding and Features (Hidden on mobile) */}
-        <div className="hidden lg:flex lg:w-1/2 p-6 lg:p-8 xl:p-12 flex-col justify-between relative border-r border-white/5 bg-gradient-to-br from-black/20 to-transparent">
-          {/* subtle grid background overlay */}
-          <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_80%_at_50%_-20%,rgba(0,242,255,0.02),rgba(255,255,255,0))]" />
-          
-          <div className="relative space-y-3">
-            <div className="flex items-center gap-3">
-              <AeirmistLogo className="w-10 h-10 drop-shadow-[0_0_20px_rgba(0,242,255,0.4)]" variant="compact" />
-              <div className="h-5 w-px bg-white/10" />
-              <span className="text-[10px] tracking-[0.2em] font-mono text-white/40 uppercase">Global Device</span>
-            </div>
-            
-            <div className="space-y-1 pt-4 xl:pt-6">
-              <h1 className="font-display font-black text-3xl xl:text-4xl tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-[var(--color-aeirmist-cyan)] to-[var(--color-aeirmist-magenta)] drop-shadow-[0_0_35px_rgba(0,242,255,0.25)]">
-                AEIRMIST
-              </h1>
-              <p className="text-[10px] font-mono uppercase tracking-[0.3em] text-white/30">Communication Platform</p>
-            </div>
-          </div>
-
-          <div className="relative space-y-3 xl:space-y-4 max-w-md my-auto py-4">
-            <FeatureItem 
-              icon={Sparkles} 
-              title="App Theme" 
-              desc="Immerse in your saved Social Platform, crafted with dynamic themes, spatial audio, and smooth animations."
-            />
-            <FeatureItem 
-              icon={Layers} 
-              title="Decentralized Connections" 
-              desc="Exchange rich media, audio tracks, and story boards with private, optimized private connections."
-            />
-            <FeatureItem 
-              icon={Lock} 
-              title="Connection Security" 
-              desc="Establish hardware-level pairings and multi-device Sync with zero-trust local overrides."
-            />
-          </div>
-
-          <div className="relative text-[9px] font-mono uppercase tracking-widest text-white/20">
-            System Network: ACTIVE // LATENCY 12MS
-          </div>
-        </div>
+        {/* Left Side: Facebook/Instagram-Style Dynamic Social Poster */}
+        <AuthPoster />
 
         {/* Right Side: Interactive Auth Cards & Notices */}
         <div className="flex-1 flex flex-col items-center justify-center px-4 sm:px-6 lg:px-8 py-4 sm:py-6 overflow-y-auto z-10 relative w-full min-h-screen lg:min-h-0">

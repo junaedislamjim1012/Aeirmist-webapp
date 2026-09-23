@@ -10,9 +10,13 @@ import { logger } from '@/src/utils/logger';
 import { PermissionManager } from './components/ui/PermissionManager';
 import { ResonanceTracker } from './components/ResonanceTracker';
 import { SEO } from './components/ui/SEO';
+import { applyDeviceOptimizations } from './utils/deviceTier';
 import App from './App.tsx';
 import './services/authHelpers';
 import './index.css';
+
+// Apply adaptive optimizations for Android and budget/low-RAM devices early
+applyDeviceOptimizations();
 
 // ============================================================
 // Register Service Worker for PWA/TWA support

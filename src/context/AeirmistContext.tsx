@@ -50,7 +50,9 @@ import {
   orderBy,
   initializeFirestore,
   persistentLocalCache,
-  persistentMultipleTabManager
+  persistentMultipleTabManager,
+  enableNetwork,
+  disableNetwork
 } from 'firebase/firestore';
 import { getStorage, ref, deleteObject } from 'firebase/storage';
 import { extractTimestampMs } from '../lib/date';
@@ -550,8 +552,22 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
 
   useEffect(() => {
-    const handleOnline = () => setIsOffline(false);
-    const handleOffline = () => setIsOffline(true);
+    const handleOnline = () => {
+      setIsOffline(false);
+      if (_db) {
+        enableNetwork(_db).catch((err) => {
+          logger.warn('Failed to enable Firestore network on online event:', err);
+        });
+      }
+    };
+    const handleOffline = () => {
+      setIsOffline(true);
+      if (_db) {
+        disableNetwork(_db).catch((err) => {
+          logger.warn('Failed to disable Firestore network on offline event:', err);
+        });
+      }
+    };
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
     return () => {

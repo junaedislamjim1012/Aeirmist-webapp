@@ -38,10 +38,12 @@ import {
   Clock,
   Link as LucideLink,
   Volume2,
-  VolumeX,
   Layers,
   MapPin,
-  Trash2
+  Trash2,
+  Play,
+  Pause,
+  Eye
 } from 'lucide-react';
 import { useAeirmist } from '../../context/AeirmistContext';
 import { useAppearance } from '../../context/AppearanceContext';
@@ -658,6 +660,18 @@ export const StoryViewer = ({
   const audioRef = useRef<HTMLAudioElement>(null);
   const isOwner = user?.uid === group.userId;
 
+  // Facebook-style Floating Reaction Emojis
+  const [floatingReactions, setFloatingReactions] = useState<{ id: string; emoji: string; x: number }[]>([]);
+
+  const triggerFloatingReaction = (emoji: string) => {
+    const id = `${Date.now()}_${Math.random()}`;
+    const x = Math.random() * 80 - 40;
+    setFloatingReactions(prev => [...prev.slice(-12), { id, emoji, x }]);
+    setTimeout(() => {
+      setFloatingReactions(prev => prev.filter(r => r.id !== id));
+    }, 1800);
+  };
+
   // Option Menu & Delete Confirmation States
   const [showOptionsMenu, setShowOptionsMenu] = useState(false);
   const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false);
@@ -1268,77 +1282,38 @@ export const StoryViewer = ({
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className={`fixed inset-0 z-[1000] ${isGlobalBgActive ? 'bg-black/60 backdrop-blur-xl' : 'bg-black'} lg:bg-black/90 lg:backdrop-blur-md flex items-center justify-center`}
+        className="fixed inset-0 z-[1000] bg-[#0c0d14] flex items-center justify-center select-none overflow-hidden"
       >
-      {/* Global Close Button for Desktop */}
-      <button 
-        onClick={onClose} 
-        className="hidden lg:flex fixed top-6 right-6 z-[1010] w-12 h-12 rounded-full bg-white/10 hover:bg-white/20 backdrop-blur-md items-center justify-center text-white hover:scale-105 transition-all cursor-pointer border border-white/5"
-      >
-        <X size={24} />
-      </button>
-
-      {/* Desktop Navigation Arrows */}
-      {prevGroup && (
-        <button 
-          onClick={() => onGroupChange?.(prevGroup)}
-          className="hidden lg:flex fixed left-6 top-1/2 -translate-y-1/2 z-[1010] w-10 h-10 rounded-full bg-white/15 hover:bg-white/25 items-center justify-center text-white transition-all cursor-pointer active:scale-95 border border-white/5 hover:scale-105"
-        >
-          <ChevronLeft size={24} />
-        </button>
-      )}
-
-      {nextGroup && (
-        <button 
-          onClick={() => onGroupChange?.(nextGroup)}
-          className="hidden lg:flex fixed right-6 top-1/2 -translate-y-1/2 z-[1010] w-10 h-10 rounded-full bg-white/15 hover:bg-white/25 items-center justify-center text-white transition-all cursor-pointer active:scale-95 border border-white/5 hover:scale-105"
-        >
-          <ChevronRight size={24} />
-        </button>
-      )}
-
-      {/* Main Responsive Layout Grid/Flex wrapper for peeks and central card */}
-      <div className="flex items-center justify-center gap-8 lg:gap-10 xl:gap-12 w-full h-full max-w-7xl px-4 select-none">
-        
-        {/* LEFT PEEK PREVIEW */}
-        {prevGroup && prevGroupStory ? (
-          <motion.div 
-            whileHover={{ scale: 1.02 }}
-            onClick={() => onGroupChange?.(prevGroup)}
-            className="hidden lg:flex flex-col items-center justify-center w-[180px] xl:w-[220px] aspect-[9/16] h-[70vh] rounded-2xl relative overflow-hidden bg-black/60 border border-white/10 opacity-40 hover:opacity-75 transition-all duration-300 cursor-pointer shadow-2xl group shrink-0 select-none"
+        {/* Top-Left Facebook-style Exit and App Branding */}
+        <div className="absolute top-4 left-4 z-[1010] flex items-center gap-3">
+          <button 
+            onClick={onClose} 
+            className="w-11 h-11 rounded-full bg-white/10 hover:bg-white/20 active:scale-95 backdrop-blur-md flex items-center justify-center text-white transition-all cursor-pointer border border-white/10 shadow-lg"
+            title="Close Stories (Esc)"
           >
-            {/* Dark vignette/outer gradient */}
-            <div className="absolute inset-0 z-10 bg-gradient-to-r from-black/60 via-transparent to-transparent pointer-events-none" />
-            
-            {/* Content preview blurred background */}
-            <img 
-              src={prevGroupStory.mediaUrl} 
-              className="absolute inset-0 w-full h-full object-cover blur-[2px] opacity-80 group-hover:blur-0 transition-all duration-500 pointer-events-none" 
-              alt="" 
-            />
-            
-            {/* Overlay Gradient to ensure contrast */}
-            <div className="absolute inset-0 z-10 bg-black/30 group-hover:bg-black/10 transition-colors" />
+            <X size={22} />
+          </button>
+          <div className="hidden sm:flex items-center gap-2">
+            <span className="font-display font-black text-xl tracking-tight text-white">Aeirmist</span>
+            <span className="text-[10px] font-bold uppercase tracking-widest text-white/50 bg-white/5 px-2.5 py-0.5 rounded-full border border-white/10">Stories</span>
+          </div>
+        </div>
 
-            {/* User Details */}
-            <div className="absolute inset-0 z-20 flex flex-col items-center justify-center p-4">
-              <div className="w-16 h-16 rounded-xl border-2 border-aeirmist-cyan p-[1.5px] bg-black shadow-lg transform group-hover:scale-105 transition-transform">
-                <img src={prevGroup.userAvatar} className="w-full h-full rounded-xl object-cover" alt="" />
-              </div>
-              <span className="text-sm font-bold text-white tracking-wide mt-3 truncate w-full text-center drop-shadow-md">
-                {prevGroup.userName}
-              </span>
-              <span className="text-[9px] font-black text-white/50 uppercase tracking-widest mt-1 bg-black/30 px-2 py-0.5 rounded-full border border-white/5">
-                PREVIOUS
-              </span>
-            </div>
-          </motion.div>
-        ) : (
-          <div className="hidden lg:block w-[180px] xl:w-[220px] shrink-0 pointer-events-none opacity-0" />
-        )}
+        {/* Facebook-style Desktop Center Layout with Navigation Arrows */}
+        <div className="flex items-center justify-center gap-4 lg:gap-8 w-full h-full max-w-5xl px-2 sm:px-4">
+          
+          {/* Previous Arrow Button */}
+          <button 
+            onClick={handlePrev}
+            disabled={!prevGroup && currentIndex === 0}
+            className="hidden md:flex w-12 h-12 rounded-full bg-[#1e2029] hover:bg-[#2b2e3b] disabled:opacity-0 disabled:pointer-events-none text-white items-center justify-center shadow-2xl border border-white/10 hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0"
+            title="Previous (Left Arrow)"
+          >
+            <ChevronLeft size={26} />
+          </button>
 
-        {/* CENTER MAIN STORY CARD */}
-        <div className={`relative w-full h-full max-w-lg md:max-h-[85vh] lg:h-[85vh] lg:aspect-[9/16] lg:w-auto lg:max-w-none ${isGlobalBgActive ? 'bg-black/40 backdrop-blur-md' : 'bg-black'} md:rounded-[2.5rem] lg:rounded-2xl overflow-hidden shadow-2xl flex flex-col shrink-0`}>
+          {/* CENTER MAIN STORY CARD (Facebook 9:16 Aspect) */}
+          <div className="relative w-full h-full md:w-[420px] md:h-[90vh] md:max-h-[820px] md:rounded-2xl bg-black overflow-hidden shadow-2xl flex flex-col border border-white/10 shrink-0">
           {/* Progress Bars */}
           <div className="absolute top-[calc(1rem+var(--spacing-safe-top))] inset-x-4 z-50 flex gap-1.5 px-2">
             {group.stories.map((_: any, i: number) => (
@@ -1357,25 +1332,52 @@ export const StoryViewer = ({
 
           {/* Header */}
           <div className="absolute top-[calc(2rem+var(--spacing-safe-top))] inset-x-6 z-50 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl border-2 border-aeirmist-cyan p-[1px]">
-                <img src={group.userAvatar} className="w-full h-full rounded-xl object-cover" alt="" />
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-10 h-10 rounded-full border border-white/20 p-[1px] shrink-0 overflow-hidden shadow-md">
+                <img src={getAvatarUrl(group.userAvatar, group.userName)} className="w-full h-full rounded-full object-cover" alt="" />
               </div>
               <div className="flex flex-col min-w-0">
-                <span className="text-sm font-bold text-white tracking-wide truncate">{group.userName}</span>
-                <span className="text-[10px] font-black text-white/50 uppercase tracking-widest flex items-center gap-1.5 truncate max-w-[200px]">
+                <span className="text-sm font-bold text-white tracking-wide truncate drop-shadow">{group.userName}</span>
+                <span className="text-[11px] text-white/60 font-medium flex items-center gap-1.5 truncate max-w-[200px]">
                   <span>{activeStory.createdAt?.toDate ? new Date(activeStory.createdAt.toDate()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Recently'}</span>
                   {activeStory.activeMusic && (
                     <>
                       <span>·</span>
-                      <Music size={10} className="text-aeirmist-cyan animate-pulse shrink-0" />
-                      <span className="text-white/80 font-bold truncate">{activeStory.activeMusic.title}</span>
+                      <Music size={11} className="text-cyan-400 shrink-0" />
+                      <span className="text-white/80 font-semibold truncate max-w-[130px]">{activeStory.activeMusic.title}</span>
                     </>
                   )}
                 </span>
               </div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 shrink-0">
+              {/* Pause / Play Toggle (Facebook Standard) */}
+              <button 
+                onClick={() => setIsPaused(!isPaused)} 
+                className="w-9 h-9 rounded-full bg-black/40 hover:bg-black/60 active:scale-95 text-white flex items-center justify-center backdrop-blur-md transition-all cursor-pointer border border-white/10 shadow-sm"
+                title={isPaused ? "Play Story" : "Pause Story"}
+              >
+                {isPaused ? <Play size={15} fill="white" className="ml-0.5" /> : <Pause size={15} fill="white" />}
+              </button>
+
+              {/* Mute / Unmute Toggle */}
+              <button 
+                onClick={() => setIsMuted(!isMuted)} 
+                className="w-9 h-9 rounded-full bg-black/40 hover:bg-black/60 active:scale-95 text-white flex items-center justify-center backdrop-blur-md transition-all cursor-pointer border border-white/10 shadow-sm"
+                title={isMuted ? "Unmute" : "Mute"}
+              >
+                {isMuted ? <VolumeX size={16} /> : <Volume2 size={16} />}
+              </button>
+
+              {/* Share Story */}
+              <button 
+                onClick={handleShareStory} 
+                className="w-9 h-9 rounded-full bg-black/40 hover:bg-black/60 active:scale-95 text-white flex items-center justify-center backdrop-blur-md transition-all cursor-pointer border border-white/10 shadow-sm"
+                title="Share Story"
+              >
+                <Share2 size={16} />
+              </button>
+
               {isOwner && (
                 <>
                   {group.isHighlight && (
@@ -1389,10 +1391,10 @@ export const StoryViewer = ({
                           setIsEditHighlightOpen(true);
                         }
                       }}
-                      className="w-10 h-10 rounded-full bg-white/10 backdrop-blur-md flex items-center justify-center text-white hover:bg-white/20 transition-all active:scale-95 border border-white/5"
+                      className="w-9 h-9 rounded-full bg-black/40 hover:bg-black/60 backdrop-blur-md flex items-center justify-center text-white transition-all active:scale-95 border border-white/10 shadow-sm cursor-pointer"
                       title="Edit Highlight"
                     >
-                      <Edit2 size={15} className="text-aeirmist-cyan" />
+                      <Edit2 size={15} className="text-cyan-400" />
                     </button>
                   )}
                   {group.isHighlight ? (
@@ -1401,18 +1403,17 @@ export const StoryViewer = ({
                         onClick={() => {
                           setIsPaused(true);
                           setShowOptionsMenu(!showOptionsMenu);
-                        }}
-                        className="w-10 h-10 rounded-full bg-white/10 backdrop-blur-md flex items-center justify-center text-white hover:bg-white/20 transition-all active:scale-95 border border-white/5"
+                        }} 
+                        className="w-9 h-9 rounded-full bg-black/40 hover:bg-black/60 backdrop-blur-md flex items-center justify-center text-white transition-all active:scale-95 border border-white/10 shadow-sm cursor-pointer"
                         title="Options"
                       >
-                        <MoreVertical size={18} />
+                        <MoreVertical size={16} />
                       </button>
 
                       {/* Popover / Dropdown Menu */}
                       <AnimatePresence>
                         {showOptionsMenu && (
                           <motion.div key="story-options-menu-wrapper">
-                            {/* Invisible overlay to close menu */}
                             <div 
                               className="fixed inset-0 z-40 bg-transparent" 
                               onClick={() => {
@@ -1436,7 +1437,7 @@ export const StoryViewer = ({
                                     setIsEditHighlightOpen(true);
                                   }
                                 }}
-                                className="w-full px-4 py-2.5 rounded-xl text-left text-xs font-black uppercase tracking-wider text-white/80 hover:text-white hover:bg-white/5 transition-all flex items-center gap-2"
+                                className="w-full px-4 py-2.5 rounded-xl text-left text-xs font-bold text-white hover:bg-white/10 transition-all flex items-center gap-2 cursor-pointer"
                               >
                                 Edit Highlight
                               </button>
@@ -1445,7 +1446,7 @@ export const StoryViewer = ({
                                   setShowOptionsMenu(false);
                                   setShowDeleteConfirmModal(true);
                                 }}
-                                className="w-full px-4 py-2.5 rounded-xl text-left text-xs font-black uppercase tracking-wider text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-all flex items-center gap-2"
+                                className="w-full px-4 py-2.5 rounded-xl text-left text-xs font-bold text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-all flex items-center gap-2 cursor-pointer"
                               >
                                 Delete Highlight
                               </button>
@@ -1455,47 +1456,34 @@ export const StoryViewer = ({
                       </AnimatePresence>
                     </div>
                   ) : (
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5">
                       <button 
                         onClick={() => setIsHighlightModalOpen(true)}
-                        className="w-10 h-10 rounded-full bg-white/10 backdrop-blur-md flex items-center justify-center text-white hover:bg-white/20 transition-all"
+                        className="w-9 h-9 rounded-full bg-black/40 hover:bg-black/60 backdrop-blur-md flex items-center justify-center text-white transition-all border border-white/10 shadow-sm cursor-pointer"
                         title="Highlight"
                       >
-                        <Bookmark size={18} />
-                      </button>
-                      <button 
-                        onClick={() => setShowViewers(true)}
-                        className="px-4 py-2 rounded-full bg-white/10 backdrop-blur-md text-[10px] font-black uppercase tracking-widest text-white hover:bg-white/20 transition-all"
-                      >
-                        {activeStory.viewers?.length || 0} Viewers
+                        <Bookmark size={15} />
                       </button>
                       
                       <button 
                         onClick={() => setShowDeleteConfirmModal(true)}
-                        className="w-10 h-10 rounded-full bg-rose-500/10 backdrop-blur-md flex items-center justify-center text-rose-500 hover:bg-rose-500/20 transition-all border border-rose-500/5"
+                        className="w-9 h-9 rounded-full bg-rose-500/20 hover:bg-rose-500/30 backdrop-blur-md flex items-center justify-center text-rose-400 transition-all border border-rose-500/20 shadow-sm cursor-pointer"
                         title="Delete Story"
                       >
-                        <Trash2 size={16} />
+                        <Trash2 size={15} />
                       </button>
                     </div>
                   )}
                 </>
               )}
+
+              {/* Close Button on Card */}
               <button 
-                onClick={handleShareStory}
-                className="w-10 h-10 rounded-full bg-white/10 backdrop-blur-md flex items-center justify-center text-white hover:bg-white/20 transition-all border border-white/5"
-                title="Share Story"
+                onClick={onClose} 
+                className="w-9 h-9 rounded-full bg-black/40 hover:bg-black/60 active:scale-95 text-white flex items-center justify-center backdrop-blur-md transition-all cursor-pointer border border-white/10 shadow-sm"
+                title="Close"
               >
-                <Share2 size={18} />
-              </button>
-              <button 
-                onClick={() => setIsMuted(!isMuted)}
-                className="w-10 h-10 rounded-full bg-white/10 backdrop-blur-md flex items-center justify-center text-white hover:bg-white/20 transition-all border border-white/5"
-              >
-                {isMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
-              </button>
-              <button onClick={onClose} className="lg:hidden w-10 h-10 rounded-full bg-white/10 backdrop-blur-md flex items-center justify-center text-white hover:bg-white/20 transition-all">
-                <X size={20} />
+                <X size={18} />
               </button>
             </div>
           </div>
@@ -1916,33 +1904,33 @@ export const StoryViewer = ({
               </div>
             )}
 
-            {/* Quick Reactions Overlay */}
-            <div className="absolute inset-x-0 bottom-32 z-50 flex justify-center gap-4">
-               {['🔥', '❤️', '😂', '😮', '😢', '👏'].map(emoji => (
-                 <motion.button
-                   key={emoji}
-                   whileHover={{ scale: 1.2, y: -5 }}
-                   whileTap={{ scale: 0.9 }}
-                   onClick={() => handleStoryReaction(emoji)}
-                   className="w-12 h-12 rounded-full bg-black/40 backdrop-blur-xl border border-white/10 flex items-center justify-center text-xl shadow-lg"
-                 >
-                   {emoji}
-                 </motion.button>
-               ))}
+            {/* Floating Reaction Emojis Animation (Facebook Style) */}
+            <div className="absolute inset-0 pointer-events-none z-50 overflow-hidden">
+              {floatingReactions.map(r => (
+                <motion.div
+                  key={r.id}
+                  initial={{ opacity: 1, scale: 0.6, y: 0, x: r.x }}
+                  animate={{ opacity: 0, scale: 1.6, y: -300, x: r.x + (Math.random() * 40 - 20) }}
+                  transition={{ duration: 1.6, ease: "easeOut" }}
+                  className="absolute bottom-28 right-12 text-3xl select-none filter drop-shadow-lg"
+                >
+                  {r.emoji}
+                </motion.div>
+              ))}
             </div>
 
-            {/* Story Caption (Instagram Style) */}
+            {/* Story Caption (Facebook Style Banner) */}
             {activeStory.caption && (
-              <div className="absolute bottom-24 inset-x-4 z-40 flex justify-center pointer-events-none">
-                <div className="bg-black/60 backdrop-blur-md border border-white/10 rounded-2xl px-4 py-2.5 max-w-sm text-center shadow-xl">
-                  <p className="text-xs font-medium text-white drop-shadow-md leading-relaxed">{activeStory.caption}</p>
+              <div className="absolute bottom-4 inset-x-4 z-40 flex justify-center pointer-events-none">
+                <div className="bg-black/75 backdrop-blur-md border border-white/15 rounded-2xl px-4 py-2 max-w-[90%] text-center shadow-2xl">
+                  <p className="text-xs font-semibold text-white drop-shadow-md leading-relaxed">{activeStory.caption}</p>
                 </div>
               </div>
             )}
 
             {/* Navigation zones */}
             <div 
-              className="absolute inset-y-0 left-0 w-1/4 z-40" 
+              className="absolute inset-y-0 left-0 w-1/4 z-30" 
               onClick={handlePrev}
               onMouseDown={() => setIsPaused(true)}
               onMouseUp={() => setIsPaused(false)}
@@ -1950,7 +1938,7 @@ export const StoryViewer = ({
               onTouchEnd={() => setIsPaused(false)}
             />
             <div 
-              className="absolute inset-y-0 right-0 w-1/4 z-40" 
+              className="absolute inset-y-0 right-0 w-1/4 z-30" 
               onClick={handleNext}
               onMouseDown={() => setIsPaused(true)}
               onMouseUp={() => setIsPaused(false)}
@@ -1959,84 +1947,93 @@ export const StoryViewer = ({
             />
           </div>
 
-          {/* Reply/Action Bar */}
+          {/* Facebook-style Bottom Action Bar */}
           {!isOwner && (
-            <div className="p-4 pb-[calc(1.5rem+var(--spacing-safe-bottom))] md:pb-4 flex gap-3 items-center bg-gradient-to-t from-black via-black/80 to-transparent">
-              <input 
-                type="text" 
-                value={replyText}
-                onChange={(e) => setReplyText(e.target.value)}
-                onFocus={() => setIsPaused(true)}
-                onBlur={() => setIsPaused(false)}
-                placeholder={`Reply to ${group.userName}...`}
-                className="flex-1 bg-white/10 backdrop-blur-md border border-white/10 rounded-full py-2.5 px-4 text-xs text-white placeholder:text-white/40 outline-none focus:border-white/30"
-              />
-              {replyText.trim() ? (
-                <button 
-                  onClick={handleReply}
-                  disabled={isSendingReply}
-                  className="w-9 h-9 rounded-full bg-aeirmist-cyan flex items-center justify-center text-black shadow-lg"
-                >
-                  {isSendingReply ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
-                </button>
-              ) : (
-                <div className="flex gap-1 items-center">
+            <div className="p-3 bg-gradient-to-t from-black via-black/95 to-black/40 flex flex-col gap-2.5 z-40">
+              {/* Facebook 6 Quick Reactions Row */}
+              <div className="flex items-center justify-around px-2">
+                {['👍', '❤️', '😂', '😮', '😢', '👏'].map(emoji => (
+                  <motion.button
+                    key={emoji}
+                    whileHover={{ scale: 1.3, y: -4 }}
+                    whileTap={{ scale: 0.9 }}
+                    onClick={() => {
+                      handleStoryReaction(emoji);
+                      triggerFloatingReaction(emoji);
+                    }}
+                    className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 active:scale-90 flex items-center justify-center text-xl transition-all cursor-pointer border border-white/10 backdrop-blur-md shadow-md"
+                    title={`React ${emoji}`}
+                  >
+                    {emoji}
+                  </motion.button>
+                ))}
+              </div>
+
+              {/* Reply Input Row */}
+              <div className="flex gap-2 items-center">
+                <input 
+                  type="text" 
+                  value={replyText}
+                  onChange={(e) => setReplyText(e.target.value)}
+                  onFocus={() => setIsPaused(true)}
+                  onBlur={() => setIsPaused(false)}
+                  placeholder={`Reply to ${group.userName}...`}
+                  className="flex-1 bg-white/10 hover:bg-white/15 focus:bg-white/20 backdrop-blur-md border border-white/15 rounded-full py-2.5 px-4 text-xs text-white placeholder:text-white/40 outline-none focus:border-white/30 transition-all"
+                />
+                {replyText.trim() ? (
                   <button 
-                    onClick={() => handleStoryReaction('❤️')}
-                    className="w-9 h-9 rounded-full flex items-center justify-center text-white/70 hover:text-rose-500 hover:scale-110 active:scale-95 transition-all"
-                    title="Like Story"
+                    onClick={handleReply}
+                    disabled={isSendingReply}
+                    className="w-10 h-10 rounded-full bg-blue-500 hover:bg-blue-600 flex items-center justify-center text-white shadow-lg transition-all cursor-pointer shrink-0"
+                    title="Send Reply"
+                  >
+                    {isSendingReply ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+                  </button>
+                ) : (
+                  <button 
+                    onClick={() => {
+                      handleStoryReaction('❤️');
+                      triggerFloatingReaction('❤️');
+                    }}
+                    className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white/70 hover:text-rose-500 transition-all cursor-pointer shrink-0"
+                    title="Love"
                   >
                     <Heart size={20} />
                   </button>
-                  <button 
-                    onClick={handleShareStory}
-                    className="w-9 h-9 rounded-full flex items-center justify-center text-white/70 hover:text-white hover:scale-110 active:scale-95 transition-all"
-                    title="Share Story"
-                  >
-                    <Send size={18} />
-                  </button>
-                </div>
-              )}
+                )}
+              </div>
+            </div>
+          )}
+
+          {isOwner && (
+            <div className="p-3 bg-gradient-to-t from-black via-black/95 to-black/40 flex items-center justify-between px-4 z-40">
+              <button 
+                onClick={() => setShowViewers(true)}
+                className="flex items-center gap-2 px-4 py-2 rounded-full bg-white/10 hover:bg-white/20 text-white text-xs font-bold transition-all cursor-pointer border border-white/10"
+              >
+                <Eye size={16} className="text-cyan-400" />
+                <span>{activeStory.viewers?.length || 0} Viewers</span>
+              </button>
+
+              <button 
+                onClick={() => setShowDeleteConfirmModal(true)}
+                className="w-9 h-9 rounded-full bg-rose-500/15 hover:bg-rose-500/25 text-rose-400 flex items-center justify-center transition-all cursor-pointer border border-rose-500/20"
+                title="Delete Story"
+              >
+                <Trash2 size={16} />
+              </button>
             </div>
           )}
         </div>
 
-        {/* RIGHT PEEK PREVIEW */}
-        {nextGroup && nextGroupStory ? (
-          <motion.div 
-            whileHover={{ scale: 1.02 }}
-            onClick={() => onGroupChange?.(nextGroup)}
-            className="hidden lg:flex flex-col items-center justify-center w-[180px] xl:w-[220px] aspect-[9/16] h-[70vh] rounded-2xl relative overflow-hidden bg-black/60 border border-white/10 opacity-40 hover:opacity-75 transition-all duration-300 cursor-pointer shadow-2xl group shrink-0 select-none"
-          >
-            {/* Dark vignette/outer gradient */}
-            <div className="absolute inset-0 z-10 bg-gradient-to-l from-black/60 via-transparent to-transparent pointer-events-none" />
-            
-            {/* Content preview blurred background */}
-            <img 
-              src={nextGroupStory.mediaUrl} 
-              className="absolute inset-0 w-full h-full object-cover blur-[2px] opacity-80 group-hover:blur-0 transition-all duration-500 pointer-events-none" 
-              alt="" 
-            />
-            
-            {/* Overlay Gradient to ensure contrast */}
-            <div className="absolute inset-0 z-10 bg-black/30 group-hover:bg-black/10 transition-colors" />
-
-            {/* User Details */}
-            <div className="absolute inset-0 z-20 flex flex-col items-center justify-center p-4">
-              <div className="w-16 h-16 rounded-xl border-2 border-aeirmist-cyan p-[1.5px] bg-black shadow-lg transform group-hover:scale-105 transition-transform">
-                <img src={nextGroup.userAvatar} className="w-full h-full rounded-xl object-cover" alt="" />
-              </div>
-              <span className="text-sm font-bold text-white tracking-wide mt-3 truncate w-full text-center drop-shadow-md">
-                {nextGroup.userName}
-              </span>
-              <span className="text-[9px] font-black text-white/50 uppercase tracking-widest mt-1 bg-black/30 px-2 py-0.5 rounded-full border border-white/5">
-                NEXT
-              </span>
-            </div>
-          </motion.div>
-        ) : (
-          <div className="hidden lg:block w-[180px] xl:w-[220px] shrink-0 pointer-events-none opacity-0" />
-        )}
+        {/* Facebook-style Desktop Next Arrow Button */}
+        <button 
+          onClick={handleNext}
+          className="hidden md:flex w-12 h-12 rounded-full bg-[#1e2029] hover:bg-[#2b2e3b] text-white items-center justify-center shadow-2xl border border-white/10 hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0"
+          title="Next (Right Arrow)"
+        >
+          <ChevronRight size={26} />
+        </button>
 
 
         {/* Highlight Modal */}

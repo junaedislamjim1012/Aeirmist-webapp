@@ -1001,7 +1001,7 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     const storyDoc = {
       userId: user.uid,
-      userName: profile.username || profile.displayName || 'Anonymous Voyager',
+      userName: profile.displayName || profile.username || 'Aeirmist User',
       userAvatar: profile.photoURL || '',
       mediaUrl: previewUrl || storyData.url || '',
       thumbnailUrl: previewUrl || '',
@@ -1009,6 +1009,7 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       createdAt: new Date(),
       viewers: [],
       overlayText: storyData.textLayers?.map((l: any) => l.text).join(' | ') || '',
+      caption: (storyData as any).caption || '',
       textLayers: storyData.textLayers || [],
       stickerLayers: storyData.stickerLayers || [],
       hashtags: storyData.stickerLayers?.filter((s: any) => s.type === 'hashtag').map((s: any) => s.content.replace('#', '')) || [],

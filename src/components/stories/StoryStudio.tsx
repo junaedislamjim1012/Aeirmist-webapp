@@ -1074,6 +1074,7 @@ export const StoryStudio = ({ onClose }: { onClose: () => void }) => {
     error: false,
     mediaUrl: null
   });
+  const [isPublishing, setIsPublishing] = useState(false);
 
   // Suggestion Chip state
   const [suggestion, setSuggestion] = useState<{ text: string, action: () => void } | null>(null);
@@ -1327,11 +1328,9 @@ export const StoryStudio = ({ onClose }: { onClose: () => void }) => {
     }
   }, []);
 
-  // Trigger immediate background upload when media is captured/selected
+  // Reset upload state on media change
   useEffect(() => {
-    if (capturedMedia && capturedMedia.file) {
-      performBackgroundUpload(capturedMedia.file);
-    } else if (!capturedMedia) {
+    if (!capturedMedia) {
       setUploadState({ isUploading: false, progress: 0, error: false, mediaUrl: null });
     }
   }, [capturedMedia]);
@@ -3067,18 +3066,8 @@ export const StoryStudio = ({ onClose }: { onClose: () => void }) => {
 
   // Broadcast story
   const handlePublishStory = async () => {
-    if (!user || !profile) return;
-    
-    if (uploadState.isUploading) {
-      addToast({
-        title: "Still Uploading",
-        message: "Your story is still uploading. Please wait a moment.",
-        type: "warning"
-      });
-      return;
-    }
-
-    setUploadState(prev => ({ ...prev, isUploading: true }));
+    if (!user || !profile || isPublishing) return;
+    setIsPublishing(true);
 
     try {
       let finalUrl = uploadState.mediaUrl || capturedMedia?.url;
@@ -3336,6 +3325,7 @@ export const StoryStudio = ({ onClose }: { onClose: () => void }) => {
         activeMusic,
         currentFilter,
         audience,
+        caption: storyCaption.trim(),
         rotation: mediaRotation,
         scale: mediaScale,
         flipX: mediaFlipX,
@@ -3346,9 +3336,16 @@ export const StoryStudio = ({ onClose }: { onClose: () => void }) => {
         boomerangFrames: mode === 'boomerang' ? boomerangFrames : undefined
       });
 
+      addToast({
+        title: "Story shared",
+        message: "Your story is being shared.",
+        type: "success"
+      });
+
       onClose();
     } catch (e) {
       logger.error("Publishing failure:", e);
+      setIsPublishing(false);
       setUploadState(prev => ({ ...prev, isUploading: false, error: true }));
       addToast({
         title: "Couldn't Share Story",
@@ -3592,7 +3589,7 @@ export const StoryStudio = ({ onClose }: { onClose: () => void }) => {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[2000] bg-black/80 backdrop-blur-md text-white select-none overflow-hidden font-sans flex items-center justify-center pointer-events-auto"
+      className="fixed inset-0 z-[2000] bg-black/95 backdrop-blur-2xl text-white select-none overflow-hidden font-sans flex items-center justify-center pointer-events-auto"
       ref={containerRef}
       onDragOver={(e) => { e.preventDefault(); }}
       onDrop={(e) => {
@@ -3601,6 +3598,15 @@ export const StoryStudio = ({ onClose }: { onClose: () => void }) => {
         if (files.length > 0) handleLoadedFiles(files);
       }}
     >
+      {/* Global Close Button for Desktop */}
+      <button 
+        onClick={capturedMedia ? handleBackPress : onClose} 
+        className="hidden sm:flex fixed top-6 right-6 z-[2100] w-11 h-11 rounded-full bg-white/10 hover:bg-white/20 backdrop-blur-md items-center justify-center text-white hover:scale-105 transition-all cursor-pointer border border-white/10 shadow-lg"
+        title="Exit Studio"
+      >
+        <X size={20} />
+      </button>
+
       <input 
         type="file" 
         ref={fileInputRef} 
@@ -3612,7 +3618,7 @@ export const StoryStudio = ({ onClose }: { onClose: () => void }) => {
 
       {/* Dynamic blurred ambient lighting background behind the centered card on desktop */}
       {capturedMedia && (
-        <div className="absolute inset-0 pointer-events-none overflow-hidden z-0 opacity-25 select-none hidden sm:block">
+        <div className="absolute inset-0 pointer-events-none overflow-hidden z-0 opacity-20 select-none hidden sm:block">
           <img 
             src={capturedMedia.url} 
             className="w-full h-full object-cover scale-110 blur-3xl saturate-150" 
@@ -3641,7 +3647,7 @@ export const StoryStudio = ({ onClose }: { onClose: () => void }) => {
         onTouchEnd={handleTouchEnd}
         onClick={handlePreviewDoubleTap}
         id="story_studio_viewport"
-        className="relative w-full h-full sm:h-[90vh] sm:w-auto sm:aspect-[9/16] sm:max-w-[420px] sm:max-h-[820px] sm:rounded-[24px] sm:border sm:border-white/10 sm:shadow-[0_24px_60px_rgba(0,0,0,0.8)] overflow-hidden bg-[#090a0f] flex flex-col z-10 transition-all duration-300"
+        className="relative w-full h-full sm:h-[88vh] sm:w-auto sm:aspect-[9/16] sm:max-w-[430px] sm:max-h-[840px] sm:rounded-[36px] sm:border sm:border-white/10 sm:shadow-[0_24px_80px_rgba(0,0,0,0.95)] overflow-hidden bg-black flex flex-col z-10 transition-all duration-300"
       >
         {/* Sequential Story Progress Bar (Instagram style) */}
         {multiStoryItems.length > 0 && (
@@ -4002,13 +4008,13 @@ export const StoryStudio = ({ onClose }: { onClose: () => void }) => {
         )}
 
         {/* --- FLOATING TOP CONTROL PANEL --- */}
-        <div className="absolute top-0 inset-x-0 h-20 z-[100] flex items-start justify-between px-4 pt-4 pointer-events-none">
+        <div className="absolute top-0 inset-x-0 h-16 z-[100] flex items-center justify-between px-3 pt-3 pointer-events-none">
           {/* Close / Back button */}
           <motion.button 
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             onClick={capturedMedia ? handleBackPress : onClose} 
-            className="w-10 h-10 rounded-full bg-white/10 backdrop-blur-md flex items-center justify-center text-white transition-all pointer-events-auto border border-white/10 hover:bg-white/20"
+            className="w-10 h-10 rounded-full bg-black/40 backdrop-blur-md flex items-center justify-center text-white transition-all pointer-events-auto border border-white/10 hover:bg-black/60 shadow-lg shrink-0"
             title={capturedMedia ? "Discard and Return" : "Exit Story Studio"}
             id="story_studio_close"
           >
@@ -4016,7 +4022,101 @@ export const StoryStudio = ({ onClose }: { onClose: () => void }) => {
           </motion.button>
 
           {/* Configuration tools */}
-          {!capturedMedia && !cameraError && (
+          {capturedMedia ? (
+            <div className="flex items-center gap-1.5 pointer-events-auto overflow-x-auto no-scrollbar py-1">
+              {/* Sound / Mute Toggle (if video or music active) */}
+              {(capturedMedia.type === 'video' || activeMusic) && (
+                <button
+                  onClick={() => {
+                    setIsVideoMuted(prev => !prev);
+                    addToast({
+                      title: isVideoMuted ? "Sound Unmuted" : "Sound Muted",
+                      message: isVideoMuted ? "Audio enabled" : "Audio muted",
+                      type: "info"
+                    });
+                  }}
+                  className={`w-9 h-9 rounded-full backdrop-blur-md flex items-center justify-center transition-all border ${isVideoMuted ? 'bg-rose-500/20 border-rose-500/40 text-rose-300' : 'bg-black/40 border-white/10 text-white hover:bg-black/60'}`}
+                  title={isVideoMuted ? "Unmute" : "Mute"}
+                >
+                  {isVideoMuted ? <VolumeX size={16} /> : <Volume2 size={16} />}
+                </button>
+              )}
+
+              {/* Fit / Fill Aspect Ratio Toggle */}
+              <button
+                onClick={() => {
+                  const nextFit = mediaFit === 'cover' ? 'contain' : 'cover';
+                  setMediaFit(nextFit);
+                  addToast({
+                    title: nextFit === 'contain' ? "Fit Frame" : "Fill Screen",
+                    message: nextFit === 'contain' ? "Original aspect ratio preserved" : "Cropped to 9:16 screen",
+                    type: "info"
+                  });
+                }}
+                className={`w-9 h-9 rounded-full backdrop-blur-md flex items-center justify-center transition-all border ${mediaFit === 'contain' ? 'bg-aeirmist-cyan/20 border-aeirmist-cyan text-aeirmist-cyan' : 'bg-black/40 border-white/10 text-white hover:bg-black/60'}`}
+                title="Aspect Ratio"
+              >
+                {mediaFit === 'cover' ? <Maximize2 size={16} /> : <Minimize2 size={16} />}
+              </button>
+
+              {/* Save / Download Frame */}
+              <button
+                onClick={saveStoryFrame}
+                className="w-9 h-9 rounded-full bg-black/40 backdrop-blur-md border border-white/10 text-white flex items-center justify-center hover:bg-black/60 transition-all shadow-md"
+                title="Save to Device"
+              >
+                <Download size={16} />
+              </button>
+
+              {/* Effects / Filters */}
+              <button
+                onClick={() => setEffectsOpen(true)}
+                className={`w-9 h-9 rounded-full backdrop-blur-md flex items-center justify-center transition-all border ${effectsOpen || currentFilter !== 'none' ? 'bg-aeirmist-cyan/20 border-aeirmist-cyan text-aeirmist-cyan' : 'bg-black/40 border-white/10 text-white hover:bg-black/60'}`}
+                title="Filters & Effects"
+              >
+                <Sparkles size={16} />
+              </button>
+
+              {/* Music */}
+              <button
+                onClick={() => setMusicOpen(true)}
+                className={`w-9 h-9 rounded-full backdrop-blur-md flex items-center justify-center transition-all border ${activeMusic ? 'bg-aeirmist-cyan/20 border-aeirmist-cyan text-aeirmist-cyan' : 'bg-black/40 border-white/10 text-white hover:bg-black/60'}`}
+                title="Music"
+              >
+                <Music size={16} />
+              </button>
+
+              {/* Stickers */}
+              <button
+                onClick={() => setStickersOpen(true)}
+                className={`w-9 h-9 rounded-full backdrop-blur-md flex items-center justify-center transition-all border ${stickersOpen ? 'bg-aeirmist-cyan/20 border-aeirmist-cyan text-aeirmist-cyan' : 'bg-black/40 border-white/10 text-white hover:bg-black/60'}`}
+                title="Stickers"
+              >
+                <Smile size={16} />
+              </button>
+
+              {/* Draw */}
+              <button
+                onClick={() => {
+                  setIsDrawingMode(true);
+                  setDrawToolsOpen(true);
+                }}
+                className={`w-9 h-9 rounded-full backdrop-blur-md flex items-center justify-center transition-all border ${drawToolsOpen ? 'bg-aeirmist-cyan/20 border-aeirmist-cyan text-aeirmist-cyan' : 'bg-black/40 border-white/10 text-white hover:bg-black/60'}`}
+                title="Draw"
+              >
+                <Paintbrush size={16} />
+              </button>
+
+              {/* Text tool ("Aa") */}
+              <button
+                onClick={addTextLayer}
+                className={`w-9 h-9 rounded-full backdrop-blur-md flex items-center justify-center transition-all border font-serif font-black text-xs ${textEditorOpen ? 'bg-aeirmist-cyan/20 border-aeirmist-cyan text-aeirmist-cyan' : 'bg-black/40 border-white/10 text-white hover:bg-black/60'}`}
+                title="Text"
+              >
+                Aa
+              </button>
+            </div>
+          ) : !cameraError ? (
             <div className="flex flex-row items-center gap-2 pointer-events-auto">
               {/* Flash button */}
               <motion.button 
@@ -4068,7 +4168,7 @@ export const StoryStudio = ({ onClose }: { onClose: () => void }) => {
                 <Settings size={18} />
               </motion.button>
             </div>
-          )}
+          ) : null}
         </div>
 
         {/* Contextual Suggestion Chip */}
@@ -4181,132 +4281,7 @@ export const StoryStudio = ({ onClose }: { onClose: () => void }) => {
               </motion.button>
             ))}
           </div>
-        ) : (
-          <div className="absolute right-4 top-24 z-[100] flex flex-col items-end gap-3 pointer-events-auto">
-            {!isRailCollapsed ? (
-              <>
-                {toolRailItems.map((item) => {
-                  const Icon = item.icon;
-                  const isActive = item.isActive;
-                  return (
-                    <div key={item.id} className="flex items-center gap-2 group">
-                      <span className="text-[10px] font-black uppercase tracking-wider text-white bg-black/60 backdrop-blur-md py-1 px-2.5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none select-none whitespace-nowrap border border-white/5 shadow-md">
-                        {item.label}
-                      </span>
-                      <motion.button
-                        whileHover={{ scale: 1.1, x: -2 }}
-                        whileTap={{ scale: 0.9 }}
-                        onClick={item.onClick}
-                        className={`w-11 h-11 rounded-full border flex items-center justify-center transition-all shadow-lg relative ${
-                          isActive 
-                            ? 'bg-aeirmist-cyan/20 border-aeirmist-cyan text-aeirmist-cyan' 
-                            : 'bg-black/40 backdrop-blur-md border-white/10 text-white hover:bg-black/60'
-                        }`}
-                        title={item.label}
-                      >
-                        <Icon size={20} />
-                      </motion.button>
-                    </div>
-                  );
-                })}
-              </>
-            ) : null}
-
-            {/* Collapse/Expand button at the bottom of the rail */}
-            <div className="flex items-center gap-2 group">
-              <span className="text-[10px] font-black uppercase tracking-wider text-white bg-black/60 backdrop-blur-md py-1 px-2.5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none select-none whitespace-nowrap border border-white/5 shadow-md">
-                {isRailCollapsed ? "Show Tools" : "Hide Tools"}
-              </span>
-              <motion.button
-                whileHover={{ scale: 1.1 }}
-                whileTap={{ scale: 0.9 }}
-                onClick={() => setIsRailCollapsed(prev => !prev)}
-                className="w-11 h-11 rounded-full bg-black/40 backdrop-blur-md border border-white/10 flex items-center justify-center text-white/70 hover:text-white transition-all shadow-lg"
-                title={isRailCollapsed ? "Expand Tools" : "Collapse Tools"}
-              >
-                {isRailCollapsed ? <ChevronLeft size={18} /> : <ChevronRight size={18} />}
-              </motion.button>
-            </div>
-
-            {/* Overflow "More" menu dropdown */}
-            <AnimatePresence>
-              {isMoreOpen && !isRailCollapsed && (
-                <motion.div
-                  initial={{ opacity: 0, scale: 0.95, y: -10 }}
-                  animate={{ opacity: 1, scale: 1, y: 0 }}
-                  exit={{ opacity: 0, scale: 0.95, y: -10 }}
-                  className="absolute right-14 top-48 bg-[#0e0f16] border border-white/10 rounded-2xl p-2 flex flex-col gap-1 shadow-2xl min-w-[180px] z-[120]"
-                >
-                  <div className="px-3 py-1.5 border-b border-white/5 mb-1">
-                    <span className="text-[8px] font-mono font-black uppercase tracking-[0.2em] text-white/30">More Options</span>
-                  </div>
-                  <button
-                    onClick={() => {
-                      setLayoutModeOpen(true);
-                      setIsMoreOpen(false);
-                    }}
-                    className="w-full text-left py-2 px-3 hover:bg-white/5 rounded-xl text-[10px] font-black uppercase tracking-wider text-white/80 transition-colors flex items-center gap-2"
-                  >
-                    <LayoutGrid size={14} className="text-aeirmist-cyan" />
-                    Layout/Collage
-                  </button>
-                  <button
-                    onClick={() => {
-                      setCountdownEditorOpen(true);
-                      setIsMoreOpen(false);
-                    }}
-                    className="w-full text-left py-2 px-3 hover:bg-white/5 rounded-xl text-[10px] font-black uppercase tracking-wider text-white/80 transition-colors flex items-center gap-2"
-                  >
-                    <Timer size={14} className="text-aeirmist-cyan" />
-                    Countdown Setup
-                  </button>
-                  <button
-                    onClick={() => {
-                      setMusicStickerEditorOpen(true);
-                      setIsMoreOpen(false);
-                    }}
-                    className="w-full text-left py-2 px-3 hover:bg-white/5 rounded-xl text-[10px] font-black uppercase tracking-wider text-white/80 transition-colors flex items-center gap-2"
-                  >
-                    <Music size={14} className="text-aeirmist-cyan" />
-                    Music Widget Style
-                  </button>
-                  <button
-                    onClick={() => {
-                      setGridSetting(gridSetting === 'none' ? 'thirds' : 'none');
-                      setIsMoreOpen(false);
-                    }}
-                    className="w-full text-left py-2 px-3 hover:bg-white/5 rounded-xl text-[10px] font-black uppercase tracking-wider text-white/80 transition-colors flex items-center gap-2"
-                  >
-                    <Sliders size={14} className="text-aeirmist-cyan" />
-                    {gridSetting !== 'none' ? 'Hide Grid' : 'Show Grid'}
-                  </button>
-                  <div className="h-[1px] bg-white/5 my-1" />
-                  <button
-                    onClick={() => {
-                      setTextLayers([]);
-                      setStickerLayers([]);
-                      setPhotoLayers([]);
-                      setDrawingPaths([]);
-                      setCurrentFilter('none');
-                      setActiveMusic(null);
-                      setStoryCaption('');
-                      setIsMoreOpen(false);
-                      addToast({
-                        title: "Edits Reset",
-                        message: "All text layers, sticker layers, and filter effects have been cleared.",
-                        type: "info"
-                      });
-                    }}
-                    className="w-full text-left py-2 px-3 hover:bg-rose-500/10 rounded-xl text-[10px] font-black uppercase tracking-wider text-rose-400 transition-colors flex items-center gap-2"
-                  >
-                    <Trash size={14} className="text-rose-500" />
-                    Reset All Edits
-                  </button>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-        )}
+        ) : null}
 
         {/* --- DYNAMIC STORIES VISUAL CANVAS --- */}
         <div className="flex-1 w-full h-full relative overflow-hidden bg-[#090a0f]" id="story_canvas_body">
@@ -4512,45 +4487,43 @@ export const StoryStudio = ({ onClose }: { onClose: () => void }) => {
           ) : (
             // Live webcam element or simulated scene
             <div className="absolute inset-0 w-full h-full flex flex-col justify-between">
-              {cameraError ? (
+              {cameraError || !streamRef.current ? (
                 <div className="absolute inset-0 flex flex-col items-center justify-center p-8 text-center bg-[#0a0b10] z-20 pointer-events-auto">
-                  <div className="w-16 h-16 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-white/40 mb-6">
-                    <Camera size={28} />
+                  <div className="w-16 h-16 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-white/50 mb-4 shadow-xl">
+                    <ImageIcon size={28} />
                   </div>
-                  <h3 className="text-sm font-bold uppercase tracking-wider text-white mb-2">Camera Unavailable</h3>
-                  <p className="text-xs text-white/40 max-w-xs mb-8">Camera unavailable — choose a file to upload</p>
-                  <motion.button
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    onClick={() => setIsGallerySelectorOpen(true)}
-                    className="h-12 px-8 rounded-xl bg-white text-black font-black uppercase text-[10px] tracking-[0.2em] flex items-center gap-2 shadow-lg"
-                  >
-                    <UploadCloud size={14} />
-                    Upload File
-                  </motion.button>
+                  <h3 className="text-sm font-black uppercase tracking-wider text-white mb-1.5">Add to your Story</h3>
+                  <p className="text-xs text-white/40 max-w-xs mb-6">Select a photo or video from your device or create a text story</p>
+                  
+                  <div className="flex flex-col gap-2.5 w-full max-w-xs">
+                    <button
+                      onClick={() => fileInputRef.current?.click()}
+                      className="w-full h-11 rounded-full bg-white text-black font-black uppercase text-[11px] tracking-wider flex items-center justify-center gap-2 shadow-xl hover:bg-white/90 active:scale-95 transition-all"
+                    >
+                      <UploadCloud size={16} />
+                      Choose Photo or Video
+                    </button>
+                    <button
+                      onClick={() => {
+                        setMode('text');
+                        setCapturedMedia({ url: '', type: 'image', isSolidBackground: true });
+                        addTextLayer();
+                      }}
+                      className="w-full h-11 rounded-full bg-white/10 border border-white/10 text-white font-bold text-xs flex items-center justify-center gap-2 hover:bg-white/20 active:scale-95 transition-all"
+                    >
+                      <Type size={16} />
+                      Create Text Story
+                    </button>
+                  </div>
                 </div>
               ) : (
-                <>
-                  <video 
-                    ref={videoRef} 
-                    autoPlay 
-                    playsInline 
-                    muted 
-                    className="absolute inset-0 w-full h-full object-cover scale-x-[-1]"
-                  />
-                  
-                  {!streamRef.current && (
-                    <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center bg-black/10 z-10">
-                      <ImageIcon size={32} className="text-white/20 mb-3" />
-                      <span className="text-xs font-bold uppercase tracking-wider">Simulator Feed Ready</span>
-                      <span className="text-[10px] text-white/40 mt-1 uppercase">Choose simulated capture asset</span>
-                      <div className="flex gap-2 mt-4 z-50">
-                        <button onClick={() => simulateCapture('image')} className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 border border-white/10 text-[9px] uppercase tracking-wider font-bold">Simulate Photo</button>
-                        <button onClick={() => simulateCapture('video')} className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 border border-white/10 text-[9px] uppercase tracking-wider font-bold">Simulate Video</button>
-                      </div>
-                    </div>
-                  )}
-                </>
+                <video 
+                  ref={videoRef} 
+                  autoPlay 
+                  playsInline 
+                  muted 
+                  className="absolute inset-0 w-full h-full object-cover scale-x-[-1]"
+                />
               )}
             </div>
           )}
@@ -4619,12 +4592,21 @@ export const StoryStudio = ({ onClose }: { onClose: () => void }) => {
 
           {/* Soundtrack badge */}
           {activeMusic && (
-            <div className="absolute top-20 left-4 z-40 bg-black/60 border border-white/15 backdrop-blur-md px-3 py-1.5 rounded-xl flex items-center gap-2 max-w-[200px]">
-              <Music size={12} className="text-aeirmist-cyan animate-pulse" />
-              <div className="min-w-0">
-                <p className="text-[10px] font-bold text-white truncate leading-none">{activeMusic.title}</p>
-                <p className="text-[8px] text-white/40 truncate leading-none mt-0.5">{activeMusic.artist}</p>
+            <div className="absolute top-20 left-4 z-40 bg-black/60 border border-white/15 backdrop-blur-md px-3.5 py-2 rounded-2xl flex items-center gap-2.5 max-w-[210px] shadow-lg">
+              <div className="w-6 h-6 rounded-lg bg-cyan-500/20 flex items-center justify-center shrink-0">
+                <Music size={13} className="text-aeirmist-cyan" />
               </div>
+              <div className="min-w-0 pr-1">
+                <p className="text-[11px] font-bold text-white truncate leading-tight">{activeMusic.title}</p>
+                <p className="text-[9px] text-white/50 truncate leading-tight mt-0.5">{activeMusic.artist}</p>
+              </div>
+              <button 
+                onClick={(e) => { e.stopPropagation(); setActiveMusic(null); }}
+                className="w-4 h-4 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white/40 hover:text-white shrink-0 ml-1"
+                title="Remove Music"
+              >
+                <X size={10} />
+              </button>
             </div>
           )}
 
@@ -4721,36 +4703,40 @@ export const StoryStudio = ({ onClose }: { onClose: () => void }) => {
                 ) : (
                   <button 
                     onClick={() => setCaptionInputOpen(true)}
-                    className="w-full mb-4 bg-black/40 backdrop-blur-md border border-white/5 hover:border-white/10 rounded-full py-2.5 px-4 text-center text-[10px] font-black uppercase tracking-widest text-white/50 hover:text-white/80 transition-all"
+                    className="w-full mb-3 bg-black/50 backdrop-blur-md border border-white/10 hover:border-white/20 rounded-full py-2.5 px-4 text-center text-[10px] font-bold uppercase tracking-widest text-white/60 hover:text-white transition-all shadow-md"
                   >
-                    {storyCaption.trim() ? `Caption: "${storyCaption}"` : "Add a caption..."}
+                    {storyCaption.trim() ? `Caption: "${storyCaption}"` : "ADD A CAPTION..."}
                   </button>
                 )}
 
                 {/* --- AUDIENCE SELECTOR ROW --- */}
-                <div className="w-full flex items-center justify-center gap-2 mb-4">
+                <div className="w-full flex items-center justify-center gap-2 mb-3.5">
                   {[
-                    { id: 'public', label: 'Public', icon: <Globe size={10} /> },
-                    { id: 'followers', label: 'Followers', icon: <Users size={10} /> },
-                    { id: 'closeFriends', label: 'Close Friends', icon: <Shield size={10} /> }
-                  ].map((aud) => (
-                    <button
-                      key={aud.id}
-                      onClick={() => setAudience(aud.id as any)}
-                      className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-full text-[8px] font-black uppercase tracking-widest transition-all border ${
-                        audience === aud.id 
-                          ? 'bg-aeirmist-cyan/20 border-aeirmist-cyan text-aeirmist-cyan' 
-                          : 'bg-black/20 border-white/5 text-white/30 hover:border-white/10'
-                      }`}
-                    >
-                      {aud.icon}
-                      {aud.label}
-                    </button>
-                  ))}
+                    { id: 'public', label: 'PUBLIC', icon: <Globe size={11} /> },
+                    { id: 'followers', label: 'FOLLOWERS', icon: <Users size={11} /> },
+                    { id: 'closeFriends', label: 'CLOSE FRIENDS', icon: <Sparkles size={11} /> }
+                  ].map((aud) => {
+                    const isSelected = audience === aud.id;
+                    const isCloseFriends = aud.id === 'closeFriends';
+                    return (
+                      <button
+                        key={aud.id}
+                        onClick={() => setAudience(aud.id as any)}
+                        className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-full text-[9px] font-black uppercase tracking-wider transition-all border ${
+                          isSelected 
+                            ? (isCloseFriends ? 'bg-emerald-500/20 border-emerald-400 text-emerald-300 shadow-[0_0_12px_rgba(16,185,129,0.35)]' : 'bg-cyan-500/20 border-cyan-400 text-cyan-300 shadow-[0_0_12px_rgba(0,242,255,0.35)]') 
+                            : 'bg-black/30 border-white/10 text-white/40 hover:text-white/70 hover:border-white/20'
+                        }`}
+                      >
+                        {aud.icon}
+                        <span>{aud.label}</span>
+                      </button>
+                    );
+                  })}
                 </div>
 
                 {/* --- PUBLISH ROW --- */}
-                <div className="w-full flex items-center justify-between gap-4">
+                <div className="w-full flex items-center gap-3">
                   {/* Your Story Pill */}
                   <button
                     onClick={
@@ -4758,21 +4744,23 @@ export const StoryStudio = ({ onClose }: { onClose: () => void }) => {
                         ? (currentMultiStoryIndex < multiStoryItems.length - 1 ? handleSequentialNext : publishMultiStorySet)
                         : handlePublishStory
                     }
-                    disabled={uploadState.isUploading}
-                    className="flex-1 h-12 rounded-full bg-white text-black font-black text-[11px] uppercase tracking-wider flex items-center justify-center gap-2 hover:bg-white/90 active:scale-95 transition-all shadow-xl disabled:opacity-50"
+                    disabled={isPublishing}
+                    className="flex-1 h-12 rounded-full bg-white text-black font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2.5 hover:bg-white/95 active:scale-95 transition-all shadow-xl disabled:opacity-50"
                   >
                     <img 
                       src={getAvatarUrl(user?.uid || '', profile?.avatarUrl || user?.photoURL)} 
-                      className="w-5 h-5 rounded-full object-cover shrink-0 border border-black/10" 
+                      className="w-6 h-6 rounded-full object-cover shrink-0 border border-black/10" 
                       alt="" 
                       referrerPolicy="no-referrer"
                     />
-                    {uploadState.isUploading 
-                      ? `Syncing ${uploadState.progress}%` 
-                      : (multiStoryItems.length > 0 
-                          ? (currentMultiStoryIndex < multiStoryItems.length - 1 ? `Next (${currentMultiStoryIndex + 1}/${multiStoryItems.length})` : "Publish Set")
-                          : "Your Story"
-                        )}
+                    <span>
+                      {isPublishing 
+                        ? "Sharing..." 
+                        : (multiStoryItems.length > 0 
+                            ? (currentMultiStoryIndex < multiStoryItems.length - 1 ? `Next (${currentMultiStoryIndex + 1}/${multiStoryItems.length})` : "Publish Set")
+                            : "YOUR STORY"
+                          )}
+                    </span>
                   </button>
 
                   {/* Circular Send Arrow Icon Button */}
@@ -4784,8 +4772,8 @@ export const StoryStudio = ({ onClose }: { onClose: () => void }) => {
                         ? (currentMultiStoryIndex < multiStoryItems.length - 1 ? handleSequentialNext : publishMultiStorySet)
                         : handlePublishStory
                     }
-                    disabled={uploadState.isUploading}
-                    className="w-12 h-12 rounded-full bg-aeirmist-cyan text-black flex items-center justify-center hover:bg-aeirmist-cyan/90 transition-all shadow-xl active:scale-95 disabled:opacity-50"
+                    disabled={isPublishing}
+                    className="w-12 h-12 rounded-full bg-aeirmist-cyan text-black flex items-center justify-center hover:bg-aeirmist-cyan/90 transition-all shadow-xl active:scale-95 disabled:opacity-50 shrink-0"
                     title={multiStoryItems.length > 0 ? "Next / Publish" : "Publish Story"}
                   >
                     <Send size={18} className="translate-x-[1px]" />

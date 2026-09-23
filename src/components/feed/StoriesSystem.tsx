@@ -825,6 +825,9 @@ export const StoryViewer = ({
             if (currentIndex < group.stories.length - 1) {
               setCurrentIndex(prev => prev + 1);
               return 0;
+            } else if (onGroupChange && nextGroup) {
+              onGroupChange(nextGroup);
+              return 0;
             } else {
               onClose();
               return 100;
@@ -835,7 +838,7 @@ export const StoryViewer = ({
       }, 50); 
     }
     return () => clearInterval(interval);
-  }, [currentIndex, group.stories.length, onClose, activeStory.mediaType, isPaused]);
+  }, [currentIndex, group.stories.length, onClose, activeStory.mediaType, isPaused, onGroupChange, nextGroup]);
 
   const handleVideoProgress = () => {
     if (videoRef.current && !isPaused) {
@@ -1358,10 +1361,17 @@ export const StoryViewer = ({
               <div className="w-10 h-10 rounded-xl border-2 border-aeirmist-cyan p-[1px]">
                 <img src={group.userAvatar} className="w-full h-full rounded-xl object-cover" alt="" />
               </div>
-              <div className="flex flex-col">
-                <span className="text-sm font-bold text-white tracking-wide">{group.userName}</span>
-                <span className="text-[10px] font-black text-white/50 uppercase tracking-widest">
-                  {activeStory.createdAt?.toDate ? new Date(activeStory.createdAt.toDate()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Recently'}
+              <div className="flex flex-col min-w-0">
+                <span className="text-sm font-bold text-white tracking-wide truncate">{group.userName}</span>
+                <span className="text-[10px] font-black text-white/50 uppercase tracking-widest flex items-center gap-1.5 truncate max-w-[200px]">
+                  <span>{activeStory.createdAt?.toDate ? new Date(activeStory.createdAt.toDate()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Recently'}</span>
+                  {activeStory.activeMusic && (
+                    <>
+                      <span>·</span>
+                      <Music size={10} className="text-aeirmist-cyan animate-pulse shrink-0" />
+                      <span className="text-white/80 font-bold truncate">{activeStory.activeMusic.title}</span>
+                    </>
+                  )}
                 </span>
               </div>
             </div>
@@ -1921,6 +1931,15 @@ export const StoryViewer = ({
                ))}
             </div>
 
+            {/* Story Caption (Instagram Style) */}
+            {activeStory.caption && (
+              <div className="absolute bottom-24 inset-x-4 z-40 flex justify-center pointer-events-none">
+                <div className="bg-black/60 backdrop-blur-md border border-white/10 rounded-2xl px-4 py-2.5 max-w-sm text-center shadow-xl">
+                  <p className="text-xs font-medium text-white drop-shadow-md leading-relaxed">{activeStory.caption}</p>
+                </div>
+              </div>
+            )}
+
             {/* Navigation zones */}
             <div 
               className="absolute inset-y-0 left-0 w-1/4 z-40" 
@@ -1942,31 +1961,39 @@ export const StoryViewer = ({
 
           {/* Reply/Action Bar */}
           {!isOwner && (
-            <div className="p-6 pb-[calc(2.5rem+var(--spacing-safe-bottom))] md:pb-6 flex gap-4 items-center bg-gradient-to-t from-black to-transparent">
+            <div className="p-4 pb-[calc(1.5rem+var(--spacing-safe-bottom))] md:pb-4 flex gap-3 items-center bg-gradient-to-t from-black via-black/80 to-transparent">
               <input 
                 type="text" 
                 value={replyText}
                 onChange={(e) => setReplyText(e.target.value)}
                 onFocus={() => setIsPaused(true)}
                 onBlur={() => setIsPaused(false)}
-                placeholder="Send message..."
-                className="flex-1 bg-white/10 backdrop-blur-md border border-white/10 rounded-full py-3.5 px-6 text-sm text-white placeholder:text-white/40 outline-none focus:border-white/30"
+                placeholder={`Reply to ${group.userName}...`}
+                className="flex-1 bg-white/10 backdrop-blur-md border border-white/10 rounded-full py-2.5 px-4 text-xs text-white placeholder:text-white/40 outline-none focus:border-white/30"
               />
               {replyText.trim() ? (
                 <button 
                   onClick={handleReply}
                   disabled={isSendingReply}
-                  className="w-10 h-10 rounded-full bg-aeirmist-cyan flex items-center justify-center text-black"
+                  className="w-9 h-9 rounded-full bg-aeirmist-cyan flex items-center justify-center text-black shadow-lg"
                 >
-                  {isSendingReply ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
+                  {isSendingReply ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
                 </button>
               ) : (
-                <div className="flex gap-4">
-                  <button className="text-white/60 hover:text-white transition-colors">
-                    <Heart size={24} />
+                <div className="flex gap-1 items-center">
+                  <button 
+                    onClick={() => handleStoryReaction('❤️')}
+                    className="w-9 h-9 rounded-full flex items-center justify-center text-white/70 hover:text-rose-500 hover:scale-110 active:scale-95 transition-all"
+                    title="Like Story"
+                  >
+                    <Heart size={20} />
                   </button>
-                  <button className="text-white/60 hover:text-white transition-colors">
-                    <Send size={24} />
+                  <button 
+                    onClick={handleShareStory}
+                    className="w-9 h-9 rounded-full flex items-center justify-center text-white/70 hover:text-white hover:scale-110 active:scale-95 transition-all"
+                    title="Share Story"
+                  >
+                    <Send size={18} />
                   </button>
                 </div>
               )}

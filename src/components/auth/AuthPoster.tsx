@@ -1,198 +1,192 @@
 import React from 'react';
 import { motion } from 'motion/react';
 import { 
-  Heart, MessageCircle, Send, Sparkles, Music, 
-  Flame, Radio, Users, Compass, ShieldCheck, CheckCircle2
+  Heart, Send, Users, Shield, Sparkles, UserPlus
 } from 'lucide-react';
 import { AeirmistLogo } from '../ui/AeirmistLogo';
 
 export const AuthPoster: React.FC = () => {
   return (
-    <div className="hidden lg:flex lg:w-1/2 p-6 lg:p-8 xl:p-12 flex-col justify-between relative border-r border-white/10 bg-gradient-to-br from-[#06080e] via-[#090d16] to-[#040508] overflow-hidden select-none">
-      {/* Dynamic ambient background glow */}
-      <div className="absolute -top-32 -left-32 w-96 h-96 bg-[var(--color-aeirmist-cyan)]/15 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute top-1/2 -right-32 w-96 h-96 bg-[var(--color-aeirmist-magenta)]/15 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute bottom-0 left-1/4 w-80 h-80 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
-
-      {/* Grid line matrix texture */}
-      <div className="absolute inset-0 bg-[linear-gradient(to_right,#ffffff05_1px,transparent_1px),linear-gradient(to_bottom,#ffffff05_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_50%,#000_70%,transparent_100%)] pointer-events-none" />
-
-      {/* ── Top Header & Branding ── */}
-      <div className="relative z-10 space-y-3">
+    <div className="hidden lg:flex lg:w-[58%] xl:w-[60%] p-8 xl:p-14 flex-col justify-between relative overflow-hidden select-none">
+      
+      {/* ── Top Left: Branding & Logo (Keeps official Aeirmist app logo) ── */}
+      <div className="relative z-10 space-y-4">
         <div className="flex items-center gap-3">
-          <div className="relative">
-            <div className="absolute inset-0 bg-[var(--color-aeirmist-cyan)] blur-md opacity-50 rounded-2xl animate-pulse" />
-            <AeirmistLogo className="w-11 h-11 relative drop-shadow-[0_0_25px_rgba(0,242,255,0.6)]" variant="compact" />
-          </div>
-          <div className="h-6 w-px bg-white/15" />
+          <AeirmistLogo className="w-12 h-12 drop-shadow-[0_0_25px_rgba(0,242,255,0.6)]" variant="compact" />
           <div className="flex flex-col">
-            <span className="text-[11px] tracking-[0.25em] font-mono font-bold text-[var(--color-aeirmist-cyan)] uppercase">
-              Aeirmist Network
+            <span className="font-display font-black text-2xl xl:text-3xl tracking-tight text-white">
+              Aeirmist
             </span>
-            <span className="text-[9px] tracking-widest font-mono text-white/40 uppercase">
-              Official Client v2.5
+            <span className="text-[10px] xl:text-[11px] tracking-[0.25em] font-bold text-slate-400 uppercase">
+              Connect &bull; Share &bull; Belong
             </span>
           </div>
         </div>
 
-        <div className="pt-2">
-          <h1 className="font-display font-black text-3xl xl:text-4xl tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-[var(--color-aeirmist-cyan)] via-white to-[var(--color-aeirmist-magenta)] drop-shadow-[0_0_35px_rgba(0,242,255,0.3)]">
-            AEIRMIST
+        {/* Big Catchy Headline */}
+        <div className="pt-4 max-w-lg">
+          <h1 className="text-3xl xl:text-5xl font-black text-white leading-[1.15] tracking-tight">
+            See everyday moments from your{' '}
+            <span className="bg-gradient-to-r from-cyan-400 via-sky-400 to-pink-500 bg-clip-text text-transparent">
+              close friends.
+            </span>
           </h1>
-          <p className="text-xs xl:text-sm font-medium text-slate-300/80 mt-1 max-w-sm leading-relaxed">
-            Connect with friends, share your universe, and experience next-generation social freedom.
-          </p>
+        </div>
+
+        {/* Feature Highlights (Bullet Badges from Reference) */}
+        <div className="pt-3 space-y-3.5 max-w-md">
+          <div className="flex items-center gap-3.5">
+            <div className="w-10 h-10 rounded-xl bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400 shrink-0">
+              <Users size={18} />
+            </div>
+            <div>
+              <h4 className="text-sm font-bold text-white tracking-wide">Real Connections</h4>
+              <p className="text-xs text-slate-400">Only your circle</p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3.5">
+            <div className="w-10 h-10 rounded-xl bg-purple-500/20 border border-purple-500/30 flex items-center justify-center text-purple-400 shrink-0">
+              <Shield size={18} />
+            </div>
+            <div>
+              <h4 className="text-sm font-bold text-white tracking-wide">Private & Safe</h4>
+              <p className="text-xs text-slate-400">Your moments, your control</p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3.5">
+            <div className="w-10 h-10 rounded-xl bg-pink-500/20 border border-pink-500/30 flex items-center justify-center text-pink-400 shrink-0">
+              <Heart size={18} />
+            </div>
+            <div>
+              <h4 className="text-sm font-bold text-white tracking-wide">Share What Matters</h4>
+              <p className="text-xs text-slate-400">Stories, chats, and more</p>
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* ── Centerpiece: Interactive Visual Social Feed Poster ── */}
-      <div className="relative my-auto py-6 z-10 w-full max-w-md mx-auto">
-        {/* Main Floating Glassmorphic Social Post Card */}
-        <motion.div 
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8, ease: "easeOut" }}
-          className="relative rounded-3xl bg-gradient-to-b from-white/[0.08] to-white/[0.02] border border-white/15 backdrop-blur-2xl p-4 shadow-[0_20px_50px_rgba(0,0,0,0.6)] overflow-hidden"
-        >
-          {/* Card subtle top highlight */}
-          <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-[var(--color-aeirmist-cyan)] to-transparent opacity-50" />
-
-          {/* Post Header: User Profile with Verified Badge */}
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2.5">
-              <div className="relative">
-                <div className="w-10 h-10 rounded-full p-0.5 bg-gradient-to-tr from-amber-400 via-[var(--color-aeirmist-magenta)] to-[var(--color-aeirmist-cyan)]">
-                  <img 
-                    src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=200&auto=format&fit=crop" 
-                    alt="Creator" 
-                    className="w-full h-full rounded-full object-cover border border-black/40"
-                  />
-                </div>
-                <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-emerald-500 border-2 border-[#0c101a]" />
-              </div>
-              <div>
-                <div className="flex items-center gap-1">
-                  <span className="text-xs font-black text-white tracking-wide">elena.creative</span>
-                  <CheckCircle2 size={13} className="text-[var(--color-aeirmist-cyan)] fill-[var(--color-aeirmist-cyan)]/20" />
-                </div>
-                <span className="text-[10px] text-white/50 font-mono">Tokyo, Japan • 2h ago</span>
-              </div>
-            </div>
-
-            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-[var(--color-aeirmist-cyan)]/15 border border-[var(--color-aeirmist-cyan)]/30 text-[10px] font-bold text-[var(--color-aeirmist-cyan)] uppercase tracking-wider">
-              <Radio size={10} className="animate-pulse" /> Live Story
-            </span>
-          </div>
-
-          {/* Post Media Visual Artwork */}
-          <div className="relative rounded-2xl overflow-hidden aspect-[16/10] mb-3 group">
+      {/* ── Center / Hero: Dynamic Layered Story Cards ── */}
+      <div className="relative my-auto py-8 z-10 w-full flex items-center justify-center">
+        <div className="relative w-[340px] sm:w-[380px] h-[360px] sm:h-[400px] flex items-center justify-center">
+          
+          {/* Left Tilted Story Card (Behind) */}
+          <motion.div 
+            initial={{ opacity: 0, x: -30, rotate: -15 }}
+            animate={{ opacity: 1, x: 0, rotate: -8 }}
+            transition={{ duration: 0.8, ease: "easeOut" }}
+            className="absolute left-0 -translate-x-6 sm:-translate-x-10 w-48 sm:w-56 h-72 sm:h-80 rounded-[24px] overflow-hidden border border-white/15 bg-black/80 shadow-[0_15px_40px_rgba(0,0,0,0.7)] backdrop-blur-md -rotate-[8deg]"
+          >
             <img 
-              src="https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=600&auto=format&fit=crop" 
-              alt="Social Artwork Showcase" 
-              className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+              src="https://images.unsplash.com/photo-1517486808906-6ca8b3f04846?q=80&w=500&auto=format&fit=crop" 
+              alt="Friends Moments" 
+              className="w-full h-full object-cover brightness-90"
             />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/20" />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-black/30" />
             
-            {/* Overlay badges */}
-            <div className="absolute bottom-2.5 left-3 right-3 flex items-center justify-between text-white text-xs">
-              <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-black/60 backdrop-blur-md border border-white/10 text-[11px] font-medium">
-                <Sparkles size={12} className="text-cyan-400" /> Atmospheric Visuals
-              </span>
-              <span className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-black/60 backdrop-blur-md border border-white/10 text-[11px] font-mono text-white/80">
-                <Music size={11} className="text-[var(--color-aeirmist-magenta)]" /> Neon Horizons (Original)
-              </span>
+            {/* Header Badge */}
+            <div className="absolute top-3 left-3 flex items-center gap-1.5 px-2 py-1 rounded-full bg-black/60 backdrop-blur-md border border-white/20">
+              <div className="flex -space-x-1.5">
+                <img src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=100&auto=format&fit=crop" className="w-4 h-4 rounded-md object-cover border border-black" alt="" />
+                <img src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=100&auto=format&fit=crop" className="w-4 h-4 rounded-md object-cover border border-black" alt="" />
+              </div>
+              <span className="text-[9px] font-bold text-white">+2</span>
             </div>
-          </div>
+          </motion.div>
 
-          {/* Post Action Buttons (Instagram Style) */}
-          <div className="flex items-center justify-between pt-1">
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-1.5 text-white/90 hover:text-red-400 transition-colors cursor-pointer">
-                <Heart size={16} className="text-red-500 fill-red-500" />
-                <span className="text-xs font-bold font-mono">18.4K</span>
-              </div>
-              <div className="flex items-center gap-1.5 text-white/70 hover:text-white transition-colors cursor-pointer">
-                <MessageCircle size={16} />
-                <span className="text-xs font-bold font-mono">1,240</span>
-              </div>
-              <div className="flex items-center gap-1.5 text-white/70 hover:text-white transition-colors cursor-pointer">
-                <Send size={15} />
-                <span className="text-xs font-bold font-mono">892</span>
-              </div>
-            </div>
-
-            <span className="text-[10px] font-mono text-white/40 uppercase tracking-wider">High Fidelity 4K</span>
-          </div>
-        </motion.div>
-
-        {/* Floating Chat Bubble (Messenger style, overlapping left) */}
-        <motion.div 
-          initial={{ opacity: 0, x: -30 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 0.8, delay: 0.2 }}
-          className="absolute -bottom-5 -left-4 xl:-left-6 rounded-2xl bg-[#0e1320]/95 border border-[var(--color-aeirmist-cyan)]/40 backdrop-blur-xl p-3 shadow-[0_12px_35px_rgba(0,0,0,0.7)] flex items-center gap-3 z-20 max-w-[260px]"
-        >
-          <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-cyan-400 to-blue-600 p-0.5 shrink-0">
+          {/* Right Tilted Story Card (Behind) */}
+          <motion.div 
+            initial={{ opacity: 0, x: 30, rotate: 15 }}
+            animate={{ opacity: 1, x: 0, rotate: 8 }}
+            transition={{ duration: 0.8, ease: "easeOut" }}
+            className="absolute right-0 translate-x-6 sm:translate-x-10 w-48 sm:w-56 h-72 sm:h-80 rounded-[24px] overflow-hidden border border-white/15 bg-black/80 shadow-[0_15px_40px_rgba(0,0,0,0.7)] backdrop-blur-md rotate-[8deg]"
+          >
             <img 
-              src="https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?q=80&w=150&auto=format&fit=crop" 
-              alt="Friend" 
-              className="w-full h-full rounded-full object-cover" 
+              src="https://images.unsplash.com/photo-1543807535-eceef0bc6599?q=80&w=500&auto=format&fit=crop" 
+              alt="Close Friends" 
+              className="w-full h-full object-cover brightness-90"
             />
-          </div>
-          <div className="min-w-0">
-            <p className="text-[11px] font-bold text-white truncate">Marcus Vance</p>
-            <p className="text-[10px] text-slate-300/80 truncate">Joined your audio room 🎧</p>
-          </div>
-          <span className="w-2 h-2 rounded-full bg-[var(--color-aeirmist-cyan)] shrink-0 animate-ping" />
-        </motion.div>
+            <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-black/30" />
+            
+            {/* Header Badge */}
+            <div className="absolute top-3 left-3 flex items-center gap-1.5 px-2 py-1 rounded-full bg-black/60 backdrop-blur-md border border-white/20">
+              <img src="https://images.unsplash.com/photo-1517841905240-472988babdf9?q=80&w=100&auto=format&fit=crop" className="w-4 h-4 rounded-md object-cover border border-black" alt="" />
+              <span className="text-[9px] font-bold text-white">+1</span>
+            </div>
+          </motion.div>
 
-        {/* Floating Story Pill (Instagram style, overlapping top right) */}
-        <motion.div 
-          initial={{ opacity: 0, x: 30 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 0.8, delay: 0.3 }}
-          className="absolute -top-4 -right-3 xl:-right-6 rounded-2xl bg-[#0f121d]/95 border border-white/20 backdrop-blur-xl py-1.5 px-3 shadow-[0_10px_30px_rgba(0,0,0,0.6)] flex items-center gap-2 z-20"
-        >
-          <div className="flex -space-x-2 overflow-hidden">
-            <img className="inline-block h-6 w-6 rounded-full ring-2 ring-black object-cover" src="https://images.unsplash.com/photo-1517841905240-472988babdf9?w=100&auto=format&fit=crop" alt="avatar" />
-            <img className="inline-block h-6 w-6 rounded-full ring-2 ring-black object-cover" src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&auto=format&fit=crop" alt="avatar" />
-            <img className="inline-block h-6 w-6 rounded-full ring-2 ring-black object-cover" src="https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=100&auto=format&fit=crop" alt="avatar" />
-          </div>
-          <span className="text-[10px] font-bold text-white tracking-wider font-mono">+52K Creators</span>
-        </motion.div>
+          {/* Center Main Story Card (Front) */}
+          <motion.div 
+            initial={{ opacity: 0, y: 25 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.9, ease: "easeOut" }}
+            className="relative z-10 w-56 sm:w-64 h-80 sm:h-96 rounded-[28px] overflow-hidden border-2 border-cyan-400/80 shadow-[0_0_40px_rgba(0,242,255,0.4),0_25px_60px_rgba(0,0,0,0.9)] bg-black"
+          >
+            <img 
+              src="https://images.unsplash.com/photo-1529156069898-49953e39b3ac?q=80&w=600&auto=format&fit=crop" 
+              alt="Close Friends Laughing" 
+              className="w-full h-full object-cover"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/10 to-black/40" />
+
+            {/* Top Multi-friend badge */}
+            <div className="absolute top-3.5 left-3.5 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/60 backdrop-blur-md border border-white/25">
+              <div className="flex -space-x-1.5">
+                <img src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=100&auto=format&fit=crop" className="w-4 h-4 rounded-md object-cover border border-black" alt="" />
+                <img src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=100&auto=format&fit=crop" className="w-4 h-4 rounded-md object-cover border border-black" alt="" />
+                <img src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=100&auto=format&fit=crop" className="w-4 h-4 rounded-md object-cover border border-black" alt="" />
+              </div>
+              <span className="text-[10px] font-bold text-white">+3</span>
+            </div>
+
+            {/* Bottom Story Interaction Bar */}
+            <div className="absolute bottom-3 left-3 right-3 flex items-center gap-2">
+              <div className="flex-1 h-9 rounded-full bg-white/10 backdrop-blur-md border border-white/20 px-3 flex items-center text-xs text-white/70">
+                <span>Send a message...</span>
+              </div>
+              <div className="w-9 h-9 rounded-full bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center text-white/90">
+                <Heart size={15} />
+              </div>
+              <div className="w-9 h-9 rounded-full bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center text-white/90">
+                <Send size={14} />
+              </div>
+            </div>
+          </motion.div>
+
+          {/* Floating 3D Reaction: Purple Heart (Top Right) */}
+          <motion.div 
+            animate={{ y: [0, -8, 0], rotate: [0, 4, 0] }}
+            transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+            className="absolute -top-3 right-4 sm:right-6 w-11 h-11 rounded-2xl bg-gradient-to-tr from-fuchsia-600 to-pink-500 p-0.5 shadow-[0_10px_25px_rgba(217,70,239,0.5)] z-20 flex items-center justify-center text-white"
+          >
+            <Heart size={20} className="fill-white" />
+          </motion.div>
+
+          {/* Floating 3D Reaction: Blue Heart (Middle Right) */}
+          <motion.div 
+            animate={{ y: [0, 8, 0], rotate: [0, -4, 0] }}
+            transition={{ duration: 4.5, repeat: Infinity, ease: "easeInOut", delay: 0.5 }}
+            className="absolute top-1/2 -right-2 sm:-right-4 w-9 h-9 rounded-xl bg-gradient-to-tr from-cyan-500 to-blue-600 p-0.5 shadow-[0_8px_20px_rgba(6,182,212,0.4)] z-20 flex items-center justify-center text-white"
+          >
+            <Heart size={16} className="fill-white" />
+          </motion.div>
+
+          {/* Floating Add Friend Badge (Bottom Right) */}
+          <motion.div 
+            animate={{ y: [0, -6, 0] }}
+            transition={{ duration: 5, repeat: Infinity, ease: "easeInOut", delay: 1 }}
+            className="absolute -bottom-2 right-6 sm:right-10 px-3 py-1.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 border border-white/20 shadow-[0_10px_25px_rgba(37,99,235,0.4)] z-20 flex items-center gap-1.5 text-white"
+          >
+            <UserPlus size={14} />
+          </motion.div>
+        </div>
       </div>
 
-      {/* ── Feature Highlights & Community Trust Bar ── */}
-      <div className="relative z-10 space-y-3 pt-2">
-        <div className="grid grid-cols-2 gap-2.5">
-          <div className="p-3 rounded-2xl bg-white/[0.03] border border-white/5 backdrop-blur-md flex items-center gap-2.5">
-            <div className="p-1.5 rounded-xl bg-cyan-500/10 text-cyan-400 shrink-0">
-              <Flame size={14} />
-            </div>
-            <div className="min-w-0">
-              <h4 className="text-[11px] font-bold text-white uppercase tracking-wider truncate">Dynamic Feed</h4>
-              <p className="text-[9px] text-white/50 truncate">Stories, Reels & Audio</p>
-            </div>
-          </div>
-
-          <div className="p-3 rounded-2xl bg-white/[0.03] border border-white/5 backdrop-blur-md flex items-center gap-2.5">
-            <div className="p-1.5 rounded-xl bg-purple-500/10 text-purple-400 shrink-0">
-              <ShieldCheck size={14} />
-            </div>
-            <div className="min-w-0">
-              <h4 className="text-[11px] font-bold text-white uppercase tracking-wider truncate">Private & Secure</h4>
-              <p className="text-[9px] text-white/50 truncate">Zero-Trust Vault System</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex items-center justify-between text-[9px] font-mono uppercase tracking-widest text-white/30 pt-1 border-t border-white/5">
-          <span>Global Decentralized Grid</span>
-          <span className="text-emerald-400 font-bold flex items-center gap-1">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-            Network Live
-          </span>
-        </div>
+      {/* ── Bottom: Clean Brand Note ── */}
+      <div className="relative z-10 pt-4 flex items-center justify-between text-xs text-slate-500">
+        <span>&copy; {new Date().getFullYear()} Aeirmist Social</span>
+        <span className="text-slate-400 font-medium">Authentic Connections</span>
       </div>
     </div>
   );

@@ -11,7 +11,12 @@ import {
   ShoppingBag,
   AlertTriangle,
   ArrowUpRight,
-  SlidersHorizontal
+  SlidersHorizontal,
+  RotateCcw,
+  Sparkles,
+  Bookmark,
+  Users,
+  Compass
 } from 'lucide-react';
 import { useAeirmist } from '../../context/AeirmistContext';
 import { collection, query, orderBy, onSnapshot, limit, where } from 'firebase/firestore';
@@ -20,6 +25,7 @@ import { getAvatarUrl, BLANK_DP } from '../../lib/avatar';
 import { Skeleton } from '../ui/Skeleton';
 import { logger } from '@/src/utils/logger';
 import { LocalSqlService } from '../../services/LocalSqlService';
+import { feedRankingService, FeedMode } from '../../services/FeedRankingService';
 
 
 export const HomeFeedSystem: React.FC<{ onUserClick?: (user: any) => void, onPostClick?: (postId: string) => void, onCreate?: () => void, onNavigate?: (tab: string) => void }> = React.memo(({ onUserClick, onPostClick, onCreate, onNavigate }) => {
@@ -37,12 +43,8 @@ export const HomeFeedSystem: React.FC<{ onUserClick?: (user: any) => void, onPos
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<{ message: string; details: string; link?: string } | null>(null);
   const [retryCount, setRetryCount] = useState(0);
-  const [feedMode, setFeedMode] = useState<'smart' | 'latest' | 'following'>(() => {
-    try {
-      const saved = localStorage.getItem('aeirmist_feed_mode');
-      return saved === 'latest' || saved === 'following' ? saved : 'smart';
-    } catch { return 'smart'; }
-  });
+  const [feedMode, setFeedMode] = useState<FeedMode>(() => feedRankingService.getFeedMode());
+  const [feedbackEpoch, setFeedbackEpoch] = useState(0);
   const isInitialLoad = React.useRef(true);
   const { db, user, profile, permissions, requestPermission, setCameraConfig, addToast, unreadNotificationsCount } = useAeirmist();
   const { settings } = useAppearance(); 
@@ -56,6 +58,13 @@ export const HomeFeedSystem: React.FC<{ onUserClick?: (user: any) => void, onPos
         setLoading(false);
       }
     }).catch(e => logger.warn("Local DB hydration failed", e));
+  }, []);
+
+  // Listen to external feedback events (mute creator/topic, show less, reset)
+  useEffect(() => {
+    const handleFeedUpdate = () => setFeedbackEpoch(prev => prev + 1);
+    window.addEventListener('aeirmist-feed-updated', handleFeedUpdate);
+    return () => window.removeEventListener('aeirmist-feed-updated', handleFeedUpdate);
   }, []);
 
   const showNotificationPrompt = permissions.notifications?.status === 'prompt';
@@ -72,34 +81,13 @@ export const HomeFeedSystem: React.FC<{ onUserClick?: (user: any) => void, onPos
   };
 
   const processedPosts = React.useMemo(() => {
-    // Sort and deduplicate posts by ID to prevent UI glitches
-    const uniquePostsMap = new Map();
-    posts.forEach(p => {
-      if (p && p.id && !uniquePostsMap.has(p.id)) {
-        uniquePostsMap.set(p.id, p);
-      }
+    return feedRankingService.rankPosts(posts, {
+      profile,
+      user,
+      feedMode,
+      userInterests: profile?.interests || []
     });
-
-    const getTime = (p: any) => {
-      try {
-        if (p.createdAt?.toDate) return p.createdAt.toDate().getTime();
-        if (p.createdAt instanceof Date) return p.createdAt.getTime();
-        if (p.createdAt?.seconds) return p.createdAt.seconds * 1000;
-        if (typeof p.createdAt === 'number') return p.createdAt;
-      } catch (e) { return 0; }
-      return 0;
-    };
-
-    return Array.from(uniquePostsMap.values()).sort((a, b) => {
-      if (feedMode === 'latest' || feedMode === 'following') return getTime(b) - getTime(a);
-      const score = (p: any) => {
-        const ageHours = Math.max(1, (Date.now() - getTime(p)) / 3600000);
-        const engagement = Number(p.likesCount || 0) + Number(p.commentsCount || 0) * 2;
-        return (engagement / Math.sqrt(ageHours)) + getTime(p) / 1e12;
-      };
-      return score(b) - score(a);
-    });
-  }, [posts, feedMode]);
+  }, [posts, feedMode, profile, user, feedbackEpoch]);
 
   // Persistent Cache Sync
   useEffect(() => {
@@ -115,24 +103,45 @@ export const HomeFeedSystem: React.FC<{ onUserClick?: (user: any) => void, onPos
     }
   }, [processedPosts]);
 
-  // Memoize stable query parameters to prevent infinite snapshot listener recreation.
-  // NOTE: no longer sliced to 30 here — Firestore's 'in' operator caps at 30 values per
-  // query, so instead of silently dropping anyone past the 30th followed account, we
-  // build the FULL list here and split it into <=30-sized batches below, running one
-  // listener per batch and merging the results.
+  // Memoize stable query parameters according to active feed mode
   const uidsToQueryString = React.useMemo(() => {
     if (!user || !profile) return '[]';
     const following = (profile.social?.following || []).filter(Boolean);
+    const followers = (profile.social?.followers || []).filter(Boolean);
+    const closeFriends = (profile.closeFriends || []).filter(Boolean);
+
+    if (feedMode === 'following') {
+      // Strictly real following relationship
+      return JSON.stringify(Array.from(new Set(following)).sort());
+    }
+
+    if (feedMode === 'friends') {
+      // Mutual follows or close friends
+      const mutuals = following.filter((id: string) => followers.includes(id));
+      const friends = Array.from(new Set([...mutuals, ...closeFriends])).filter(Boolean);
+      return JSON.stringify(friends.sort());
+    }
+
+    // For 'smart', 'latest', 'saved': include following, profile, and user
     const uids = Array.from(new Set([...following, profile.id, user.uid].filter(Boolean))).sort();
     return JSON.stringify(uids);
-  }, [user?.uid, profile?.id, JSON.stringify(profile?.social?.following || [])]);
+  }, [user?.uid, profile?.id, JSON.stringify(profile?.social?.following || []), JSON.stringify(profile?.social?.followers || []), JSON.stringify(profile?.closeFriends || []), feedMode]);
 
   const [postLimit, setPostLimit] = useState(20);
   const loadMoreRef = React.useRef<HTMLDivElement>(null);
 
-  const handleFeedModeChange = (mode: 'smart' | 'latest' | 'following') => {
+  const handleFeedModeChange = (mode: FeedMode) => {
     setFeedMode(mode);
-    try { localStorage.setItem('aeirmist_feed_mode', mode); } catch { /* ignore unavailable storage */ }
+    feedRankingService.setFeedMode(mode);
+  };
+
+  const handleResetRecommendations = () => {
+    feedRankingService.resetRecommendations();
+    addToast?.({
+      title: 'Feed Algorithms Reset',
+      message: 'Recommendation weights, muted topics, and tuning filters have been reset to defaults.',
+      type: 'info'
+    });
   };
 
   const handleManualRetry = () => {
@@ -145,24 +154,7 @@ export const HomeFeedSystem: React.FC<{ onUserClick?: (user: any) => void, onPos
     if (!db || !user || !profile) return;
     
     const uidsToQuery: string[] = JSON.parse(uidsToQueryString);
-    if (uidsToQuery.length === 0) {
-      setPosts([]);
-      setLoading(false);
-      return;
-    }
-    
     if (!isInitialLoad.current) setIsRefreshing(true);
-
-    // Firestore's `where(field, 'in', array)` caps at 30 values. Users can easily
-    // follow more than 30 accounts, so we split into <=30-sized batches and run one
-    // listener per batch, then merge + re-sort the combined results client-side.
-    // To handle potential ID mismatches, we include both profile IDs and UIDs in the batch
-    // and query against both authorId and authorUid fields.
-    const BATCH_SIZE = 30;
-    const batches: string[][] = [];
-    for (let i = 0; i < uidsToQuery.length; i += BATCH_SIZE) {
-      batches.push(uidsToQuery.slice(i, i + BATCH_SIZE));
-    }
 
     const resultsByBatch = new Map<string, any[]>();
     let commitTimer: any = null;
@@ -184,10 +176,13 @@ export const HomeFeedSystem: React.FC<{ onUserClick?: (user: any) => void, onPos
       });
 
       // SORT IN JAVASCRIPT: This removes the need for composite indices in Firestore
-      // which are prone to failing in development and shared environments.
       deduped.sort((a, b) => (b.__sortTime || 0) - (a.__sortTime || 0));
 
-      const filtered = deduped.slice(0, postLimit).filter(p => {
+      const following = (profile.social?.following || []).filter(Boolean);
+      const followers = (profile.social?.followers || []).filter(Boolean);
+      const closeFriends = (profile.closeFriends || []).filter(Boolean);
+
+      const filtered = deduped.slice(0, postLimit * 2).filter(p => {
         if (!p || p.isArchived) return false;
         // Strictly exclude posts from deleted or scheduled-for-purge accounts
         if (
@@ -204,7 +199,29 @@ export const HomeFeedSystem: React.FC<{ onUserClick?: (user: any) => void, onPos
         ) {
           return false;
         }
-        if (p.authorId === profile.id || p.authorUid === user.uid) return true;
+
+        const authorId = p.authorId || p.authorUid || p.author?.id || '';
+        const authorUid = p.authorUid || p.author?.uid || '';
+        const isOwn = authorId === profile.id || authorUid === user.uid;
+
+        // Feed Mode specific filtering
+        if (feedMode === 'following') {
+          return following.includes(authorId) || following.includes(authorUid);
+        }
+
+        if (feedMode === 'friends') {
+          const isMutual = (following.includes(authorId) && followers.includes(authorId)) ||
+                           (following.includes(authorUid) && followers.includes(authorUid));
+          const isClose = closeFriends.includes(authorId) || closeFriends.includes(authorUid);
+          return isMutual || isClose;
+        }
+
+        if (feedMode === 'saved') {
+          return p.savedBy?.includes(profile.id) || p.savedBy?.includes(user.uid) || p.isSaved;
+        }
+
+        // 'smart' and 'latest' modes
+        if (isOwn) return true;
         if (p.audience === 'only_me') return false;
         if (p.audience === 'close_friends') {
           return (p.closeFriends || []).includes(profile.id);
@@ -221,7 +238,6 @@ export const HomeFeedSystem: React.FC<{ onUserClick?: (user: any) => void, onPos
 
     const handleError = (err: any) => {
       logger.error("Feed listener error:", err);
-      // Attempt to load from local SQLite vault when connection drops or fails
       LocalSqlService.getFeedPosts(30).then(cached => {
         if (cached && cached.length > 0) {
           setPosts(prev => prev.length === 0 ? cached.map(c => c.raw || c) : prev);
@@ -245,71 +261,106 @@ export const HomeFeedSystem: React.FC<{ onUserClick?: (user: any) => void, onPos
       }
     };
 
-    const unsubscribes = batches.flatMap((batch, batchIndex) => {
-      // Create two separate queries per batch: one for authorId and one for authorUid
-      // This ensures we catch posts even if the ID system changed
+    const processSnapshot = (snapshot: any, key: string) => {
+      const dbPosts = snapshot.docs.map((doc: any) => {
+        const data = doc.data() as any;
+        const isDeleted = Boolean(
+          data.isDeletedAuthor === true || 
+          data.scheduledForPurge === true ||
+          data.isDeleted === true || 
+          data.hidden === true ||
+          data.author?.isDeleted === true ||
+          data.author?.scheduledForPurge === true ||
+          data.authorName === 'Aeirmist User' || 
+          data.userName === 'Aeirmist User' ||
+          data.author?.name === 'Aeirmist User' ||
+          data.author?.displayName === 'Aeirmist User' ||
+          data.author?.username === 'aeirmist_user' ||
+          data.author?.username === 'deleted_user'
+        );
+
+        if (isDeleted) return null;
+
+        return {
+          id: doc.id,
+          ...data,
+          author: {
+            name: data.author?.displayName || data.author?.username || data.authorName || data.userName || 'User',
+            avatar: getAvatarUrl(data.author?.photoURL || data.userAvatar || data.authorAvatar),
+            isVerified: data.author?.isVerified || false
+          },
+          likesCount: data.likesCount || 0,
+          commentsCount: data.commentsCount || 0,
+          timestamp: data.createdAt?.toDate?.()?.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) || 'Just now',
+          __sortTime: data.createdAt?.toMillis?.() || data.createdAt?.seconds * 1000 || 0,
+        };
+      }).filter(Boolean);
+      resultsByBatch.set(key, dbPosts);
+      scheduleCommit();
+    };
+
+    // Subscriptions container
+    const unsubscribes: (() => void)[] = [];
+
+    // Mode: Saved
+    if (feedMode === 'saved') {
+      const qSaved = query(
+        collection(db, 'posts'),
+        where('savedBy', 'array-contains', profile.id),
+        limit(postLimit)
+      );
+      unsubscribes.push(onSnapshot(qSaved, (s) => processSnapshot(s, 'saved_posts'), handleError));
+      return () => {
+        if (commitTimer) clearTimeout(commitTimer);
+        unsubscribes.forEach(unsub => unsub());
+      };
+    }
+
+    // Modes: Following or Friends with 0 contacts
+    if ((feedMode === 'following' || feedMode === 'friends') && uidsToQuery.length === 0) {
+      setPosts([]);
+      setLoading(false);
+      setIsRefreshing(false);
+      return;
+    }
+
+    // Author batches for following / network
+    const BATCH_SIZE = 30;
+    const batches: string[][] = [];
+    for (let i = 0; i < uidsToQuery.length; i += BATCH_SIZE) {
+      batches.push(uidsToQuery.slice(i, i + BATCH_SIZE));
+    }
+
+    batches.forEach((batch, batchIndex) => {
       const q1 = query(
         collection(db, 'posts'),
         where('authorId', 'in', batch),
         limit(postLimit)
       );
-
       const q2 = query(
         collection(db, 'posts'),
         where('authorUid', 'in', batch),
         limit(postLimit)
       );
-
-      const processSnapshot = (snapshot: any, key: string) => {
-        const dbPosts = snapshot.docs.map((doc: any) => {
-          const data = doc.data() as any;
-          const isDeleted = Boolean(
-            data.isDeletedAuthor === true || 
-            data.scheduledForPurge === true ||
-            data.isDeleted === true || 
-            data.hidden === true ||
-            data.author?.isDeleted === true ||
-            data.author?.scheduledForPurge === true ||
-            data.authorName === 'Aeirmist User' || 
-            data.userName === 'Aeirmist User' ||
-            data.author?.name === 'Aeirmist User' ||
-            data.author?.displayName === 'Aeirmist User' ||
-            data.author?.username === 'aeirmist_user' ||
-            data.author?.username === 'deleted_user'
-          );
-
-          // Completely skip deleted or purged author posts - do not show in feed
-          if (isDeleted) return null;
-
-          return {
-            id: doc.id,
-            ...data,
-            author: {
-              name: data.author?.displayName || data.author?.username || data.authorName || data.userName || 'User',
-              avatar: getAvatarUrl(data.author?.photoURL || data.userAvatar || data.authorAvatar),
-              isVerified: data.author?.isVerified || false
-            },
-            likesCount: data.likesCount || 0,
-            commentsCount: data.commentsCount || 0,
-            timestamp: data.createdAt?.toDate?.()?.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) || 'Just now',
-            __sortTime: data.createdAt?.toMillis?.() || data.createdAt?.seconds * 1000 || 0,
-          };
-        }).filter(Boolean);
-        resultsByBatch.set(key, dbPosts);
-        scheduleCommit();
-      };
-
-      return [
-        onSnapshot(q1, (s) => processSnapshot(s, `batch_${batchIndex}_id`), handleError),
-        onSnapshot(q2, (s) => processSnapshot(s, `batch_${batchIndex}_uid`), handleError)
-      ];
+      unsubscribes.push(onSnapshot(q1, (s) => processSnapshot(s, `batch_${batchIndex}_id`), handleError));
+      unsubscribes.push(onSnapshot(q2, (s) => processSnapshot(s, `batch_${batchIndex}_uid`), handleError));
     });
+
+    // In smart mode, also discover high-quality public posts
+    if (feedMode === 'smart') {
+      const qPublic = query(
+        collection(db, 'posts'),
+        where('audience', '==', 'public'),
+        limit(20)
+      );
+      unsubscribes.push(onSnapshot(qPublic, (s) => processSnapshot(s, 'public_discovery'), handleError));
+    }
 
     return () => {
       if (commitTimer) clearTimeout(commitTimer);
       unsubscribes.forEach(unsub => unsub());
     };
-  }, [db, user?.uid, profile?.id, uidsToQueryString, retryCount, postLimit]);
+  }, [db, user?.uid, profile?.id, uidsToQueryString, feedMode, retryCount, postLimit]);
 
   // Infinite Scroll Trigger
   useEffect(() => {
@@ -429,17 +480,46 @@ export const HomeFeedSystem: React.FC<{ onUserClick?: (user: any) => void, onPos
             )}
 
             <div className="mb-3 px-1">
-              <div className="flex items-center gap-2 overflow-x-auto no-scrollbar" role="toolbar" aria-label="Feed preferences">
-                <div className="flex items-center gap-1.5 px-3 h-9 rounded-xl bg-white/[0.03] border border-white/10 text-white/40 shrink-0">
-                  <SlidersHorizontal size={13} aria-hidden="true" />
-                  <span className="text-[9px] font-black uppercase tracking-widest">Feed</span>
+              <div className="flex items-center justify-between gap-2 overflow-x-auto no-scrollbar" role="toolbar" aria-label="Feed preferences">
+                <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
+                  <div className="flex items-center gap-1.5 px-3 h-9 rounded-xl bg-white/[0.03] border border-white/10 text-white/40 shrink-0">
+                    <SlidersHorizontal size={13} aria-hidden="true" />
+                    <span className="text-[9px] font-black uppercase tracking-widest">Feed</span>
+                  </div>
+                  {([
+                    ['smart', 'Smart'],
+                    ['latest', 'Latest'],
+                    ['following', 'Following'],
+                    ['friends', 'Friends'],
+                    ['saved', 'Saved']
+                  ] as const).map(([mode, label]) => (
+                    <button 
+                      key={mode} 
+                      type="button" 
+                      onClick={() => handleFeedModeChange(mode)} 
+                      aria-pressed={feedMode === mode}
+                      className={`h-9 px-3.5 rounded-xl border text-[9px] font-black uppercase tracking-widest transition-all shrink-0 cursor-pointer ${
+                        feedMode === mode 
+                          ? 'bg-aeirmist-cyan text-black border-aeirmist-cyan shadow-[0_0_12px_rgba(0,242,255,0.3)]' 
+                          : 'bg-white/[0.02] text-white/45 border-white/10 hover:text-white hover:bg-white/[0.06]'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
                 </div>
-                {([['smart', 'Smart'], ['latest', 'Latest'], ['following', 'Following']] as const).map(([mode, label]) => (
-                  <button key={mode} type="button" onClick={() => handleFeedModeChange(mode)} aria-pressed={feedMode === mode}
-                    className={`h-9 px-3.5 rounded-xl border text-[9px] font-black uppercase tracking-widest transition-all shrink-0 ${feedMode === mode ? 'bg-aeirmist-cyan text-black border-aeirmist-cyan' : 'bg-white/[0.02] text-white/45 border-white/10 hover:text-white'}`}>
-                    {label}
-                  </button>
-                ))}
+
+                {/* Reset Recommendations Action */}
+                <button
+                  type="button"
+                  onClick={handleResetRecommendations}
+                  title="Reset feed recommendations & unhide tuned content"
+                  aria-label="Reset recommendations"
+                  className="h-9 px-3 rounded-xl bg-white/[0.02] hover:bg-white/[0.08] border border-white/10 text-white/40 hover:text-aeirmist-cyan transition-all flex items-center gap-1.5 shrink-0 cursor-pointer"
+                >
+                  <RotateCcw size={13} />
+                  <span className="text-[9px] font-black uppercase tracking-widest hidden sm:inline">Reset</span>
+                </button>
               </div>
             </div>
 
@@ -511,20 +591,44 @@ export const HomeFeedSystem: React.FC<{ onUserClick?: (user: any) => void, onPos
                   ) : processedPosts.length === 0 ? (
                     <div className="ui-card p-12 text-center flex flex-col items-center justify-center my-6">
                       <div className="w-16 h-16 rounded-2xl bg-aeirmist-cyan/10 border border-aeirmist-cyan/20 flex items-center justify-center mb-4 text-aeirmist-cyan">
-                        <Plus size={28} />
+                        {feedMode === 'following' ? <Users size={28} /> : feedMode === 'saved' ? <Bookmark size={28} /> : feedMode === 'friends' ? <Sparkles size={28} /> : <Plus size={28} />}
                       </div>
-                      <h3 className="ui-heading-2 mb-2">Welcome to your feed</h3>
+                      <h3 className="ui-heading-2 mb-2">
+                        {feedMode === 'following'
+                          ? 'No Following Posts'
+                          : feedMode === 'friends'
+                          ? 'No Friends Activity'
+                          : feedMode === 'saved'
+                          ? 'No Saved Bookmarks'
+                          : 'Welcome to your feed'}
+                      </h3>
                       <p className="ui-body-text text-white/50 max-w-sm mx-auto mb-6">
-                        No posts yet. Start by sharing your first post with your connections or explore stores in the Marketplace.
+                        {feedMode === 'following'
+                          ? 'You are not following anyone with recent posts. Discover active creators to personalize your feed.'
+                          : feedMode === 'friends'
+                          ? 'Posts from your close friends and mutual connections will appear here.'
+                          : feedMode === 'saved'
+                          ? 'Posts you bookmark will be safely stored here for easy offline reading.'
+                          : 'No posts yet. Start by sharing your first post with your connections or explore stores in the Marketplace.'}
                       </p>
                       <div className="flex items-center justify-center gap-3">
-                        <button
-                          type="button"
-                          onClick={onCreate}
-                          className="ui-btn-primary"
-                        >
-                          <Plus className="ui-icon-sm" /> Create Post
-                        </button>
+                        {feedMode === 'following' ? (
+                          <button
+                            type="button"
+                            onClick={() => window.dispatchEvent(new CustomEvent('aeirmist-navigate', { detail: 'discover' }))}
+                            className="ui-btn-primary"
+                          >
+                            <Compass className="ui-icon-sm" /> Discover Creators
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={onCreate}
+                            className="ui-btn-primary"
+                          >
+                            <Plus className="ui-icon-sm" /> Create Post
+                          </button>
+                        )}
                       </div>
                     </div>
                   ) : (

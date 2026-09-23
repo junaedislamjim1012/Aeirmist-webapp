@@ -23,6 +23,8 @@ import { getAvatarUrl, BLANK_DP } from '../../lib/avatar';
 import { doc, updateDoc, increment, getDoc, collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, deleteDoc, getDocs, where } from 'firebase/firestore';
 import { Collage, MediaItem } from './Collage';
 import { PostMenu } from '../PostMenu';
+import { WhyAmISeeingThisModal } from './WhyAmISeeingThisModal';
+import { feedRankingService } from '../../services/FeedRankingService';
 import { Poll } from './Poll';
 import { usePostAnalytics } from '../../hooks/usePostAnalytics';
 import { postAnalytics } from '../../services/PostAnalyticsService';
@@ -78,7 +80,19 @@ export const PremiumPostCard = React.memo<PostCardProps>(({ post, onUserClick, o
   const [isBookmarked, setIsBookmarked] = useState(false);
   const [showComments, setShowComments] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [showWhyModal, setShowWhyModal] = useState(false);
   const [showInsights, setShowInsights] = useState(false);
+
+  const postTopics = React.useMemo(() => {
+    const t: string[] = [];
+    if (Array.isArray(post.tags)) post.tags.forEach((tag: any) => typeof tag === 'string' && t.push(tag.replace(/^#/, '')));
+    if (post.category) t.push(post.category);
+    if (post.content) {
+      const matches = post.content.match(/#(\w+)/g);
+      if (matches) matches.forEach((m: string) => t.push(m.replace('#', '')));
+    }
+    return Array.from(new Set(t));
+  }, [post.tags, post.category, post.content]);
   
   // Voice Simulation Player States
   const [voicePlaying, setVoicePlaying] = useState(false);
@@ -1479,7 +1493,9 @@ export const PremiumPostCard = React.memo<PostCardProps>(({ post, onUserClick, o
           isOpen={isMenuOpen} 
           onClose={() => setIsMenuOpen(false)} 
           postId={post.id}
+          authorId={postAuthorId}
           authorName={author.name}
+          topics={postTopics}
           isOwnPost={!!isOwnPost}
           isSaved={isBookmarked}
           onSave={handleBookmarkToggle}
@@ -1497,6 +1513,37 @@ export const PremiumPostCard = React.memo<PostCardProps>(({ post, onUserClick, o
           isArchived={!!post.isArchived}
           onArchive={handleArchivePost}
           onMoveToVault={handleMoveToVaultAction}
+          onWhyAmISeeingThis={() => setShowWhyModal(true)}
+          onShowLess={() => {
+            if (postAuthorId) feedRankingService.recordNegativeFeedback(postAuthorId, 1);
+            if (addToast) addToast({ title: 'Preferences Updated', message: `Showing less from @${author.name}`, type: 'info' });
+          }}
+          onNotInterested={() => {
+            if (postAuthorId) feedRankingService.recordNegativeFeedback(postAuthorId, 2);
+            setIsHidden(true);
+            if (addToast) addToast({ title: 'Post Removed', message: 'Tuning your feed recommendations.', type: 'info' });
+          }}
+          onMuteTopic={(topic) => {
+            feedRankingService.muteTopic(topic);
+            setIsHidden(true);
+            if (addToast) addToast({ title: `Muted #${topic}`, message: `Posts tagged #${topic} will be hidden.`, type: 'info' });
+          }}
+        />
+
+        <WhyAmISeeingThisModal
+          isOpen={showWhyModal}
+          onClose={() => setShowWhyModal(false)}
+          post={post}
+          rankingReason={(post as any)._rankingReason}
+          onShowLess={() => {
+            if (postAuthorId) feedRankingService.recordNegativeFeedback(postAuthorId, 1);
+            if (addToast) addToast({ title: 'Preferences Updated', message: `Showing less from @${author.name}`, type: 'info' });
+          }}
+          onMuteCreator={() => {
+            if (postAuthorId) feedRankingService.muteCreator(postAuthorId);
+            setIsHidden(true);
+            if (addToast) addToast({ title: `Muted @${author.name}`, message: `Posts from this creator are hidden.`, type: 'info' });
+          }}
         />
       </div>
 

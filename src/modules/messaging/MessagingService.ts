@@ -62,6 +62,7 @@ class MessagingService {
   private listeners: Map<string, () => void> = new Map();
   private lastMetadataUpdate: Map<string, number> = new Map();
   private lastDeliveryUpdate: Map<string, number> = new Map();
+  private recentOptimisticIds: Map<string, number> = new Map();
   private isSafeMode: boolean = false;
 
   public setSafeMode(enabled: boolean) {
@@ -151,6 +152,21 @@ class MessagingService {
   ): Promise<string> {
     if (!user || !user.uid || !profile || !profile.id) {
       throw new Error("Authentication required to send messages.");
+    }
+
+    if (metadata.optimisticId) {
+      const lastSent = this.recentOptimisticIds.get(metadata.optimisticId);
+      if (lastSent && Date.now() - lastSent < 15000) {
+        logger.warn(`[MessagingService] Duplicate send intercepted for ${metadata.optimisticId}`);
+        return conversationId.startsWith('new_') ? conversationId : conversationId;
+      }
+      this.recentOptimisticIds.set(metadata.optimisticId, Date.now());
+      if (this.recentOptimisticIds.size > 200) {
+        const now = Date.now();
+        for (const [id, time] of this.recentOptimisticIds.entries()) {
+          if (now - time > 60000) this.recentOptimisticIds.delete(id);
+        }
+      }
     }
 
     logger.info(`[MessagingService] sending message to ${conversationId}...`);
@@ -758,10 +774,27 @@ class MessagingService {
         return String(b.id || '').localeCompare(String(a.id || ''));
       });
       
-      // Filter by profileId if possible, but fallback to all chats if profileIds is missing (legacy support)
-      const currentProfileChats = chats.filter(chat => 
-        !chat.profileIds || chat.profileIds.includes(profileId) || chat.participants?.includes(userUid)
-      );
+      // Filter by profileId, verify deletedFor and clearedAt to prevent ghost resurrection
+      const currentProfileChats = chats.filter(chat => {
+        const belongsToUser = !chat.profileIds || chat.profileIds.includes(profileId) || chat.participants?.includes(userUid);
+        if (!belongsToUser) return false;
+
+        const deletedForMs = extractTimestampMs((chat as any).deletedFor?.[profileId]);
+        const activityMs = getMs(chat);
+        // If conversation was deleted by this user and no subsequent message has arrived, hide it
+        if (deletedForMs > 0 && activityMs <= deletedForMs) {
+          return false;
+        }
+
+        const clearedAtMs = extractTimestampMs((chat as any).clearedAt?.[profileId]);
+        if (clearedAtMs > 0 && activityMs <= clearedAtMs) {
+          // Clear message preview so old deleted snippet does not resurrect
+          (chat as any).lastMessage = null;
+          (chat as any).latestMessagePreview = '';
+        }
+
+        return true;
+      });
 
       // 2. Persist to Cache (Async)
       try {

@@ -86,6 +86,7 @@ import { useAeirmist } from '../context/AeirmistContext';
 import { aeirmistCache } from '../services/CacheService';
 import { mediaService, MediaQuality } from '../services/MediaService';
 import { messagingService } from '../modules/messaging/MessagingService';
+import { messageOutboxService } from '../modules/messaging/MessageOutboxService';
 import { aeirmistCall } from '../modules/calls/CallService';
 import { logger } from '@/src/utils/logger';
 import { useBackHandler } from '../utils/backNavigation';
@@ -2349,6 +2350,38 @@ const ChatWindow = ({
   const [otherProfile, setOtherProfile] = useState<any>(null);
   const [otherProfileLoaded, setOtherProfileLoaded] = useState(false);
 
+  // Messenger 2.0: Hydrate persistent local outbox on active chat selection
+  useEffect(() => {
+    if (!chat.id) return;
+    const outboxItems = messageOutboxService.getOutbox(chat.id);
+    if (outboxItems && outboxItems.length > 0) {
+      setOptimistic(prev => {
+        const existingIds = new Set(prev.map(m => m.id));
+        const newItems = outboxItems
+          .filter(item => !existingIds.has(item.id))
+          .map(item => ({
+            id: item.id,
+            text: item.text,
+            senderId: profile?.id,
+            type: item.type as any,
+            mediaUrl: item.mediaUrl || undefined,
+            timestamp: item.status === 'failed' ? 'Failed to send' : 'Sending...',
+            timestampMs: item.timestampMs,
+            isOptimistic: item.status === 'sending',
+            isFailed: item.status === 'failed',
+            metadata: item.metadata
+          }));
+        return [...prev, ...newItems];
+      });
+
+      setFailedMessages(prev => {
+        const next = new Set(prev);
+        outboxItems.filter(i => i.status === 'failed').forEach(i => next.add(i.id));
+        return next;
+      });
+    }
+  }, [chat.id, profile?.id]);
+
   const { 
     db, 
     storage, 
@@ -2678,10 +2711,12 @@ const ChatWindow = ({
       return next;
     });
     setOptimistic(prev => prev.filter(m => m.id !== msg.id));
+    messageOutboxService.remove(chat.id, msg.id);
+
     if (msg.type === 'text') {
-      handleSendMessage(msg.text || '', msg.mood);
+      handleSendMessage(msg.text || '', (msg as any).mood);
     } else {
-      // Re-send media if we have it locally, otherwise we just try sending the URL
+      // Re-send media if we have it locally, otherwise we try sending the URL
       if (msg.mediaUrl) {
          handleSendMediaUrl(msg.mediaUrl, msg.type as any);
       }
@@ -2691,7 +2726,7 @@ const ChatWindow = ({
   const handleSendMediaUrl = async (mediaUrl: string, type: 'image' | 'video' | 'voice' | 'media' | 'text') => {
     if (!db || !profile || !user || !chat.id) return;
 
-    const optimisticId = 'opt_' + Date.now();
+    const optimisticId = `opt_${user.uid}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     const optimisticMsg: Message = {
       id: optimisticId,
       text: `Sent a ${type}`,
@@ -2703,6 +2738,14 @@ const ChatWindow = ({
       isOptimistic: true,
     };
     
+    // Enqueue in local persistent outbox
+    messageOutboxService.enqueue(chat.id, {
+      id: optimisticId,
+      text: `Sent a ${type}`,
+      type,
+      mediaUrl
+    });
+
     setOptimistic(prev => [...prev, optimisticMsg]);
     onMessageSent?.(chat.id, `Sent a ${type}`, chat);
     
@@ -2739,6 +2782,8 @@ const ChatWindow = ({
         vanish: !!chat.isVanishMode
       });
       
+      messageOutboxService.markDelivered(chat.id, optimisticId);
+
       setFailedMessages(prev => {
         const next = new Set(prev);
         next.delete(optimisticId);
@@ -2752,18 +2797,19 @@ const ChatWindow = ({
           isTemporary: false
         });
       }
-    } catch (e) {
+    } catch (e: any) {
       logger.error(`[Messenger] Media retry failed:`, e);
+      messageOutboxService.markFailed(chat.id, optimisticId, e?.message);
       setFailedMessages(prev => new Set(prev).add(optimisticId));
-      setOptimistic(prev => prev.filter(m => m.id !== optimisticId));
+      setOptimistic(prev => prev.map(m => m.id === optimisticId ? { ...m, isFailed: true, isOptimistic: false, timestamp: 'Failed to send' } : m));
     }
   };
 
   const handleSendMessage = async (text: string, mood?: string) => {
     if (!db || !profile || !user || !chat.id) return;
     
-    // Optimistic message for instant UI feedback
-    const optimisticId = 'opt_' + Date.now();
+    // Deterministic deduplication ID for instant UI feedback
+    const optimisticId = `opt_${user.uid}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     const optimisticMsg = {
       id: optimisticId,
       text,
@@ -2775,6 +2821,14 @@ const ChatWindow = ({
       mood
     };
     
+    // Enqueue in persistent outbox
+    messageOutboxService.enqueue(chat.id, {
+      id: optimisticId,
+      text,
+      type: 'text',
+      metadata: { mood }
+    });
+
     setOptimistic(prev => [...prev, optimisticMsg]);
     onMessageSent?.(chat.id, text, chat);
     requestAnimationFrame(() => scrollToBottom('auto'));
@@ -2825,6 +2879,9 @@ const ChatWindow = ({
       
       logger.info(`[Messenger] Connections confirmed. NewID: ${newId}`);
       
+      // Mark delivered in outbox
+      messageOutboxService.markDelivered(chat.id, optimisticId);
+
       setFailedMessages(prev => {
         const next = new Set(prev);
         next.delete(optimisticId);
@@ -2832,7 +2889,6 @@ const ChatWindow = ({
       });
 
       if (chat.isTemporary && newId) {
-        // Transition to the real chat ID immediately for live updates
         const realChat = {
           ...chat,
           id: newId,
@@ -2840,11 +2896,11 @@ const ChatWindow = ({
         };
         onChatUpdate(realChat);
       }
-    } catch (e) {
+    } catch (e: any) {
       logger.error("Message send failed", e);
+      messageOutboxService.markFailed(chat.id, optimisticId, e?.message);
       setFailedMessages(prev => new Set(prev).add(optimisticId));
-      // Retain in optimistic but update its state to failed
-      setOptimistic(prev => prev.map(m => m.id === optimisticId ? { ...m, isFailed: true, isOptimistic: false } : m));
+      setOptimistic(prev => prev.map(m => m.id === optimisticId ? { ...m, isFailed: true, isOptimistic: false, timestamp: 'Failed to send' } : m));
     }
   };
 
@@ -2852,7 +2908,7 @@ const ChatWindow = ({
     if (!db || !profile || !user || !chat.id) return;
 
     const useHD = requestedHD ?? isHDActive;
-    const optimisticId = 'opt_media_' + Date.now();
+    const optimisticId = `opt_media_${user.uid}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 
     try {
       let type: 'image' | 'video' | 'voice' | 'media' = 'media';
@@ -2879,6 +2935,14 @@ const ChatWindow = ({
         progress: 0,
         uploadStatus: 'PREPARING'
       };
+
+      messageOutboxService.enqueue(chat.id, {
+        id: optimisticId,
+        text: `Sent a ${type}`,
+        type,
+        mediaUrl: localUrl
+      });
+
       setOptimistic(prev => [...prev, optimisticMsg]);
       setUploadProgress({ progress: 0, status: 'PREPARING' });
 
@@ -2910,6 +2974,7 @@ const ChatWindow = ({
         isHD: useHD
       });
       
+      messageOutboxService.markDelivered(chat.id, optimisticId);
       setUploadProgress(null);
       URL.revokeObjectURL(localUrl);
       setOptimistic(prev => prev.filter(m => m.id !== optimisticId));
@@ -2921,11 +2986,12 @@ const ChatWindow = ({
           isTemporary: false
         });
       }
-    } catch (e) {
+    } catch (e: any) {
       logger.error("Media send failed", e);
+      messageOutboxService.markFailed(chat.id, optimisticId, e?.message);
       setUploadProgress(null);
       setFailedMessages(prev => new Set(prev).add(optimisticId));
-      setOptimistic(prev => prev.map(m => m.id === optimisticId ? { ...m, isFailed: true, isOptimistic: false } : m));
+      setOptimistic(prev => prev.map(m => m.id === optimisticId ? { ...m, isFailed: true, isOptimistic: false, timestamp: 'Failed to send' } : m));
     }
   };
 

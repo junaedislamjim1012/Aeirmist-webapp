@@ -2,17 +2,21 @@ import React, { useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Bookmark, Share2, Link, UserPlus, 
-  VolumeX, EyeOff, Flag, Ban, BarChart3, Pin, Edit3, Trash2, Archive, Lock, X, Sparkles, Check
+  VolumeX, EyeOff, Flag, Ban, BarChart3, Pin, Edit3, Trash2, Archive, Lock, X, Sparkles, Check,
+  HelpCircle, ThumbsDown, Hash
 } from 'lucide-react';
 import { useAeirmist } from '../context/AeirmistContext';
 import { logger } from '@/src/utils/logger';
+import { feedRankingService } from '../services/FeedRankingService';
 
 
 interface PostMenuProps {
   isOpen: boolean;
   onClose: () => void;
   postId?: string;
+  authorId?: string;
   authorName?: string;
+  topics?: string[];
   isOwnPost?: boolean;
   isSaved?: boolean;
   onSave?: () => void;
@@ -31,6 +35,10 @@ interface PostMenuProps {
   isArchived?: boolean;
   onArchive?: () => void;
   onMoveToVault?: () => void;
+  onWhyAmISeeingThis?: () => void;
+  onShowLess?: () => void;
+  onNotInterested?: () => void;
+  onMuteTopic?: (topic: string) => void;
 }
 
 interface MenuOption {
@@ -63,7 +71,13 @@ export const PostMenu: React.FC<PostMenuProps> = ({
   onFollow,
   isArchived = false,
   onArchive,
-  onMoveToVault
+  onMoveToVault,
+  authorId,
+  topics = [],
+  onWhyAmISeeingThis,
+  onShowLess,
+  onNotInterested,
+  onMuteTopic
 }) => {
   const modalRef = useRef<HTMLDivElement>(null);
   const auraContext = useAeirmist();
@@ -206,7 +220,40 @@ export const PostMenu: React.FC<PostMenuProps> = ({
     },
   ];
 
+  const handleShowLess = () => {
+    if (onShowLess) {
+      onShowLess();
+    } else if (authorId) {
+      feedRankingService.recordNegativeFeedback(authorId, 1);
+      addToast?.({
+        title: 'Tuning Feed',
+        message: `You'll see fewer posts from @${authorName}.`,
+        type: 'info'
+      });
+    }
+  };
+
+  const handleNotInterested = () => {
+    if (onNotInterested) {
+      onNotInterested();
+    } else {
+      if (authorId) feedRankingService.recordNegativeFeedback(authorId, 2);
+      handleHideDefault();
+      addToast?.({
+        title: 'Feedback Recorded',
+        message: `Post removed. We'll tune your recommendations accordingly.`,
+        type: 'info'
+      });
+    }
+  };
+
   const viewerSection: MenuOption[] = [
+    ...(onWhyAmISeeingThis ? [{
+      icon: <HelpCircle size={17} className="text-aeirmist-cyan" />,
+      label: 'Why am I seeing this?',
+      onClick: onWhyAmISeeingThis,
+      badge: 'Feed 2.0'
+    }] : []),
     {
       icon: <UserPlus size={17} className="text-emerald-400" />,
       label: isFollowingCreator ? `Unfollow @${authorName}` : `Follow @${authorName}`,
@@ -216,8 +263,41 @@ export const PostMenu: React.FC<PostMenuProps> = ({
       },
       badge: isFollowingCreator ? 'Following' : undefined
     },
-    { icon: <VolumeX size={17} className="text-amber-400" />, label: `Mute @${authorName}`, onClick: handleMuteDefault },
-    { icon: <EyeOff size={17} className="text-indigo-400" />, label: 'Hide Post', onClick: handleHideDefault },
+    {
+      icon: <ThumbsDown size={17} className="text-amber-400" />,
+      label: 'Show less like this',
+      onClick: handleShowLess
+    },
+    {
+      icon: <EyeOff size={17} className="text-indigo-400" />,
+      label: 'Not interested in this',
+      onClick: handleNotInterested
+    },
+    { 
+      icon: <VolumeX size={17} className="text-amber-400" />, 
+      label: `Mute @${authorName}`, 
+      onClick: () => {
+        if (authorId) feedRankingService.muteCreator(authorId);
+        handleMuteDefault();
+      } 
+    },
+    ...(topics.slice(0, 2).map((topic: string) => ({
+      icon: <Hash size={17} className="text-purple-400" />,
+      label: `Mute #${topic}`,
+      onClick: () => {
+        if (onMuteTopic) {
+          onMuteTopic(topic);
+        } else {
+          feedRankingService.muteTopic(topic);
+          addToast?.({
+            title: `Muted #${topic}`,
+            message: `You won't see posts tagged #${topic} in your feed.`,
+            type: 'info'
+          });
+        }
+      }
+    }))),
+    { icon: <EyeOff size={17} className="text-white/40" />, label: 'Hide Post', onClick: handleHideDefault },
   ];
 
   const dangerSection: MenuOption[] = isOwnPost

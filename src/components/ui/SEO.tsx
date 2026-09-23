@@ -11,10 +11,10 @@ interface SEOProps {
 }
 
 export const SEO: React.FC<SEOProps> = ({
-  title = "Aeirmist | Aeirmist",
-  description = "Aeirmist is a high-fidelity Social Platform where Connections meets digital connection. Experience stories, messages, and calls in a unified cosmic stream.",
-  canonical = "https://aeirmist.social",
-  ogImage = "/og-image.jpg",
+  title = "Aeirmist — Connect, Share & Discover",
+  description = "Aeirmist is a social networking platform to connect with friends, share stories and posts, discover creative videos, chat in real-time, and explore modern marketplace content.",
+  canonical = "https://aeirmist.com",
+  ogImage = "https://aeirmist.com/og-image.jpg",
   ogType = "website",
   schemaData
 }) => {

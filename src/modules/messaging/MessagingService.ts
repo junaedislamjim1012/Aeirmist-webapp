@@ -573,11 +573,11 @@ class MessagingService {
       limit(limitCount)
     );
 
-    const myClearedAtMs = chatData?.clearedAt?.[currentProfileId]?.toMillis?.() || 0;
+    const myClearedAtMs = parseTimestampMs(chatData?.clearedAt?.[currentProfileId]);
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       logger.info(`[MessagingService] Incoming messages for ${conversationId}: ${snapshot.size} items.`);
-      const messages = snapshot.docs
+      const rawMessages = snapshot.docs
         .map(doc => {
           const data = doc.data({ serverTimestamps: 'estimate' });
           const timestampMs = extractMsgTimestampMs(data);
@@ -600,17 +600,33 @@ class MessagingService {
           // Skip myClearedAtMs filter if the message is pending/optimistic/sending
           const isPendingOrOptimistic = (m.status as string) === 'sending' || (m.status as string) === 'pending' || m.id?.startsWith('opt_') || !m.timestampMs || m.timestampMs === 0;
           if (isPendingOrOptimistic) return true;
-          if (m.timestampMs <= myClearedAtMs) return false;
+          if (myClearedAtMs > 0 && m.timestampMs <= myClearedAtMs) return false;
           
-          const deletedAtConv = chatData?.deletedFor?.[currentProfileId];
-          if (typeof deletedAtConv === 'number' && m.timestampMs <= deletedAtConv) return false;
+          const deletedAtConv = parseTimestampMs(chatData?.deletedFor?.[currentProfileId]);
+          if (deletedAtConv > 0 && m.timestampMs <= deletedAtConv) return false;
 
           return true;
         });
       
+      // Deduplicate messages by id and optimisticId to prevent duplicates or ghost resurrections
+      const seenIds = new Set<string>();
+      const seenOptimisticIds = new Set<string>();
+      const deduped: Message[] = [];
+
+      for (const m of rawMessages) {
+        if (!m.id || seenIds.has(m.id)) continue;
+        const optId = (m as any).metadata?.optimisticId || (m as any).optimisticId;
+        if (optId) {
+          if (seenOptimisticIds.has(optId)) continue;
+          seenOptimisticIds.add(optId);
+        }
+        seenIds.add(m.id);
+        deduped.push(m);
+      }
+
       // Sort oldest to newest (ascending chronological sequence)
-      messages.sort((a, b) => (a.timestampMs || 0) - (b.timestampMs || 0));
-      const reversed = messages;
+      deduped.sort((a, b) => (a.timestampMs || 0) - (b.timestampMs || 0));
+      const reversed = deduped;
 
       // 2. Persist to Cache (Async)
       try {
@@ -622,8 +638,8 @@ class MessagingService {
       } catch (e) {}
 
       // Update my delivered status if I've received messages from others
-      const myLastDeliveredMs = chatData?.lastDelivered?.[currentProfileId]?.toMillis?.() || 0;
-      const unconfirmed = messages.filter(m => 
+      const myLastDeliveredMs = parseTimestampMs(chatData?.lastDelivered?.[currentProfileId]);
+      const unconfirmed = reversed.filter(m => 
         m.senderId !== currentProfileId && 
         m.timestampMs > myLastDeliveredMs 
         

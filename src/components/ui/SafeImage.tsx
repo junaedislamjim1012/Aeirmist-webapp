@@ -108,8 +108,8 @@ export const SafeImage: React.FC<SafeImageProps> = ({
               {fallbackIcon || <ImageIcon size={20} className="text-white/20" />}
             </div>
             <div className="space-y-1">
-              <span className="text-[9px] font-black uppercase tracking-[0.2em] block text-white/60">Broken Connections</span>
-              <p className="text-[7px] uppercase tracking-widest opacity-50 leading-relaxed max-w-[120px]">This neural link could not be established.</p>
+              <span className="text-[10px] font-semibold uppercase tracking-wider block text-white/70">Image Unavailable</span>
+              <p className="text-[9px] opacity-60 leading-relaxed max-w-[140px]">Could not load image.</p>
             </div>
             <button 
               onClick={(e) => {
@@ -120,9 +120,9 @@ export const SafeImage: React.FC<SafeImageProps> = ({
                 setCurrentSrc(undefined);
                 setTimeout(() => setCurrentSrc(originalSrc), 50);
               }}
-              className="mt-2 px-4 py-2 bg-white/10 hover:bg-white/20 rounded-full text-[8px] font-black uppercase tracking-widest transition-all active:scale-95"
+              className="mt-2 px-3 py-1.5 bg-white/10 hover:bg-white/20 rounded-full text-[9px] font-medium tracking-wide transition-all active:scale-95"
             >
-              Re-Sync Link
+              Retry
             </button>
           </motion.div>
         )}

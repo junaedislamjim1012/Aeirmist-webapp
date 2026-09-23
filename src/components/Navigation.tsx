@@ -124,7 +124,8 @@ export const Navigation = React.memo(({ onCreate, activeTab, onTabChange, isExpa
   }, []);
 
   // Combined smart state
-  const isCurrentlyExpanded = isExpanded || isHovered;
+  const targetWidth = isHovered ? 260 : (isExpanded ? (settings.compactSidebar ? 72 : 260) : 72);
+  const isCurrentlyExpanded = targetWidth === 260;
   const shouldReduceMotion = useReducedMotion();
 
   return (
@@ -135,7 +136,7 @@ export const Navigation = React.memo(({ onCreate, activeTab, onTabChange, isExpa
         aria-label="Main Navigation"
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
-        animate={{ width: isCurrentlyExpanded ? (settings.compactSidebar ? 72 : 260) : 72 }} initial={false}
+        animate={{ width: targetWidth }} initial={false}
         transition={shouldReduceMotion ? { duration: 0 } : { type: 'spring', damping: 22, stiffness: 125 }}
         className="hidden md:flex flex-col h-full border-r border-white/10 bg-[#060608]/90 backdrop-blur-3xl px-3 py-4 z-50 shrink-0 relative select-none overflow-hidden"
       >

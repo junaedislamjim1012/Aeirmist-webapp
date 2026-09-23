@@ -15,9 +15,19 @@ export const BannedScreen: React.FC = () => {
 
   const suspensionInfo = profile?.suspensionInfo || {};
   const expiresAt = suspensionInfo.expiresAt ? new Date(suspensionInfo.expiresAt).getTime() : null;
+  const isSuspensionExpired = Boolean(expiresAt && Date.now() >= expiresAt);
 
   const handleRestoreAccount = async () => {
     if (!profile?.id || !db) return;
+    if (!isSuspensionExpired) {
+      addToast({
+        title: 'Suspension Active',
+        message: 'Your suspension period is still active. Please submit an appeal for moderator review.',
+        type: 'warning'
+      });
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       const profileRef = doc(db, 'profiles', profile.id);
@@ -28,7 +38,7 @@ export const BannedScreen: React.FC = () => {
       });
       addToast({
         title: 'Account Restored',
-        message: 'Your account suspension has been lifted. Welcome back!',
+        message: 'Your temporary suspension has ended. Welcome back!',
         type: 'success'
       });
     } catch (err) {
@@ -41,7 +51,7 @@ export const BannedScreen: React.FC = () => {
         });
         addToast({
           title: 'Account Restored',
-          message: 'Your account suspension has been lifted.',
+          message: 'Your temporary suspension has ended.',
           type: 'success'
         });
       } catch (err2) {
@@ -67,7 +77,7 @@ export const BannedScreen: React.FC = () => {
       const now = Date.now();
       const diff = expiresAt - now;
       if (diff <= 0) {
-        setTimeLeft('Suspension Expired (Pending Review)');
+        setTimeLeft('Suspension Expired');
         clearInterval(timer);
       } else {
         const days = Math.floor(diff / (1000 * 60 * 60 * 24));
@@ -83,26 +93,32 @@ export const BannedScreen: React.FC = () => {
 
   const handleSubmitAppeal = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user || !db) return;
+    if (!user || !db || !appealReason.trim()) return;
 
     setIsSubmitting(true);
     try {
-      if (appealReason.trim()) {
-        await addDoc(collection(db, 'appeals'), {
-          userId: user.uid,
-          username: profile?.username || 'Anonymous',
-          userEmail: user.email,
-          reason: appealReason,
-          status: 'resolved',
-          timestamp: serverTimestamp(),
-          createdAt: new Date().toISOString()
-        });
-      }
-      await handleRestoreAccount();
+      await addDoc(collection(db, 'appeals'), {
+        userId: user.uid,
+        username: profile?.username || 'Anonymous',
+        userEmail: user.email,
+        reason: appealReason.trim(),
+        status: 'pending',
+        timestamp: serverTimestamp(),
+        createdAt: new Date().toISOString()
+      });
       setSubmitted(true);
+      addToast({
+        title: 'Appeal Submitted',
+        message: 'Your appeal has been received and is pending moderator review.',
+        type: 'success'
+      });
     } catch (error) {
       logger.error('Appeal submission failed:', error);
-      await handleRestoreAccount();
+      addToast({
+        title: 'Submission Error',
+        message: 'Could not submit appeal. Please try again later.',
+        type: 'warning'
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -180,9 +196,9 @@ export const BannedScreen: React.FC = () => {
                   className="p-6 rounded-2xl bg-emerald-500/5 border border-emerald-500/20 text-center space-y-3"
                 >
                   <ShieldCheck size={24} className="mx-auto text-emerald-400" />
-                  <p className="text-[10px] font-black uppercase tracking-widest text-emerald-400">Appeal Transmission Complete</p>
-                  <p className="text-[9px] text-emerald-400/60 leading-relaxed uppercase">
-                    The Trust & Safety team is reviewing your case. Updates will be dispatched to your registered email.
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-400">Appeal Submitted</p>
+                  <p className="text-[9px] text-emerald-400/70 leading-relaxed">
+                    Our moderation team is reviewing your request. Updates will be sent to your registered email address.
                   </p>
                 </motion.div>
               ) : (
@@ -193,35 +209,37 @@ export const BannedScreen: React.FC = () => {
                   className="space-y-4"
                 >
                   <div className="text-left space-y-2">
-                    <label className="text-[9px] font-black uppercase tracking-widest text-white/30 px-1">Submit Appeal</label>
+                    <label className="text-[9px] font-semibold uppercase tracking-wider text-white/40 px-1">Submit Appeal</label>
                     <textarea 
                       value={appealReason}
                       onChange={(e) => setAppealReason(e.target.value)}
                       placeholder="Explain why your access should be restored..."
-                      className="w-full h-32 p-4 bg-white/[0.03] border border-white/10 rounded-2xl text-xs text-white placeholder:text-white/20 resize-none focus:border-red-500/40 focus:bg-white/[0.05] transition-all outline-none font-mono"
+                      className="w-full h-32 p-4 bg-white/[0.03] border border-white/10 rounded-2xl text-xs text-white placeholder:text-white/20 resize-none focus:border-red-500/40 focus:bg-white/[0.05] transition-all outline-none font-sans"
                     />
                   </div>
 
                   <div className="space-y-3 pt-2">
-                    <button
-                      onClick={handleRestoreAccount}
-                      disabled={isSubmitting}
-                      className="w-full h-14 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-400 text-black font-black uppercase tracking-widest text-xs flex items-center justify-center gap-2 hover:brightness-110 shadow-lg shadow-emerald-500/20 transition-all disabled:opacity-30 active:scale-[0.98]"
-                    >
-                      {isSubmitting ? (
-                        <RefreshCw size={18} className="animate-spin" />
-                      ) : (
-                        <>
-                          <RotateCcw size={18} />
-                          Restore Account & Lift Suspension
-                        </>
-                      )}
-                    </button>
+                    {isSuspensionExpired && (
+                      <button
+                        onClick={handleRestoreAccount}
+                        disabled={isSubmitting}
+                        className="w-full h-14 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-400 text-black font-bold uppercase tracking-wider text-xs flex items-center justify-center gap-2 hover:brightness-110 shadow-lg shadow-emerald-500/20 transition-all disabled:opacity-30 active:scale-[0.98]"
+                      >
+                        {isSubmitting ? (
+                          <RefreshCw size={18} className="animate-spin" />
+                        ) : (
+                          <>
+                            <RotateCcw size={18} />
+                            Restore Account
+                          </>
+                        )}
+                      </button>
+                    )}
 
                     <div className="flex gap-3">
                       <button 
                         onClick={handleDownloadData}
-                        className="flex-1 h-12 rounded-2xl bg-white/5 border border-white/10 text-white/80 font-black uppercase tracking-widest text-[10px] flex items-center justify-center gap-2 hover:bg-white/10 transition-all"
+                        className="flex-1 h-12 rounded-2xl bg-white/5 border border-white/10 text-white/80 font-semibold uppercase tracking-wider text-[10px] flex items-center justify-center gap-2 hover:bg-white/10 transition-all"
                       >
                         <Download size={14} />
                         Export Data
@@ -229,14 +247,14 @@ export const BannedScreen: React.FC = () => {
                       <button 
                         onClick={handleSubmitAppeal}
                         disabled={isSubmitting || !appealReason.trim()}
-                        className="flex-[2] h-12 rounded-2xl bg-white/10 border border-white/20 text-white font-black uppercase tracking-widest text-xs flex items-center justify-center gap-2 hover:bg-white/20 transition-all disabled:opacity-30 active:scale-[0.98]"
+                        className="flex-[2] h-12 rounded-2xl bg-white/10 border border-white/20 text-white font-semibold uppercase tracking-wider text-xs flex items-center justify-center gap-2 hover:bg-white/20 transition-all disabled:opacity-30 active:scale-[0.98]"
                       >
                         {isSubmitting ? (
                           <RefreshCw size={18} className="animate-spin" />
                         ) : (
                           <>
                             <Send size={16} />
-                            Send Appeal & Restore
+                            Submit Appeal
                           </>
                         )}
                       </button>
@@ -250,14 +268,14 @@ export const BannedScreen: React.FC = () => {
           <div className="pt-4 border-t border-white/5 flex flex-col gap-3">
             <button 
               onClick={() => logout()}
-              className="w-full h-12 rounded-xl bg-white/5 border border-white/10 text-white/60 font-black uppercase tracking-widest text-[10px] flex items-center justify-center gap-2 hover:text-white hover:bg-white/10 transition-all"
+              className="w-full h-12 rounded-xl bg-white/5 border border-white/10 text-white/60 font-semibold uppercase tracking-wider text-[10px] flex items-center justify-center gap-2 hover:text-white hover:bg-white/10 transition-all"
             >
               <LogOut size={14} />
-              Terminate Session & Logout
+              Log Out
             </button>
-            <div className="flex items-center justify-between text-[9px] text-white/20 font-mono px-1">
-              <span>Aeirmist Core Security</span>
-              <span>Node Status: SUSPENDED</span>
+            <div className="flex items-center justify-between text-[9px] text-white/30 font-sans px-1">
+              <span>Aeirmist Moderation</span>
+              <span>Status: Suspended</span>
             </div>
           </div>
         </div>

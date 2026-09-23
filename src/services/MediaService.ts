@@ -279,9 +279,9 @@ class MediaService {
 
     try {
       return await new Promise<string>((resolve, reject) => {
-        // Step: PROGRESS-ACTIVITY WATCHDOG (dynamic: 5s for images, 30s for videos)
+        // Step: PROGRESS-ACTIVITY WATCHDOG (cellular-resilient: 25s for images, 60s for videos)
         const isVideoUpload = uploadFile.type.startsWith('video/');
-        const inactivityLimit = isVideoUpload ? 30000 : 5000;
+        const inactivityLimit = isVideoUpload ? 60000 : 25000;
         let watchdogId: any = null;
 
         const resetWatchdog = () => {
@@ -289,7 +289,7 @@ class MediaService {
           watchdogId = setTimeout(() => {
             logger.error(`[MediaService] Upload INACTIVITY TIMEOUT for task ${task.id} after ${inactivityLimit/1000}s`);
             try { uploadTask.cancel(); } catch(e) {}
-            reject({ code: 'storage/retry-limit-exceeded', message: `Inactivity timeout (${inactivityLimit/1000}s).` });
+            reject({ code: 'storage/retry-limit-exceeded', message: `Inactivity timeout (${inactivityLimit/1000}s). Check internet connection.` });
           }, inactivityLimit);
         };
 
@@ -330,7 +330,14 @@ class MediaService {
         );
       });
     } catch (storageErr) {
-      logger.warn("[MediaService] Firebase Storage bucket unavailable or upload failed. Falling back to safe Data URI:", storageErr);
+      logger.warn("[MediaService] Firebase Storage upload failed:", storageErr);
+      
+      // Video files MUST NEVER fall back to Data URLs - base64 video will freeze the UI thread and crash Firestore
+      if (uploadFile.type.startsWith('video/')) {
+        aeirmistCache.removePendingUpload(task.id).catch(() => {});
+        throw storageErr;
+      }
+
       onProgress(100, 'Finalizing...');
       // Safe fallback: compress image tightly so Data URI won't blow Firestore 1MB doc size
       let safeFile = uploadFile;
@@ -341,8 +348,15 @@ class MediaService {
           logger.warn("[MediaService] Fallback compression failed, using original:", compErr);
         }
       }
+      
+      // If still over 700KB, do not create Data URL as it will exceed Firestore's 1MB limit
+      if (safeFile.size > 700 * 1024) {
+        aeirmistCache.removePendingUpload(task.id).catch(() => {});
+        throw new Error("Image too large for local fallback. Please check connection and try again.");
+      }
+
       const fallbackUrl = await convertFileToDataURL(safeFile);
-      aeirmistCache.removePendingUpload(task.id).catch(e => {});
+      aeirmistCache.removePendingUpload(task.id).catch(() => {});
       return fallbackUrl;
     }
   }

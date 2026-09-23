@@ -75,6 +75,16 @@ service cloud.firestore {
       return resource.data; 
     }
     
+    function isUserActive() {
+      return isSignedIn() && (
+        !exists(/databases/$(database)/documents/users/$(request.auth.uid)) || (
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isBanned != true &&
+          (!get(/databases/$(database)/documents/users/$(request.auth.uid)).data.keys().hasAll(['status']) ||
+           !(get(/databases/$(database)/documents/users/$(request.auth.uid)).data.status in ['BANNED', 'SUSPENDED', 'DELETED', 'banned', 'suspended', 'deleted']))
+        )
+      );
+    }
+    
     // -- RELATIONAL HELPERS --
     function isProfileOwnerRead(profileId) {
       return isSignedIn() && (
@@ -171,7 +181,9 @@ service cloud.firestore {
         !request.resource.data.keys().hasAll(['uid']) || request.resource.data.uid == request.auth.uid
       );
       allow update: if isSignedIn() && (
-        (request.auth.uid == userId && !incoming().diff(existing()).affectedKeys().hasAny(['uid', 'createdAt'])) || 
+        (request.auth.uid == userId && !incoming().diff(existing()).affectedKeys().hasAny([
+          'uid', 'createdAt', 'role', 'roles', 'isAdmin', 'isBanned', 'bannedAt', 'status', 'suspensionInfo', 'isVerified'
+        ])) || 
         isAdmin()
       );
       allow delete: if isAdmin();
@@ -186,7 +198,9 @@ service cloud.firestore {
         (request.resource.data.ownerUid == request.auth.uid || request.resource.data.uid == request.auth.uid)
       );
       allow update: if isSignedIn() && (
-        (isProfileOwnerWrite(profileId) && !incoming().diff(existing()).affectedKeys().hasAny(['ownerUid', 'uid', 'id'])) || 
+        (isProfileOwnerWrite(profileId) && !incoming().diff(existing()).affectedKeys().hasAny([
+          'ownerUid', 'uid', 'id', 'role', 'roles', 'isAdmin', 'isBanned', 'bannedAt', 'status', 'suspensionInfo', 'isVerified', 'badge'
+        ])) || 
         isFollowInteractionWrite(profileId) || 
         isModerator()
       );
@@ -231,7 +245,7 @@ service cloud.firestore {
     // 5. POSTS: Public read; create bound to authorUid; update/delete by author, interaction counters, or moderator
     match /posts/{postId} {
       allow read: if true;
-      allow create: if isSignedIn() && (
+      allow create: if isSignedIn() && isUserActive() && (
         request.resource.data.authorUid == request.auth.uid ||
         request.resource.data.userId == request.auth.uid
       );
@@ -254,7 +268,7 @@ service cloud.firestore {
 
       match /comments/{commentId} {
         allow read: if true;
-        allow create: if isSignedIn() && (
+        allow create: if isSignedIn() && isUserActive() && (
           request.resource.data.authorUid == request.auth.uid ||
           request.resource.data.userId == request.auth.uid ||
           request.resource.data.authorId == request.auth.uid ||
@@ -281,7 +295,7 @@ service cloud.firestore {
     // 6. FEED POSTS: Public read; create bound to authorUid
     match /feed_posts/{postId} {
       allow read: if true;
-      allow create: if isSignedIn() && (
+      allow create: if isSignedIn() && isUserActive() && (
         request.resource.data.authorUid == request.auth.uid ||
         request.resource.data.userId == request.auth.uid
       );
@@ -377,7 +391,7 @@ service cloud.firestore {
 
       match /messages/{messageId} {
         allow read: if isConversationParticipant(get(/databases/$(database)/documents/conversations/$(conversationId)).data) || isAdmin();
-        allow create: if (
+        allow create: if isUserActive() && (
           isConversationParticipant(get(/databases/$(database)/documents/conversations/$(conversationId)).data) ||
           isConversationParticipant(getAfter(/databases/$(database)/documents/conversations/$(conversationId)).data)
         ) && (
@@ -452,7 +466,7 @@ service cloud.firestore {
     // 15. VIDEOS & STORIES: Author only write/delete; viewers update reactions
     match /videos/{videoId} {
       allow read: if true;
-      allow create: if isSignedIn() && (
+      allow create: if isSignedIn() && isUserActive() && (
         request.resource.data.authorUid == request.auth.uid ||
         request.resource.data.userId == request.auth.uid
       );
@@ -469,7 +483,7 @@ service cloud.firestore {
     
     match /stories/{storyId} {
       allow read: if true;
-      allow create: if isSignedIn() && (
+      allow create: if isSignedIn() && isUserActive() && (
         request.resource.data.authorUid == request.auth.uid ||
         request.resource.data.userId == request.auth.uid
       );
@@ -728,7 +742,7 @@ service cloud.firestore {
     // 30. FEED COMMENTS: Public read; author or moderator write; interactions
     match /feed_comments/{commentId} {
       allow read: if true;
-      allow create: if isSignedIn() && (
+      allow create: if isSignedIn() && isUserActive() && (
         request.resource.data.authorUid == request.auth.uid ||
         request.resource.data.userId == request.auth.uid ||
         request.resource.data.authorId == request.auth.uid ||
@@ -921,7 +935,7 @@ service cloud.firestore {
     // 41. APPEALS & MODERATION: Appellant or moderator only
     match /appeals/{appealId} {
       allow read: if isModerator() || (isSignedIn() && (resource == null || resource.data.userId == request.auth.uid));
-      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid && request.resource.data.status == 'pending';
       allow update, delete: if isModerator();
     }
 

@@ -846,7 +846,8 @@ function AppContent() {
     } else {
       // Restore state on reload/mount if history exists
       const s = window.history.state;
-      const restoredTab = s.activeTab || pathInit.tab;
+      const currentNormPath = window.location.pathname.toLowerCase().replace(/\/$/, '') || '/';
+      const restoredTab = currentNormPath === '/' ? 'feed' : (pathInit.tab || s.activeTab || 'feed');
       setActiveTab(restoredTab);
       setViewingProfile(s.viewingProfile || null);
       setViewingPostId(s.viewingPostId || null);
@@ -1347,7 +1348,7 @@ function AppContent() {
     );
   }
 
-  if (profile?.isBanned || profile?.status === 'BANNED' || profile?.status === 'SUSPENDED') {
+  if (profile?.isBanned || profile?.status === 'BANNED' || profile?.status === 'SUSPENDED' || profile?.status === 'DELETED') {
     return (
       <Suspense fallback={null}>
         <BannedScreen />

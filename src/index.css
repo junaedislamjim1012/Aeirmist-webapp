@@ -908,25 +908,45 @@ html.global-bg-active .layout-shell {
 .low-end-device .glass-panel,
 .low-end-device .glass-card,
 .low-end-device .glass-button,
-.low-end-device [class*="backdrop-blur"] {
+.low-end-device [class*="backdrop-blur"],
+.system-low-power .glass-panel,
+.system-low-power .glass-card,
+.system-low-power .glass-button,
+.system-low-power [class*="backdrop-blur"] {
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
   background-color: rgba(10, 10, 15, 0.95) !important;
 }
 
-.low-end-device * {
-  /* Prevent excessive GPU layer creation on budget devices */
+.low-end-device .glass-panel,
+.low-end-device .glass-card,
+.low-end-device .glass-button,
+.low-end-device .post-card,
+.low-end-device img,
+.low-end-device video,
+.system-low-power .glass-panel,
+.system-low-power .glass-card,
+.system-low-power .glass-button,
+.system-low-power .post-card,
+.system-low-power img,
+.system-low-power video {
+  /* Prevent excessive GPU compositing layer creation on budget/low-battery devices */
   will-change: auto !important;
 }
 
 .low-end-device .shadow-2xl,
 .low-end-device .shadow-xl,
-.low-end-device .shadow-lg {
+.low-end-device .shadow-lg,
+.system-low-power .shadow-2xl,
+.system-low-power .shadow-xl,
+.system-low-power .shadow-lg {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5) !important;
 }
 
 .low-end-device .animate-pulse,
-.low-end-device .animate-spin-slow {
+.low-end-device .animate-spin-slow,
+.system-low-power .animate-pulse,
+.system-low-power .animate-spin-slow {
   animation-duration: 0.01ms !important;
   animation-iteration-count: 1 !important;
 }

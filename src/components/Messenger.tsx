@@ -1305,7 +1305,7 @@ const Messenger = ({ initialRecipient, onUserClick }: { initialRecipient?: any, 
                                       <p className="text-xs font-bold text-white truncate">{item.displayName || item.username}</p>
                                       {(item.badge || item.isVerified) && <ShieldCheck className="text-aeirmist-cyan shrink-0" size={14} />}
                                     </div>
-                                    <p className="text-[9px] text-white/40 font-semibold line-height-none">@{item.username || 'neural_node'}</p>
+                                    <p className="text-[9px] text-white/40 font-semibold line-height-none">@{item.username || 'user'}</p>
                                     {item.recommReason && (
                                       <div className="text-[8px] text-aeirmist-magenta/80 font-black uppercase tracking-wider block mt-0.5 truncate max-w-[120px] leading-tight">
                                         {item.recommReason}
@@ -1410,7 +1410,7 @@ const Messenger = ({ initialRecipient, onUserClick }: { initialRecipient?: any, 
                                       <p className="text-xs font-bold text-white truncate">{item.displayName || item.username}</p>
                                       {(item.badge || item.isVerified) && <ShieldCheck className="text-aeirmist-cyan shrink-0" size={14} />}
                                     </div>
-                                    <p className="text-[9px] text-white/40 font-semibold">@{item.username || 'neural_node'}</p>
+                                    <p className="text-[9px] text-white/40 font-semibold">@{item.username || 'user'}</p>
                                   </div>
                                 </div>
                                 <button onClick={() => { addToRecentSearches(item); handleUserClick(item); }} className="px-3 py-1.5 rounded-lg bg-aeirmist-cyan/10 border border-aeirmist-cyan/20 hover:bg-aeirmist-cyan hover:text-black text-[10px] text-aeirmist-cyan font-bold transition-all whitespace-nowrap">
@@ -1635,7 +1635,7 @@ const Messenger = ({ initialRecipient, onUserClick }: { initialRecipient?: any, 
                                 <p className="text-xs font-bold text-white truncate">{item.displayName || item.name || item.username}</p>
                                 {(item.badge || item.isVerified) && <ShieldCheck className="text-aeirmist-cyan shrink-0" size={14} />}
                               </div>
-                              <p className="text-[9px] text-white/40 font-semibold line-height-none">@{item.username || 'neural_node'}</p>
+                              <p className="text-[9px] text-white/40 font-semibold line-height-none">@{item.username || 'user'}</p>
                             </div>
                           </div>
                           <button 

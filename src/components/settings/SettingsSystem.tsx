@@ -603,7 +603,7 @@ const SettingsSystem: React.FC<SettingsSystemProps> = ({ initialSection, onSecti
 
                 <SettingsSection title="Storage & Tools">
                   <SettingsTabItem active={activeTab === 'storage'} onClick={() => handleSelectTab('storage')} icon={<Database />} label="Storage & Data" />
-                  <SettingsTabItem active={activeTab === 'vault'} onClick={() => handleSelectTab('vault')} icon={<Lock />} label="Neural Vault" />
+                  <SettingsTabItem active={activeTab === 'vault'} onClick={() => handleSelectTab('vault')} icon={<Lock />} label="Private Vault" />
                   <SettingsTabItem active={activeTab === 'sound_library'} onClick={() => handleSelectTab('sound_library')} icon={<Music />} label="Sound Library" />
                   <SettingsTabItem active={activeTab === 'connected'} onClick={() => handleSelectTab('connected')} icon={<LinkIcon />} label="Connected Accounts" />
                 </SettingsSection>

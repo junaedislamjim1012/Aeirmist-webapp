@@ -51,12 +51,12 @@ export const Sidebar = React.memo(({ onUserClick }: { onUserClick?: (user: any) 
           <section>
             <div className="flex items-center gap-2 mb-6 text-white/40">
               <TrendingUp size={14} strokeWidth={3} />
-              <h3 className="text-[10px] font-black uppercase tracking-[0.2em]">Trending Vibes</h3>
+              <h3 className="text-[10px] font-black uppercase tracking-[0.2em]">Trending Topics</h3>
             </div>
             <div className="space-y-5">
-              <TrendItem tag="#LiquidFuturism" count="12.4k aeirmists" />
-              <TrendItem tag="#NeonZen" count="8.2k aeirmists" />
-              <TrendItem tag="#Glassmorphism" count="5.1k aeirmists" />
+              <TrendItem tag="#Photography" count="12.4k posts" />
+              <TrendItem tag="#Music" count="8.2k posts" />
+              <TrendItem tag="#Technology" count="5.1k posts" />
             </div>
           </section>
 
@@ -64,9 +64,8 @@ export const Sidebar = React.memo(({ onUserClick }: { onUserClick?: (user: any) 
             <div className="flex items-center justify-between mb-6 text-white/40">
               <div className="flex items-center gap-2">
                 <Users size={14} strokeWidth={3} />
-                <h3 className="text-[10px] font-black uppercase tracking-[0.2em]">Active Devices</h3>
+                <h3 className="text-[10px] font-black uppercase tracking-[0.2em]">Suggested For You</h3>
               </div>
-              <button onClick={() => logger.info("Action coming soon")} className="text-[9px] font-black text-aeirmist-cyan hover:underline uppercase tracking-widest">Connect All</button>
             </div>
             <div className="space-y-6">
               {suggestedUsers.length > 0 ? (

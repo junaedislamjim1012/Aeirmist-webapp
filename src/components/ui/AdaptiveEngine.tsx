@@ -3,7 +3,7 @@ import { useAppearance } from '../../context/AppearanceContext';
 import { observePerformanceProfile, PerformanceProfile } from '../../utils/performanceEngine';
 
 export const AdaptiveEngine: React.FC = () => {
-  const { settings, updateAppearanceSettings } = useAppearance();
+  const { settings } = useAppearance();
   const [networkStatus, setNetworkStatus] = useState<'fast' | 'slow' | 'offline'>('fast');
   const [batteryStatus, setBatteryStatus] = useState<{ charging: boolean; level: number; lowPowerMode: boolean }>({
     charging: true,
@@ -14,10 +14,9 @@ export const AdaptiveEngine: React.FC = () => {
   useEffect(() => {
     // Adaptive device/network performance profile. This is intentionally lightweight:
     // it changes rendering policy, not application behavior or Firebase data flow.
-    const stopPerformanceObserver = observePerformanceProfile((profile: PerformanceProfile) => {
-      if (profile.reducedMotion && !settings.performanceMode) {
-        updateAppearanceSettings({ reduceMotion: true });
-      }
+    const stopPerformanceObserver = observePerformanceProfile((_profile: PerformanceProfile) => {
+      // Dynamic rendering profile classes (device-lite, adaptive-reduced-motion, etc.)
+      // are applied non-destructively to document.documentElement without overwriting user preferences.
     });
 
     // 1. Network Awareness Monitoring
@@ -55,10 +54,8 @@ export const AdaptiveEngine: React.FC = () => {
             const lowPowerMode = !charging && level <= 0.20;
             setBatteryStatus({ charging, level, lowPowerMode });
 
-            if (lowPowerMode && !settings.performanceMode) {
-              // Auto enable performance / battery saver mode gracefully
-              updateAppearanceSettings({ performanceMode: true, reduceMotion: true });
-            }
+            // Apply system-low-power dynamically to document without altering saved user preferences
+            document.documentElement.classList.toggle('system-low-power', lowPowerMode);
           };
 
           updateBat();
@@ -116,6 +113,7 @@ export const AdaptiveEngine: React.FC = () => {
       }
       mediaQuery.removeEventListener('change', handleSystemThemeChange);
       window.removeEventListener('resize', handleResize);
+      document.documentElement.classList.remove('system-low-power');
     };
   }, [settings.themeMode, settings.performanceMode]);
 

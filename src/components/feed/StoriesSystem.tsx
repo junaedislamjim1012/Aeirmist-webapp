@@ -38,6 +38,7 @@ import {
   Clock,
   Link as LucideLink,
   Volume2,
+  VolumeX,
   Layers,
   MapPin,
   Trash2,

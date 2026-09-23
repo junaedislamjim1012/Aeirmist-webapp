@@ -192,7 +192,7 @@ export const MediaViewer = ({
                                     {currentMedia.content || currentMedia.name}
                                 </p>
                                 <div className="pt-4 border-t border-white/10 flex justify-between items-center text-[10px] font-mono text-white/40">
-                                    <span>Protected in Neural Vault</span>
+                                    <span>Protected in Private Vault</span>
                                     <span>AES-256</span>
                                 </div>
                             </div>

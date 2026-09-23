@@ -54,7 +54,7 @@ export const SEO: React.FC<SEOProps> = ({
           "operatingSystem": "Web",
           "author": {
             "@type": "Organization",
-            "name": "Core Labs"
+            "name": "Aeirmist"
           }
         })}
       </script>

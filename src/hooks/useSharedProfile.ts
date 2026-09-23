@@ -9,7 +9,7 @@
  *   const data = useSharedProfile(db, participantId);
  *   // data?.photoURL, data?.displayName, data?.isDeleted, etc.
  */
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { doc, onSnapshot, Firestore } from 'firebase/firestore';
 
 export interface SharedProfileData {
@@ -35,7 +35,15 @@ const profileCache = new Map<string, CacheEntry>();
 function getCacheKey(db: Firestore, profileId: string): string {
   const dbApp = (db as any)?.app?.name || 'default';
   const dbId = (db as any)?._databaseId?.database || (db as any)?.databaseId || 'default';
-  return `${dbApp}::${dbId}::${profileId.trim()}`;
+  const cleanId = profileId.trim();
+  const normId = cleanId.startsWith('profile_') ? cleanId : `profile_${cleanId}`;
+  return `${dbApp}::${dbId}::${normId}`;
+}
+
+function resolveProfileDocId(profileId: string): string {
+  const clean = profileId.trim();
+  if (clean.startsWith('profile_')) return clean;
+  return `profile_${clean}`;
 }
 
 function subscribe(
@@ -43,8 +51,11 @@ function subscribe(
   profileId: string,
   callback: (data: SharedProfileData | null) => void
 ): () => void {
-  const key = getCacheKey(db, profileId);
-  if (!profileId.trim()) return () => {};
+  const rawId = profileId.trim();
+  if (!rawId) return () => {};
+
+  const key = getCacheKey(db, rawId);
+  const primaryDocId = resolveProfileDocId(rawId);
 
   let entry = profileCache.get(key);
 
@@ -52,28 +63,68 @@ function subscribe(
     // First subscriber — open ONE listener
     const subscribers = new Set<(data: SharedProfileData | null) => void>();
     let currentData: SharedProfileData | null = null;
+    let fallbackUnsub: (() => void) | null = null;
 
-    const unsubscribe = onSnapshot(
-      doc(db, 'profiles', key),
+    const primaryRef = doc(db, 'profiles', primaryDocId);
+
+    const primaryUnsub = onSnapshot(
+      primaryRef,
       (snap) => {
         if (snap.exists()) {
           const raw = snap.data();
           currentData = {
             ...raw,
-            isDeleted: raw.isDeleted === true || raw.status === 'deleted',
+            isDeleted: raw.isDeleted === true || raw.status === 'deleted' || raw.status === 'DELETED',
           } as SharedProfileData;
+          for (const cb of subscribers) {
+            cb(currentData);
+          }
         } else {
-          currentData = { isDeleted: true };
-        }
-        // Notify all subscribers
-        for (const cb of subscribers) {
-          cb(currentData);
+          // If primaryDocId (profile_UID) not found, try fallback raw UID
+          const rawUid = rawId.replace(/^profile_/, '');
+          if (rawUid && rawUid !== primaryDocId && !fallbackUnsub) {
+            fallbackUnsub = onSnapshot(
+              doc(db, 'profiles', rawUid),
+              (fallbackSnap) => {
+                if (fallbackSnap.exists()) {
+                  const raw = fallbackSnap.data();
+                  currentData = {
+                    ...raw,
+                    isDeleted: raw.isDeleted === true || raw.status === 'deleted' || raw.status === 'DELETED',
+                  } as SharedProfileData;
+                  for (const cb of subscribers) {
+                    cb(currentData);
+                  }
+                } else {
+                  // Not found — do NOT mark as isDeleted: true
+                  currentData = null;
+                  for (const cb of subscribers) {
+                    cb(null);
+                  }
+                }
+              },
+              (err) => {
+                console.warn('[SharedProfileCache] fallback listener error for', rawUid, err);
+              }
+            );
+          } else {
+            // Not found — do NOT mark as isDeleted: true
+            currentData = null;
+            for (const cb of subscribers) {
+              cb(null);
+            }
+          }
         }
       },
       (err) => {
-        console.warn('[SharedProfileCache] listener error for', key, err);
+        console.warn('[SharedProfileCache] listener error for', primaryDocId, err);
       }
     );
+
+    const unsubscribe = () => {
+      primaryUnsub();
+      if (fallbackUnsub) fallbackUnsub();
+    };
 
     entry = { data: currentData, subscribers, unsubscribe };
     profileCache.set(key, entry);
@@ -81,7 +132,7 @@ function subscribe(
 
   entry.subscribers.add(callback);
 
-  // If we already have data (late subscriber), send it immediately
+  // If we already have data, deliver it immediately
   if (entry.data !== undefined && entry.data !== null) {
     callback(entry.data);
   }

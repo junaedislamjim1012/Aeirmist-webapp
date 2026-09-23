@@ -179,9 +179,10 @@ const LiveParticipantAvatar = ({
   const profileData = useSharedProfile(db, participantId);
   
   const isDeleted = profileData?.isDeleted === true;
+  const isFallbackPhotoValid = Boolean(fallbackPhoto && fallbackPhoto !== BLANK_DP);
   const livePhoto = isDeleted 
     ? BLANK_DP 
-    : (profileData?.photoURL ? getAvatarUrl(profileData.photoURL) : (fallbackPhoto || BLANK_DP));
+    : (profileData?.photoURL ? getAvatarUrl(profileData.photoURL) : (isFallbackPhotoValid ? getAvatarUrl(fallbackPhoto) : BLANK_DP));
 
   return (
     <Avatar 
@@ -202,9 +203,16 @@ export const LiveParticipantName = ({ participantId, fallbackName, className = "
   const [nickname, setNickname] = useState<string>('');
 
   const isDeleted = profileData?.isDeleted === true;
+  const isFallbackValid = Boolean(
+    fallbackName && 
+    typeof fallbackName === 'string' && 
+    fallbackName.trim() !== '' && 
+    fallbackName.toLowerCase() !== 'aeirmist user' && 
+    fallbackName.toLowerCase() !== 'unknown'
+  );
   const profileName = isDeleted 
     ? 'Aeirmist User' 
-    : (profileData?.displayName || profileData?.username || fallbackName || 'Aeirmist User');
+    : (profileData?.displayName || profileData?.username || (isFallbackValid ? fallbackName : '') || 'Aeirmist User');
 
   useEffect(() => {
     if (!db || !chatId || typeof chatId !== 'string' || !chatId.trim()) return;
@@ -669,40 +677,58 @@ const Messenger = ({ initialRecipient, onUserClick }: { initialRecipient?: any, 
         // Note: The filtering for requests is now done in mainChats useMemo
         // to handle live changes in follow status without re-subscribing.
 
+        const myIds = new Set([
+          profile.id,
+          user.uid,
+          `profile_${user.uid}`,
+          profile.id ? profile.id.replace(/^profile_/, '') : '',
+          user.uid ? `profile_${user.uid}` : ''
+        ].filter(Boolean));
+
+        const isSelfId = (id: string) => {
+          if (!id) return true;
+          return myIds.has(id) || myIds.has(`profile_${id}`) || myIds.has(id.replace(/^profile_/, ''));
+        };
+
         let otherParticipantId = '';
         let otherParticipantUid = '';
 
-        if (data.profileIds) {
-          otherParticipantId = data.profileIds.find((id: string) => id !== profile.id) || '';
-          if (!otherParticipantId && data.profileIds.length === 1 && data.profileIds[0] === profile.id) {
+        if (data.profileIds && Array.isArray(data.profileIds)) {
+          otherParticipantId = data.profileIds.find((id: string) => !isSelfId(id)) || '';
+          if (!otherParticipantId && data.profileIds.length === 1 && isSelfId(data.profileIds[0])) {
             otherParticipantId = profile.id;
           }
         }
         
-        if (data.participants) {
-          otherParticipantUid = data.participants.find((uid: string) => uid !== user.uid) || '';
-          if (!otherParticipantUid && data.participants.length === 1 && data.participants[0] === user.uid) {
+        if (data.participants && Array.isArray(data.participants)) {
+          otherParticipantUid = data.participants.find((uid: string) => !isSelfId(uid)) || '';
+          if (!otherParticipantUid && data.participants.length === 1 && isSelfId(data.participants[0])) {
             otherParticipantUid = user.uid;
           }
+        }
+
+        if (!otherParticipantId && otherParticipantUid) {
+          otherParticipantId = otherParticipantUid;
         }
 
         // Deep resolution for profile photos and details
         let details = data.participantDetails?.[otherParticipantId];
         
         if (!details && data.participantDetails) {
-           const otherKey = Object.keys(data.participantDetails).find(k => k !== profile.id);
+           const otherKey = Object.keys(data.participantDetails).find(k => !isSelfId(k));
            if (otherKey) {
              details = data.participantDetails[otherKey];
-           } else if (Object.keys(data.participantDetails).length === 1 && data.participantDetails[profile.id]) {
-             details = data.participantDetails[profile.id];
+             if (!otherParticipantId) otherParticipantId = otherKey;
+           } else if (data.participantDetails[profile.id] || data.participantDetails[user.uid]) {
+             details = data.participantDetails[profile.id] || data.participantDetails[user.uid];
            }
         }
         
         if (!details) details = {};
         
         if (!otherParticipantId && data.participantDetails) {
-          otherParticipantId = Object.keys(data.participantDetails).find(id => id !== profile.id) || '';
-          if (!otherParticipantId && Object.keys(data.participantDetails).length === 1 && data.participantDetails[profile.id]) {
+          otherParticipantId = Object.keys(data.participantDetails).find(id => !isSelfId(id)) || '';
+          if (!otherParticipantId && (data.participantDetails[profile.id] || data.participantDetails[user.uid])) {
             otherParticipantId = profile.id;
           }
         }

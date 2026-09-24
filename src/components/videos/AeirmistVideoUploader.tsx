@@ -20,11 +20,16 @@ import {
   Lock,
   MessageSquare,
   Heart,
-  Share2
+  Share2,
+  Cloud,
+  CheckCircle2,
+  AlertTriangle,
+  ExternalLink
 } from 'lucide-react';
 import { useAeirmist } from '../../context/AeirmistContext';
 import { getAvatarUrl } from '../../lib/avatar';
 import { MediaQuality } from '../../services/MediaService';
+import { cloudinaryService } from '../../services/cloudinaryService';
 import { collection, doc, setDoc, addDoc, serverTimestamp } from 'firebase/firestore';
 import { logger } from '@/src/utils/logger';
 
@@ -82,6 +87,57 @@ export const AeirmistVideoUploader: React.FC<AeirmistVideoUploaderProps> = ({ on
   const [sharesEnabled, setSharesEnabled] = useState(true);
   const [downloadEnabled, setDownloadEnabled] = useState(true);
   const [embedEnabled, setEmbedEnabled] = useState(true);
+
+  // Cloudinary storage state & verification
+  const [showCloudinaryConfig, setShowCloudinaryConfig] = useState(!cloudinaryService.isConfigured());
+  const [cCloudName, setCCloudName] = useState(cloudinaryService.getCloudName());
+  const [cUploadPreset, setCUploadPreset] = useState(cloudinaryService.getUploadPreset());
+  const [isTestingCloudinary, setIsTestingCloudinary] = useState(false);
+  const [cloudinaryTestResult, setCloudinaryTestResult] = useState<{ success?: boolean; error?: string } | null>(null);
+
+  useEffect(() => {
+    if (db) {
+      cloudinaryService.syncWithFirestore(db).then(() => {
+        const activeCloud = cloudinaryService.getCloudName();
+        const activePreset = cloudinaryService.getUploadPreset();
+        setCCloudName(activeCloud);
+        setCUploadPreset(activePreset);
+        if (!cloudinaryService.isConfigured()) {
+          setShowCloudinaryConfig(true);
+        }
+      });
+    }
+  }, [db]);
+
+  const handleSaveAndTestCloudinary = async () => {
+    if (!cCloudName.trim() || !cUploadPreset.trim()) {
+      addToast({
+        title: 'Missing Fields',
+        message: 'Please provide both Cloud Name and Upload Preset.',
+        type: 'warning'
+      });
+      return;
+    }
+    setIsTestingCloudinary(true);
+    setCloudinaryTestResult(null);
+    const result = await cloudinaryService.testConnection(cCloudName, cUploadPreset);
+    setIsTestingCloudinary(false);
+    setCloudinaryTestResult(result);
+    if (result.success) {
+      await cloudinaryService.saveConfig(cCloudName, cUploadPreset, db);
+      addToast({
+        title: 'Cloudinary Connected',
+        message: 'High-speed video CDN storage is active and verified.',
+        type: 'success'
+      });
+    } else {
+      addToast({
+        title: 'Verification Failed',
+        message: result.error || 'Failed to verify Cloudinary preset.',
+        type: 'warning'
+      });
+    }
+  };
 
   // Thumbnail System States
   const [thumbnailType, setThumbnailType] = useState<'auto' | 'custom'>('auto');
@@ -263,22 +319,38 @@ export const AeirmistVideoUploader: React.FC<AeirmistVideoUploaderProps> = ({ on
       // 1. Upload Video File to Cloudinary CDN
       if (videoFile && uploadMedia) {
         setUploadProgress(10);
-        // Smooth progress animation (slower for video - increment every 1.5s)
-        const progressInterval = setInterval(() => {
-          setUploadProgress(prev => (prev < 85 ? prev + 3 : prev));
-        }, 1500);
 
         try {
           finalVideoUrl = await uploadMedia(videoFile, `users/${user?.uid || 'guest'}/videos`, (p) => {
-            // Real progress from Cloudinary/Firebase overrides fake progress
+            // Real progress from Cloudinary / storage upload (10% to 85%)
             const mapped = Math.floor(10 + p * 0.75);
             setUploadProgress(mapped);
           });
-        } catch (e) {
-          logger.warn('[Uploader] Video cloud upload failed, using local stream URL', e);
-          finalVideoUrl = videoUrl || URL.createObjectURL(videoFile);
+        } catch (e: any) {
+          logger.error('[Uploader] Video cloud upload failed:', e);
+          setIsPublishing(false);
+          setUploadProgress(0);
+          setShowCloudinaryConfig(true);
+          addToast({
+            title: 'Cloud Video Upload Failed',
+            message: e?.message || 'Failed to upload video to cloud storage. Please check your Cloudinary settings below.',
+            type: 'warning'
+          });
+          return;
         }
-        clearInterval(progressInterval);
+
+        // Prevent saving temporary browser blob URLs into Firestore
+        if (!finalVideoUrl || finalVideoUrl.startsWith('blob:')) {
+          setIsPublishing(false);
+          setUploadProgress(0);
+          setShowCloudinaryConfig(true);
+          addToast({
+            title: 'Cloud Video Required',
+            message: 'A public video stream could not be created. Please configure Cloudinary below so other users can view your video.',
+            type: 'warning'
+          });
+          return;
+        }
       }
 
       // 2. Upload Thumbnail to CDN
@@ -838,6 +910,89 @@ export const AeirmistVideoUploader: React.FC<AeirmistVideoUploaderProps> = ({ on
                           className="w-full bg-white/5 border border-white/10 focus:border-aeirmist-cyan/40 text-white text-xs font-bold rounded-2xl py-3 px-4 transition-all outline-none placeholder:text-white/20"
                         />
                       </div>
+                    </div>
+
+                    {/* Cloudinary CDN Storage Status & Setup */}
+                    <div className="p-3.5 rounded-2xl bg-white/[0.03] border border-white/10 space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <div className={`w-2 h-2 rounded-full ${cloudinaryService.isConfigured() ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.6)]' : 'bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.6)] animate-pulse'}`} />
+                          <span className="text-[10px] font-black uppercase tracking-wider text-white flex items-center gap-1.5">
+                            <Cloud size={13} className="text-aeirmist-cyan" />
+                            Cloudinary CDN Storage {cloudinaryService.isConfigured() ? '(Connected)' : '(Setup Required)'}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setShowCloudinaryConfig(!showCloudinaryConfig)}
+                          className="text-[9px] font-mono text-aeirmist-cyan hover:underline uppercase"
+                        >
+                          {showCloudinaryConfig ? 'Hide' : 'Configure'}
+                        </button>
+                      </div>
+
+                      {showCloudinaryConfig && (
+                        <div className="space-y-3 pt-2 border-t border-white/5">
+                          <p className="text-[10px] text-white/50 leading-relaxed">
+                            Zero-cost video & reels CDN hosting. Delivers smooth playback across all devices and accounts without bandwidth limits.
+                            <a 
+                              href="https://cloudinary.com/users/register_free" 
+                              target="_blank" 
+                              rel="noreferrer"
+                              className="text-aeirmist-cyan inline-flex items-center gap-1 ml-1 hover:underline"
+                            >
+                              Sign up free <ExternalLink size={10} />
+                            </a>
+                          </p>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                            <div>
+                              <label className="text-[8px] font-black uppercase text-white/40 tracking-wider block mb-1">
+                                Cloud Name
+                              </label>
+                              <input
+                                type="text"
+                                placeholder="e.g. dxyz12345"
+                                value={cCloudName}
+                                onChange={(e) => setCCloudName(e.target.value)}
+                                className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:border-aeirmist-cyan outline-none"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-[8px] font-black uppercase text-white/40 tracking-wider block mb-1">
+                                Unsigned Upload Preset
+                              </label>
+                              <input
+                                type="text"
+                                placeholder="e.g. aeirmist_uploads"
+                                value={cUploadPreset}
+                                onChange={(e) => setCUploadPreset(e.target.value)}
+                                className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:border-aeirmist-cyan outline-none"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="flex items-center justify-between pt-1">
+                            <span className="text-[8px] text-white/40">
+                              Settings &rarr; Upload &rarr; Add Upload Preset (Signing Mode: Unsigned)
+                            </span>
+                            <button
+                              type="button"
+                              disabled={isTestingCloudinary || !cCloudName.trim() || !cUploadPreset.trim()}
+                              onClick={handleSaveAndTestCloudinary}
+                              className="px-3 py-1.5 bg-aeirmist-cyan/20 border border-aeirmist-cyan/40 text-aeirmist-cyan hover:bg-aeirmist-cyan hover:text-black rounded-xl text-[9px] font-black uppercase tracking-wider transition-all disabled:opacity-40"
+                            >
+                              {isTestingCloudinary ? 'Verifying...' : 'Save & Verify'}
+                            </button>
+                          </div>
+
+                          {cloudinaryTestResult && (
+                            <div className={`p-2 rounded-xl text-[9px] font-mono ${cloudinaryTestResult.success ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400' : 'bg-red-500/10 border border-red-500/20 text-red-400'}`}>
+                              {cloudinaryTestResult.success ? '✅ Cloudinary is active and ready for fast video uploads!' : `❌ ${cloudinaryTestResult.error}`}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
 

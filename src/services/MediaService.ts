@@ -330,12 +330,16 @@ class MediaService {
         );
       });
     } catch (storageErr) {
-      logger.warn("[MediaService] Firebase Storage upload failed:", storageErr);
+      logger.warn("[MediaService] Storage upload failed:", storageErr);
       
       // Video files MUST NEVER fall back to Data URLs - base64 video will freeze the UI thread and crash Firestore
       if (uploadFile.type.startsWith('video/')) {
         aeirmistCache.removePendingUpload(task.id).catch(() => {});
-        throw storageErr;
+        throw new Error(
+          cloudinaryService.isConfigured() 
+            ? "Video upload failed. Please check your internet connection or verify your Cloudinary storage quota."
+            : "Cloudinary CDN storage is not configured. Please enter your Cloud Name & Upload Preset in the uploader to stream videos."
+        );
       }
 
       onProgress(100, 'Finalizing...');

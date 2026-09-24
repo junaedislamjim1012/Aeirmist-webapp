@@ -112,7 +112,9 @@ export const VideoFeed: React.FC<VideoFeedProps> = ({
     const blockedList = new Set(profile?.social?.blocked || []);
     let list = vList.filter(v => {
       const cId = v.creatorId || (v as any).authorId || (v as any).author?.id;
-      return !blockedList.has(cId);
+      // Exclude temporary/unreachable local browser blobs so users never get "Couldn't load this video"
+      const isBrokenBlob = v.videoURL && v.videoURL.startsWith('blob:');
+      return !blockedList.has(cId) && !isBrokenBlob;
     });
 
     if (searchTerm.trim()) {
@@ -132,11 +134,12 @@ export const VideoFeed: React.FC<VideoFeedProps> = ({
 
   const allFilteredVideos = filterVideos(dbVideos);
 
-  // Continue watching list
-  const continueWatchingVideos = dbVideos.filter(v => progressMap[v.id]);
+  // Continue watching list (excluding broken blobs)
+  const continueWatchingVideos = dbVideos.filter(v => progressMap[v.id] && (!v.videoURL || !v.videoURL.startsWith('blob:')));
 
-  // Featured video (top video or explicitly marked featured)
-  const featuredVideo = dbVideos.find(v => v.isFeatured) || dbVideos[0] || null;
+  // Featured video (top valid cloud video or explicitly marked featured)
+  const validVideos = dbVideos.filter(v => v.videoURL && !v.videoURL.startsWith('blob:'));
+  const featuredVideo = validVideos.find(v => v.isFeatured) || validVideos[0] || null;
 
   // Tab-specific video lists
   const getTabVideos = (): Video[] => {

@@ -15,32 +15,122 @@ export class CloudinaryService {
   private cloudName: string;
   private uploadPreset: string;
 
+  private isInitialized = false;
+
   constructor() {
-    this.cloudName = (import.meta as any).env?.VITE_CLOUDINARY_CLOUD_NAME || 'aeirmist';
-    this.uploadPreset = (import.meta as any).env?.VITE_CLOUDINARY_UPLOAD_PRESET || 'aeirmist_uploads';
+    const envCloud = (import.meta as any).env?.VITE_CLOUDINARY_CLOUD_NAME;
+    const envPreset = (import.meta as any).env?.VITE_CLOUDINARY_UPLOAD_PRESET;
+    this.cloudName = envCloud || 'eldujqpd';
+    this.uploadPreset = envPreset || 'iqbuuhzz';
+
+    if (typeof localStorage !== 'undefined') {
+      const storedCloud = localStorage.getItem('aeirmist_cloudinary_cloud_name');
+      const storedPreset = localStorage.getItem('aeirmist_cloudinary_upload_preset');
+      if (storedCloud) this.cloudName = storedCloud;
+      if (storedPreset) this.uploadPreset = storedPreset;
+    }
+  }
+
+  public async syncWithFirestore(db: any) {
+    if (!db || this.isInitialized) return;
+    try {
+      const { doc, getDoc } = await import('firebase/firestore');
+      const snap = await getDoc(doc(db, 'system_config', 'cloudinary'));
+      if (snap.exists()) {
+        const data = snap.data();
+        if (data.cloudName && data.uploadPreset) {
+          this.cloudName = data.cloudName;
+          this.uploadPreset = data.uploadPreset;
+          if (typeof localStorage !== 'undefined') {
+            localStorage.setItem('aeirmist_cloudinary_cloud_name', data.cloudName);
+            localStorage.setItem('aeirmist_cloudinary_upload_preset', data.uploadPreset);
+          }
+          logger.info('[CloudinaryService] Synced config from Firestore successfully');
+        }
+      }
+      this.isInitialized = true;
+    } catch (e) {
+      logger.warn('[CloudinaryService] Could not sync config from Firestore:', e);
+    }
   }
 
   public setConfig(cloudName: string, uploadPreset: string) {
-    this.cloudName = cloudName;
-    this.uploadPreset = uploadPreset;
+    this.saveConfig(cloudName, uploadPreset);
+  }
+
+  public async saveConfig(cloudName: string, uploadPreset: string, db?: any) {
+    const trimmedCloud = cloudName.trim();
+    const trimmedPreset = uploadPreset.trim();
+    this.cloudName = trimmedCloud;
+    this.uploadPreset = trimmedPreset;
     try {
-      localStorage.setItem('aeirmist_cloudinary_cloud_name', cloudName);
-      localStorage.setItem('aeirmist_cloudinary_upload_preset', uploadPreset);
-    } catch (e) {}
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('aeirmist_cloudinary_cloud_name', trimmedCloud);
+        localStorage.setItem('aeirmist_cloudinary_upload_preset', trimmedPreset);
+      }
+      if (db) {
+        const { doc, setDoc } = await import('firebase/firestore');
+        await setDoc(doc(db, 'system_config', 'cloudinary'), {
+          cloudName: trimmedCloud,
+          uploadPreset: trimmedPreset,
+          updatedAt: new Date().toISOString()
+        }, { merge: true });
+        logger.info('[CloudinaryService] Configuration saved to Firestore system_config/cloudinary');
+      }
+    } catch (e) {
+      logger.error('[CloudinaryService] Error saving Cloudinary config:', e);
+    }
+  }
+
+  public async testConnection(cloudName: string, uploadPreset: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      const trimmedCloud = cloudName.trim();
+      const trimmedPreset = uploadPreset.trim();
+      if (!trimmedCloud || !trimmedPreset) {
+        return { success: false, error: 'Cloud Name and Upload Preset cannot be empty' };
+      }
+
+      // 1x1 transparent PNG blob
+      const binaryString = window.atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAA');
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+      const testBlob = new Blob([bytes], { type: 'image/png' });
+
+      const formData = new FormData();
+      formData.append('file', testBlob, 'test_ping.png');
+      formData.append('upload_preset', trimmedPreset);
+      formData.append('folder', 'aeirmist_test');
+
+      const res = await fetch(`https://api.cloudinary.com/v1_1/${trimmedCloud}/image/upload`, {
+        method: 'POST',
+        body: formData
+      });
+
+      const json = await res.json();
+      if (res.ok && json.secure_url) {
+        return { success: true };
+      } else {
+        return { success: false, error: json.error?.message || `HTTP ${res.status}: Upload preset or cloud name rejected` };
+      }
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Network connection failed' };
+    }
   }
 
   public isConfigured(): boolean {
     const activeCloud = this.cloudName || (typeof localStorage !== 'undefined' ? localStorage.getItem('aeirmist_cloudinary_cloud_name') : null);
     const activePreset = this.uploadPreset || (typeof localStorage !== 'undefined' ? localStorage.getItem('aeirmist_cloudinary_upload_preset') : null);
-    return !!(activeCloud && activePreset);
+    return !!(activeCloud && activePreset && activeCloud !== 'aeirmist' && activePreset !== 'aeirmist_uploads');
   }
 
   public getCloudName(): string {
-    return this.cloudName || (typeof localStorage !== 'undefined' ? localStorage.getItem('aeirmist_cloudinary_cloud_name') || 'aeirmist' : 'aeirmist');
+    return this.cloudName || (typeof localStorage !== 'undefined' ? localStorage.getItem('aeirmist_cloudinary_cloud_name') || '' : '');
   }
 
   public getUploadPreset(): string {
-    return this.uploadPreset || (typeof localStorage !== 'undefined' ? localStorage.getItem('aeirmist_cloudinary_upload_preset') || 'aeirmist_uploads' : 'aeirmist_uploads');
+    return this.uploadPreset || (typeof localStorage !== 'undefined' ? localStorage.getItem('aeirmist_cloudinary_upload_preset') || '' : '');
   }
 
   public async upload(file: File, options?: CloudinaryUploadOptions): Promise<string> {

@@ -2568,6 +2568,14 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             setIsScheduledForPurge(active?.scheduledForPurge === true || active?.status === 'scheduled_for_deletion');
             setNeedsUsername(false);
 
+            // If active profile has bloated base64 in appearanceSettings, sanitize it in the background
+            if (active?.id && Array.isArray(active?.appearanceSettings?.globalBgList) && active.appearanceSettings.globalBgList.some((u: any) => typeof u === 'string' && u.startsWith('data:image'))) {
+              const cleaned = active.appearanceSettings.globalBgList.filter((u: any) => typeof u === 'string' && !u.startsWith('data:image'));
+              updateDoc(doc(db, 'profiles', active.id), {
+                'appearanceSettings.globalBgList': cleaned
+              }).catch(() => {});
+            }
+
             // If rawProfiles contained multiple conflicting IDs, trigger background cleanup to delete duplicate docs in Firestore
             if (rawProfiles.length > 1) {
               consolidateAndSyncUserProfiles(freshUser).catch(() => {});
@@ -3962,7 +3970,15 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const keys = Object.keys(data).filter(k => data[k] !== undefined);
     
     // Basic fields sync faster/without strict regulation for better UX
-    const isBasicUpdate = keys.every(k => ['photoURL', 'coverURL', 'bannerURL', 'bio', 'displayName', 'tagline', 'relationshipStatus', 'relationshipStatusVisibility', 'locationData', 'onboardingStep', 'onboardingCompleted', 'gender', 'dateOfBirth', 'personalEmail', 'phoneNumber', 'isPrivate'].includes(k));
+    const basicKeys = [
+      'photoURL', 'coverURL', 'bannerURL', 'bio', 'displayName', 'fullName', 'tagline',
+      'relationshipStatus', 'relationshipStatusVisibility', 'location', 'locationData',
+      'website', 'category', 'pronouns', 'gender', 'dateOfBirth', 'personalEmail',
+      'phoneNumber', 'phoneCountryCode', 'phoneVerified', 'recoveryEmail', 'recoveryPhone',
+      'isPrivate', 'isProfileLocked', 'isProfessional', 'socialLinks', 'privacySettings',
+      'themeSettings', 'onboardingStep', 'onboardingCompleted'
+    ];
+    const isBasicUpdate = keys.every(k => basicKeys.includes(k));
     
     // Appearance settings have their own throttle key to avoid blocking unrelated profile updates
     const isAppearanceUpdate = keys.length === 1 && keys[0] === 'appearanceSettings';
@@ -3988,29 +4004,38 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     
     const updateData: any = {
       updatedAt: serverTimestamp(),
-      id: targetProfileId,
-      uid: user.uid,
-      ownerUid: user.uid,
       isActive: true
     };
     
     allowedFields.forEach(field => {
       if (data[field] !== undefined) {
-        // Guard against massive Base64 strings causing 'Storage Full' document limit (1MB Firestore limit)
         const val = data[field];
-        if (typeof val === 'string' && val.startsWith('data:image') && val.length > 80000) {
-          logger.warn(`[AeirmistContext] Suppressing oversized base64 for ${field} (${val.length} chars) to prevent document size breach.`);
-          return;
+        // Guard against massive Base64 strings causing 'Storage Full' document limit (1MB Firestore limit)
+        if (typeof val === 'string' && val.startsWith('data:image') && val.length > 25000) {
+          if (profile && profile[field] === val) {
+            return;
+          }
+          if (val.length > 80000) {
+            logger.warn(`[AeirmistContext] Suppressing oversized base64 for ${field} (${val.length} chars) to prevent document size breach.`);
+            return;
+          }
         }
         updateData[field] = data[field];
       }
     });
 
+    // Prune base64 from appearanceSettings if present
+    if (updateData.appearanceSettings && Array.isArray(updateData.appearanceSettings.globalBgList)) {
+      updateData.appearanceSettings = {
+        ...updateData.appearanceSettings,
+        globalBgList: updateData.appearanceSettings.globalBgList.filter((url: string) => typeof url === 'string' && !url.startsWith('data:image'))
+      };
+    }
+
     try {
       const batch = writeBatch(db);
       
       // OPTIMISTIC UPDATE: Update local state immediately for snappy feel
-      // We do this BEFORE the batch commit to ensure the UI feels instant
       setProfile((prev: any) => ({
         id: targetProfileId,
         uid: user.uid,
@@ -4080,7 +4105,7 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             ? data.photoURL 
             : auth.currentUser!.photoURL;
             
-          const authTimeout = new Promise((_, reject) => setTimeout(() => reject(new Error("Auth update timeout")), 1500));
+          const authTimeout = new Promise((_, reject) => setTimeout(() => reject(new Error("Auth update timeout")), 2500));
           await Promise.race([
             updateAuthProfile(auth.currentUser!, {
               displayName: data.displayName !== undefined ? data.displayName : auth.currentUser!.displayName,
@@ -4095,12 +4120,13 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }
       
       try {
-        const commitTimeout = new Promise((_, reject) => setTimeout(() => reject(new Error("Batch commit timeout")), 3000));
-        await Promise.race([
-          batch.commit(),
-          commitTimeout
-        ]);
+        await batch.commit();
         logger.info("[AeirmistContext] Profile Update Success committed to chain.");
+
+        // Ensure state is updated across active profiles
+        setAllProfiles((prev: any[]) => 
+          prev.map(p => p.id === targetProfileId || p.ownerUid === user.uid ? { ...p, ...updateData } : p)
+        );
       } catch (e: any) {
         const errStr = String(e);
         if (errStr.includes('exceeds the maximum allowed size') || errStr.includes('size')) {

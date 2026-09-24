@@ -132,8 +132,23 @@ export async function consolidateAndSyncUserProfiles(
     let bestUsername = isMainAdmin ? 'junaed_islam_jim9' : '';
     let bestPhotoURL = '';
     let bestCoverURL = '';
-    let bestBio = isMainAdmin ? 'Founder & Lead Architect at Aeirmist' : '';
-    let bestTagline = '';
+    let bestBio = existingCanonical.bio || (isMainAdmin ? 'Founder & Lead Architect at Aeirmist' : '');
+    let bestTagline = existingCanonical.tagline || '';
+    let bestLocation = existingCanonical.location || '';
+    let bestLocationData = existingCanonical.locationData || null;
+    let bestWebsite = existingCanonical.website || '';
+    let bestCategory = existingCanonical.category || '';
+    let bestPronouns = existingCanonical.pronouns || [];
+    let bestDateOfBirth = existingCanonical.dateOfBirth || '';
+    let bestGender = existingCanonical.gender || '';
+    let bestPhoneNumber = existingCanonical.phoneNumber || '';
+    let bestPhoneCountryCode = existingCanonical.phoneCountryCode || '+1';
+    let bestPhoneVerified = existingCanonical.phoneVerified || false;
+    let bestRelationshipStatus = existingCanonical.relationshipStatus || null;
+    let bestRelationshipStatusVisibility = existingCanonical.relationshipStatusVisibility || 'public';
+    let bestPersonalEmail = existingCanonical.personalEmail || '';
+    let bestRecoveryEmail = existingCanonical.recoveryEmail || '';
+    let bestRecoveryPhone = existingCanonical.recoveryPhone || '';
     let bestFollowersCount = 0;
     let bestFollowingCount = 0;
     let bestLevel = isMainAdmin ? 9999 : 100;
@@ -187,6 +202,23 @@ export async function consolidateAndSyncUserProfiles(
         bestTagline = c.tagline;
       }
 
+      // Account settings fields
+      if (!bestLocation && c.location) bestLocation = c.location;
+      if (!bestLocationData && c.locationData) bestLocationData = c.locationData;
+      if (!bestWebsite && c.website) bestWebsite = c.website;
+      if (!bestCategory && c.category) bestCategory = c.category;
+      if ((!bestPronouns || (Array.isArray(bestPronouns) && bestPronouns.length === 0)) && c.pronouns) bestPronouns = c.pronouns;
+      if (!bestDateOfBirth && c.dateOfBirth) bestDateOfBirth = c.dateOfBirth;
+      if (!bestGender && c.gender) bestGender = c.gender;
+      if (!bestPhoneNumber && c.phoneNumber) bestPhoneNumber = c.phoneNumber;
+      if (c.phoneCountryCode) bestPhoneCountryCode = c.phoneCountryCode;
+      if (c.phoneVerified) bestPhoneVerified = true;
+      if (c.relationshipStatus) bestRelationshipStatus = c.relationshipStatus;
+      if (c.relationshipStatusVisibility) bestRelationshipStatusVisibility = c.relationshipStatusVisibility;
+      if (!bestPersonalEmail && c.personalEmail) bestPersonalEmail = c.personalEmail;
+      if (!bestRecoveryEmail && c.recoveryEmail) bestRecoveryEmail = c.recoveryEmail;
+      if (!bestRecoveryPhone && c.recoveryPhone) bestRecoveryPhone = c.recoveryPhone;
+
       // Counts
       if (typeof c.followersCount === 'number') bestFollowersCount = Math.max(bestFollowersCount, c.followersCount);
       if (typeof c.followingCount === 'number') bestFollowingCount = Math.max(bestFollowingCount, c.followingCount);
@@ -233,6 +265,12 @@ export async function consolidateAndSyncUserProfiles(
 
     const finalNormUsername = normalizeUsername(bestUsername);
 
+    // Clean any bloated base64 from appearanceSettings
+    let cleanAppearance = existingCanonical.appearanceSettings ? { ...existingCanonical.appearanceSettings } : undefined;
+    if (cleanAppearance && Array.isArray(cleanAppearance.globalBgList)) {
+      cleanAppearance.globalBgList = cleanAppearance.globalBgList.filter((u: any) => typeof u === 'string' && !u.startsWith('data:image'));
+    }
+
     // Construct Canonical Merged Profile
     const canonicalProfile: any = {
       ...existingCanonical,
@@ -248,6 +286,21 @@ export async function consolidateAndSyncUserProfiles(
       bannerURL: bestCoverURL,
       bio: bestBio,
       tagline: bestTagline,
+      location: bestLocation,
+      locationData: bestLocationData,
+      website: bestWebsite,
+      category: bestCategory,
+      pronouns: bestPronouns,
+      dateOfBirth: bestDateOfBirth,
+      gender: bestGender,
+      phoneNumber: bestPhoneNumber,
+      phoneCountryCode: bestPhoneCountryCode,
+      phoneVerified: bestPhoneVerified,
+      relationshipStatus: bestRelationshipStatus,
+      relationshipStatusVisibility: bestRelationshipStatusVisibility,
+      personalEmail: bestPersonalEmail,
+      recoveryEmail: bestRecoveryEmail,
+      recoveryPhone: bestRecoveryPhone,
       followersCount: Math.max(bestFollowersCount, mergedFollowers.size),
       followingCount: Math.max(bestFollowingCount, mergedFollowing.size),
       aeirmistLevel: isMainAdmin ? 9999 : bestLevel,
@@ -260,6 +313,7 @@ export async function consolidateAndSyncUserProfiles(
       socialLinks: mergedSocialLinks,
       privacySettings: mergedPrivacySettings,
       themeSettings: mergedThemeSettings,
+      ...(cleanAppearance ? { appearanceSettings: cleanAppearance } : {}),
       social: {
         followers: Array.from(mergedFollowers),
         following: Array.from(mergedFollowing),

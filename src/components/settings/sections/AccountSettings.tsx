@@ -565,6 +565,12 @@ const AccountSettings: React.FC<AccountSettingsProps> = ({
     setHasUnsavedChanges(changed);
   }, [formData, profile]);
 
+  useEffect(() => {
+    if (saveSuccess) {
+      setHasUnsavedChanges(false);
+    }
+  }, [saveSuccess]);
+
   const resetForm = () => {
     if (!profile) return;
     Object.keys(formData).forEach(key => {
@@ -839,40 +845,6 @@ const AccountSettings: React.FC<AccountSettingsProps> = ({
 
   return (
     <div className="w-full relative">
-      {/* Dynamic Floating Sticky Save Bar (On Mobile or when screen scrolls) */}
-      <AnimatePresence>
-        {hasUnsavedChanges && (
-          <motion.div 
-            initial={{ opacity: 0, y: 50 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 50 }}
-            className="fixed bottom-[88px] md:bottom-6 left-4 right-4 mx-auto z-40 flex items-center justify-between gap-4 px-5 py-3.5 bg-[#0b0e14]/90 backdrop-blur-md border border-white/10 rounded-2xl shadow-2xl max-w-lg w-auto"
-          >
-            <div className="flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-aeirmist-cyan animate-pulse shadow-[0_0_8px_rgba(0,242,255,0.7)]" />
-              <div className="text-xs font-mono font-bold text-white/80">Uncommitted Changes</div>
-            </div>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={resetForm}
-                className="px-3.5 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider bg-white/5 border border-white/10 hover:bg-white/10 transition-colors cursor-pointer"
-              >
-                Reset
-              </button>
-              <button
-                type="button"
-                onClick={handleSaveClick}
-                disabled={isSaving}
-                className="px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider bg-aeirmist-cyan text-black hover:scale-105 active:scale-95 transition-all flex items-center gap-1.5 cursor-pointer shadow-[0_0_15px_rgba(0,242,255,0.4)]"
-              >
-                {isSaving ? <RefreshCw className="animate-spin" size={12} /> : <Check size={12} />}
-                {isSaving ? 'Syncing...' : 'Save Changes'}
-              </button>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start max-w-full overflow-hidden">
         

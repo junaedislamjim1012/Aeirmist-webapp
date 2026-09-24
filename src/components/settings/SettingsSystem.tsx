@@ -342,10 +342,22 @@ const SettingsSystem: React.FC<SettingsSystemProps> = ({ initialSection, onSecti
     setIsSaving(true);
     try {
       await updateProfile(formData);
+      await reloadAuthUser().catch(() => {});
+      await refreshProfile().catch(() => {});
       setSaveSuccess(true);
+      addToast?.({
+        title: 'CHANGES SAVED',
+        message: 'Your account settings have been saved to the database successfully.',
+        type: 'success'
+      });
       setTimeout(() => setSaveSuccess(false), 3000);
-    } catch (e) {
+    } catch (e: any) {
       logger.error("Failed to update profile", e);
+      addToast?.({
+        title: 'SAVE ERROR',
+        message: e?.message || 'Could not save account settings. Please try again.',
+        type: 'warning'
+      });
     } finally {
       setIsSaving(false);
     }

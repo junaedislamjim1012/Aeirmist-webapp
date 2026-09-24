@@ -1,25 +1,100 @@
-# InfinityFree Apache Configuration for Aeirmist SPA
+# ==============================================================================
+# AEIRMIST ENTERPRISE WEB APPLICATION FIREWALL (WAF) & SECURITY HARDENING
+# ==============================================================================
+
 DirectoryIndex index.html
 
-# Allow all requests
-<IfModule mod_authz_core.c>
-    Require all granted
+# 1. SERVER CONFIGURATION & HARDENING
+ServerSignature Off
+Options -Indexes -MultiViews
+
+# 2. STRICT SECURITY HEADERS
+<IfModule mod_headers.c>
+    # Force HTTPS & Preload (HSTS)
+    Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+    
+    # Anti-MIME Sniffing
+    Header always set X-Content-Type-Options "nosniff"
+    
+    # Anti-Clickjacking (Allow framing only from same origin)
+    Header always set X-Frame-Options "SAMEORIGIN"
+    
+    # Legacy XSS Filter for older browsers
+    Header always set X-XSS-Protection "1; mode=block"
+    
+    # Privacy & Referrer Control
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+    
+    # Device API Permissions Restriction
+    Header always set Permissions-Policy "camera=(self), microphone=(self), geolocation=(self), payment=(), usb=(), accelerometer=(), gyroscope=()"
+    
+    # Cross-Origin Policies (Configured for Firebase popups/redirects)
+    Header always set Cross-Origin-Opener-Policy "same-origin-allow-popups"
 </IfModule>
 
-# SPA Routing Fallback
+# 3. APACHE FIREWALL (WAF) FILTERING RULES
 <IfModule mod_rewrite.c>
     RewriteEngine On
     RewriteBase /
+
+    # --- RULE A: FORCE HTTPS REDIRECT (301) ---
+    RewriteCond %{HTTPS} off [OR]
+    RewriteCond %{HTTP:X-Forwarded-Proto} !https
+    RewriteCond %{HTTP_HOST} ^(www\.)?aeirmist\.com$ [NC]
+    RewriteRule ^(.*)$ https://aeirmist.com/$1 [L,R=301]
+
+    # --- RULE B: BLOCK DIRECTORY TRAVERSAL / LFI / RFI ---
+    RewriteCond %{QUERY_STRING} (\.\./|\.\.\\|\.\.%2f|\.\.%5c) [NC,OR]
+    RewriteCond %{QUERY_STRING} (etc/passwd|proc/self/environ|boot\.ini) [NC,OR]
+    RewriteCond %{QUERY_STRING} (ftp|https?|php|data):(?://|%2f%2f) [NC]
+    RewriteRule .* - [F,L]
+
+    # --- RULE C: BLOCK SQL INJECTION (SQLi) ATTEMPTS ---
+    RewriteCond %{QUERY_STRING} (union.*select|insert.*into|drop.*table|truncate.*table) [NC,OR]
+    RewriteCond %{QUERY_STRING} (information_schema|benchmark\s*\(|waitfor\s+delay) [NC,OR]
+    RewriteCond %{QUERY_STRING} (concat\s*\(|load_file|outfile|dumpfile) [NC]
+    RewriteRule .* - [F,L]
+
+    # --- RULE D: BLOCK CODE INJECTION & XSS ATTACKS ---
+    RewriteCond %{QUERY_STRING} (<script|%3cscript|javascript:|vbscript:|onload=|onerror=) [NC,OR]
+    RewriteCond %{QUERY_STRING} (base64_decode|base64_encode|eval\(|gzinflate|passthru|shell_exec|exec\() [NC]
+    RewriteRule .* - [F,L]
+
+    # --- RULE E: BLOCK AGGRESSIVE EXPLOIT SCANNERS & ATTACK BOTS ---
+    RewriteCond %{HTTP_USER_AGENT} (sqlmap|nikto|wpscan|masscan|havij|acunetix|dirbuster|nmap|netsparker|zgrab) [NC]
+    RewriteRule .* - [F,L]
+
+    # --- RULE F: BLOCK SENSITIVE & HIDDEN FILES ACCESS ---
+    RewriteRule ^(\.git|\.env|\.yaml|\.yml|\.config|\.bak|\.sql|\.log|\.sh)$ - [F,L]
+
+    # --- RULE G: SPA ROUTING FALLBACK ---
     RewriteRule ^index\.html$ - [L]
     RewriteCond %{REQUEST_FILENAME} !-f
     RewriteCond %{REQUEST_FILENAME} !-d
     RewriteRule . /index.html [L]
 </IfModule>
 
-# Browser Caching
+# 4. BLOCK ACCESS TO SENSITIVE FILE EXTENSIONS
+<FilesMatch "(^\.|\.(env|git|yml|yaml|config|json\.lock|log|bak|sql|sh))$">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order deny,allow
+        Deny from all
+    </IfModule>
+</FilesMatch>
+
+# 5. HIGH-EFFICIENCY ASSET CACHING
 <IfModule mod_expires.c>
     ExpiresActive On
     ExpiresDefault "access plus 1 month"
     ExpiresByType text/html "access plus 0 seconds"
     ExpiresByType application/json "access plus 0 seconds"
+    ExpiresByType text/css "access plus 1 year"
+    ExpiresByType application/javascript "access plus 1 year"
+    ExpiresByType image/png "access plus 1 year"
+    ExpiresByType image/jpeg "access plus 1 year"
+    ExpiresByType image/webp "access plus 1 year"
+    ExpiresByType image/svg+xml "access plus 1 year"
 </IfModule>

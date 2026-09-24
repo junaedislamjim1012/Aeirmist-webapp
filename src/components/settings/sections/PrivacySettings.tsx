@@ -600,7 +600,7 @@ export default function PrivacySettings() {
                       <img
                         src={getAvatarUrl(user.avatarUrl, user.id)}
                         alt={user.displayName || user.username}
-                        className="w-10 h-10 rounded-full object-cover border border-white/10 shrink-0 bg-white/5"
+                        className="w-12 h-12 rounded-2xl object-cover border border-white/10 shrink-0 bg-white/5 shadow-md aspect-square"
                         onError={(e) => {
                           const target = e.target as HTMLImageElement;
                           target.src = getAvatarUrl(null, user.id);
@@ -679,7 +679,7 @@ export default function PrivacySettings() {
                       <img
                         src={getAvatarUrl(user.avatarUrl, user.id)}
                         alt={user.displayName || user.username}
-                        className="w-10 h-10 rounded-full object-cover border border-white/10 shrink-0 bg-white/5"
+                        className="w-12 h-12 rounded-2xl object-cover border border-white/10 shrink-0 bg-white/5 shadow-md aspect-square"
                         onError={(e) => {
                           const target = e.target as HTMLImageElement;
                           target.src = getAvatarUrl(null, user.id);

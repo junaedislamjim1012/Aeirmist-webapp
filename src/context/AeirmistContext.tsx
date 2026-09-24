@@ -1946,13 +1946,14 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           batch.update(doc(db, 'profiles', profile.id), {
             'social.blocked': arrayRemove(...idsToRemove)
           });
+          await batch.commit();
+
           if (user?.uid) {
-            batch.update(doc(db, 'users', user.uid), {
+            setDoc(doc(db, 'users', user.uid), {
               'social.blocked': arrayRemove(...idsToRemove),
               blockedUsers: arrayRemove(...idsToRemove)
-            }).catch(() => {});
+            }, { merge: true }).catch(() => {});
           }
-          await batch.commit();
         }
 
         addToast({
@@ -2032,7 +2033,7 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           batch.update(doc(db, 'profiles', profile.id), profileUpdates);
 
           // 2. Update target user's profile (mutual unfollow)
-          if (targetProfileRef && targetProfileSnap?.exists()) {
+          if (targetProfileRef && targetProfileSnap && targetProfileSnap.exists()) {
             const targetUpdates: any = {
               'social.following': arrayRemove(...myIdentifiers),
               'social.followers': arrayRemove(...myIdentifiers),
@@ -2055,17 +2056,17 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           batch.delete(req1);
           batch.delete(req2);
 
+          await batch.commit();
+
           // 4. Update users collections if available
           if (user?.uid) {
-            batch.update(doc(db, 'users', user.uid), {
+            setDoc(doc(db, 'users', user.uid), {
               'social.blocked': arrayUnion(targetId, resolvedTargetProfileId),
               blockedUsers: arrayUnion(targetId, resolvedTargetProfileId),
               'social.following': arrayRemove(...targetIdentifiers),
               'social.followers': arrayRemove(...targetIdentifiers)
-            }).catch(() => {});
+            }, { merge: true }).catch(() => {});
           }
-
-          await batch.commit();
         }
 
         addToast({

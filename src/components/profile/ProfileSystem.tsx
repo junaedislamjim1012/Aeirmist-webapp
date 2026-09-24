@@ -2916,7 +2916,13 @@ const ProfileSystem = ({ targetProfile, onMessageClick, onEditProfile, onUserCli
                                 {p.displayName || p.username}
                                 {p.isVerified && <ShieldCheck size={12} className="text-aeirmist-cyan shrink-0" />}
                               </p>
-                              <p className="text-[10px] text-white/40 font-medium truncate">@{p.username || 'user'}</p>
+                              <p className="text-[10px] text-white/40 font-medium truncate">
+                                @{p.username && p.username !== 'user' && p.username !== 'null'
+                                  ? p.username.replace(/^@+/, '')
+                                  : (p.displayName && p.displayName.toLowerCase() !== 'user'
+                                      ? p.displayName.trim().toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')
+                                      : (p.id ? `user_${p.id.slice(0, 6)}` : 'member'))}
+                              </p>
                            </div>
 
                            {/* Action Buttons */}

@@ -159,9 +159,10 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
         if (requestId && fromId) {
           await acceptFollowRequest(requestId, fromId);
           await markRead(notifId);
+          const notifUser = (notif.user?.username && notif.user.username !== 'user' && notif.user.username !== 'null') ? notif.user.username : (notif.user?.name || notif.user?.displayName || 'member');
           addToast?.({
             title: "Request Confirmed",
-            message: `You accepted the follow request from @${notif.user?.username || 'user'}.`,
+            message: `You accepted the follow request from @${notifUser}.`,
             type: "success"
           });
         }
@@ -170,9 +171,10 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
         if (requestId) {
           await rejectFollowRequest(requestId);
           await markRead(notifId);
+          const notifUser = (notif.user?.username && notif.user.username !== 'user' && notif.user.username !== 'null') ? notif.user.username : (notif.user?.name || notif.user?.displayName || 'member');
           addToast?.({
             title: "Request Removed",
-            message: `You declined the follow request from @${notif.user?.username || 'user'}.`,
+            message: `You declined the follow request from @${notifUser}.`,
             type: "info"
           });
         }

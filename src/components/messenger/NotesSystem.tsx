@@ -1758,7 +1758,8 @@ export const NotesSystem = ({ chats, onChatSelect, onReplyNote }: { chats: any[]
 
                   <button 
                     onClick={async () => {
-                      const shareText = `Check out @${chat.username || friendNote.userName || 'user'}'s note on Aeirmist: "${friendNote.content || friendNote.music}"`;
+                      const noteUser = (chat.username && chat.username !== 'user' && chat.username !== 'null') ? chat.username : (friendNote.userName || 'creator');
+                      const shareText = `Check out @${noteUser}'s note on Aeirmist: "${friendNote.content || friendNote.music}"`;
                       if (navigator.share) {
                         try {
                           await navigator.share({

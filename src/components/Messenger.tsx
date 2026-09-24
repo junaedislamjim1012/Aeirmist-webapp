@@ -1306,7 +1306,11 @@ const Messenger = ({ initialRecipient, onUserClick }: { initialRecipient?: any, 
                                       <p className="text-xs font-bold text-white truncate">{item.displayName || item.username}</p>
                                       {(item.badge || item.isVerified) && <ShieldCheck className="text-aeirmist-cyan shrink-0" size={14} />}
                                     </div>
-                                    <p className="text-[9px] text-white/40 font-semibold line-height-none">@{item.username || 'user'}</p>
+                                    <p className="text-[9px] text-white/40 font-semibold line-height-none">
+                                      @{item.username && item.username !== 'user' && item.username !== 'null'
+                                        ? item.username.replace(/^@+/, '')
+                                        : (item.displayName ? item.displayName.trim().toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '') : 'member')}
+                                    </p>
                                     {item.recommReason && (
                                       <div className="text-[8px] text-aeirmist-magenta/80 font-black uppercase tracking-wider block mt-0.5 truncate max-w-[120px] leading-tight">
                                         {item.recommReason}
@@ -1411,7 +1415,11 @@ const Messenger = ({ initialRecipient, onUserClick }: { initialRecipient?: any, 
                                       <p className="text-xs font-bold text-white truncate">{item.displayName || item.username}</p>
                                       {(item.badge || item.isVerified) && <ShieldCheck className="text-aeirmist-cyan shrink-0" size={14} />}
                                     </div>
-                                    <p className="text-[9px] text-white/40 font-semibold">@{item.username || 'user'}</p>
+                                    <p className="text-[9px] text-white/40 font-semibold">
+                                      @{item.username && item.username !== 'user' && item.username !== 'null'
+                                        ? item.username.replace(/^@+/, '')
+                                        : (item.displayName ? item.displayName.trim().toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '') : 'member')}
+                                    </p>
                                   </div>
                                 </div>
                                 <button onClick={() => { addToRecentSearches(item); handleUserClick(item); }} className="px-3 py-1.5 rounded-lg bg-aeirmist-cyan/10 border border-aeirmist-cyan/20 hover:bg-aeirmist-cyan hover:text-black text-[10px] text-aeirmist-cyan font-bold transition-all whitespace-nowrap">
@@ -1636,7 +1644,11 @@ const Messenger = ({ initialRecipient, onUserClick }: { initialRecipient?: any, 
                                 <p className="text-xs font-bold text-white truncate">{item.displayName || item.name || item.username}</p>
                                 {(item.badge || item.isVerified) && <ShieldCheck className="text-aeirmist-cyan shrink-0" size={14} />}
                               </div>
-                              <p className="text-[9px] text-white/40 font-semibold line-height-none">@{item.username || 'user'}</p>
+                              <p className="text-[9px] text-white/40 font-semibold line-height-none">
+                                @{item.username && item.username !== 'user' && item.username !== 'null'
+                                  ? item.username.replace(/^@+/, '')
+                                  : (item.displayName ? item.displayName.trim().toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '') : 'member')}
+                              </p>
                             </div>
                           </div>
                           <button 
@@ -1714,7 +1726,9 @@ const Messenger = ({ initialRecipient, onUserClick }: { initialRecipient?: any, 
                   <div className="flex items-center gap-2 min-w-0">
                     <div className="w-1.5 h-1.5 rounded-full bg-aeirmist-cyan shadow-[0_0_8px_rgba(0,242,255,0.5)] flex-shrink-0" />
                     <h1 className="text-base font-bold tracking-tight group-hover:text-aeirmist-cyan transition-colors truncate">
-                      {profile?.username || 'USER'}
+                      {profile?.username && profile.username !== 'user' && profile.username !== 'null'
+                        ? profile.username
+                        : (profile?.displayName || 'My Profile')}
                     </h1>
                   </div>
                 </div>

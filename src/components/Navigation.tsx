@@ -278,7 +278,9 @@ export const Navigation = React.memo(({ onCreate, activeTab, onTabChange, isExpa
                   {profile?.displayName || user?.displayName || 'Account'}
                 </span>
                 <span className="text-[9px] font-mono font-medium tracking-wide text-white/45 truncate block mt-0.5 group-hover/profile:text-white/70 transition-colors">
-                  @{profile?.username || 'user'}
+                  @{profile?.username && profile.username !== 'user' && profile.username !== 'null'
+                    ? profile.username.replace(/^@+/, '')
+                    : (profile?.displayName ? profile.displayName.trim().toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '') : (user?.email ? user.email.split('@')[0] : 'member'))}
                 </span>
               </motion.div>
             )}

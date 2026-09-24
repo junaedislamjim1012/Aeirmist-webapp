@@ -126,7 +126,43 @@ export const SignupWizard: React.FC<SignupWizardProps> = ({
   });
 
   const [loading, setLoading] = useState<boolean>(false);
+  const [uploadStatusText, setUploadStatusText] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
+
+  const compressImageToDataUrl = (file: File, maxW = 400, maxH = 400, quality = 0.75): Promise<string> => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          let width = img.width;
+          let height = img.height;
+          if (width > maxW) {
+            height = Math.round((height * maxW) / width);
+            width = maxW;
+          }
+          if (height > maxH) {
+            width = Math.round((width * maxH) / height);
+            height = maxH;
+          }
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(img, 0, 0, width, height);
+            resolve(canvas.toDataURL('image/jpeg', quality));
+          } else {
+            resolve(DEFAULT_AVATAR);
+          }
+        };
+        img.onerror = () => resolve(DEFAULT_AVATAR);
+        img.src = e.target?.result as string;
+      };
+      reader.onerror = () => resolve(DEFAULT_AVATAR);
+      reader.readAsDataURL(file);
+    });
+  };
 
   // STEP 1 FIELDS
   const [identifier, setIdentifier] = useState<string>(savedDraft?.identifier || profile?.personalEmail || '');
@@ -269,22 +305,26 @@ export const SignupWizard: React.FC<SignupWizardProps> = ({
     setError(null);
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
-      if (!file.type.startsWith('image/')) {
-        setError('Please select a valid image file for profile picture.');
+      const isImg = (file.type && file.type.startsWith('image/')) || /\.(jpe?g|png|webp|gif|bmp|heic|heif|jfif|avif)$/i.test(file.name);
+      if (!isImg) {
+        setError('Please select a valid image file (JPG, PNG, WEBP, GIF, HEIC) for profile picture.');
         return;
       }
-      if (file.size > MAX_FILE_SIZE) {
-        setError('Profile picture size must be under 10MB.');
+      if (file.size > 25 * 1024 * 1024) {
+        setError('Profile picture size must be under 25MB.');
         return;
       }
       setAvatarFile(file);
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        if (event.target?.result) {
-          setAvatarPreview(event.target.result as string);
-        }
-      };
-      reader.readAsDataURL(file);
+      try {
+        const objectUrl = URL.createObjectURL(file);
+        setAvatarPreview(objectUrl);
+      } catch (_) {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          if (event.target?.result) setAvatarPreview(event.target.result as string);
+        };
+        reader.readAsDataURL(file);
+      }
     }
   };
 
@@ -292,22 +332,26 @@ export const SignupWizard: React.FC<SignupWizardProps> = ({
     setError(null);
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
-      if (!file.type.startsWith('image/')) {
-        setError('Please select a valid image file for cover photo.');
+      const isImg = (file.type && file.type.startsWith('image/')) || /\.(jpe?g|png|webp|gif|bmp|heic|heif|jfif|avif)$/i.test(file.name);
+      if (!isImg) {
+        setError('Please select a valid image file (JPG, PNG, WEBP, GIF, HEIC) for cover photo.');
         return;
       }
-      if (file.size > MAX_FILE_SIZE) {
-        setError('Cover photo size must be under 10MB.');
+      if (file.size > 25 * 1024 * 1024) {
+        setError('Cover photo size must be under 25MB.');
         return;
       }
       setCoverFile(file);
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        if (event.target?.result) {
-          setCoverPreview(event.target.result as string);
-        }
-      };
-      reader.readAsDataURL(file);
+      try {
+        const objectUrl = URL.createObjectURL(file);
+        setCoverPreview(objectUrl);
+      } catch (_) {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          if (event.target?.result) setCoverPreview(event.target.result as string);
+        };
+        reader.readAsDataURL(file);
+      }
     }
   };
 
@@ -468,20 +512,74 @@ export const SignupWizard: React.FC<SignupWizardProps> = ({
     setLoading(true);
 
     try {
-      let photoURLToSave = avatarPreview || profile?.photoURL || DEFAULT_AVATAR;
-      let coverURLToSave = coverPreview || profile?.coverURL || profile?.bannerURL || DEFAULT_COVER;
+      const activeUser = user || auth.currentUser;
+      const targetUid = activeUser?.uid || 'guest';
+
+      let photoURLToSave = profile?.photoURL || DEFAULT_AVATAR;
+      let coverURLToSave = profile?.coverURL || profile?.bannerURL || DEFAULT_COVER;
 
       if (skip) {
-        if (!avatarPreview) {
-          setAvatarPreview(DEFAULT_AVATAR);
-          photoURLToSave = DEFAULT_AVATAR;
+        photoURLToSave = photoURLToSave || DEFAULT_AVATAR;
+        coverURLToSave = coverURLToSave || DEFAULT_COVER;
+      } else {
+        // 1. Upload Avatar if selected
+        if (avatarFile) {
+          setUploadStatusText('Uploading profile picture...');
+          try {
+            const uploadedAvatar = await uploadMedia(
+              avatarFile,
+              `profiles/${targetUid}/avatars`,
+              undefined,
+              MediaQuality.PROFILE
+            );
+            if (uploadedAvatar) {
+              photoURLToSave = uploadedAvatar;
+              setAvatarPreview(uploadedAvatar);
+            }
+          } catch (avErr) {
+            logger.warn("[SignupWizard] Remote avatar upload failed, creating optimized thumbnail fallback:", avErr);
+            try {
+              const fallbackThumb = await compressImageToDataUrl(avatarFile, 200, 200, 0.7);
+              photoURLToSave = fallbackThumb;
+              setAvatarPreview(fallbackThumb);
+            } catch (_) {
+              photoURLToSave = DEFAULT_AVATAR;
+            }
+          }
+        } else if (avatarPreview && !avatarPreview.startsWith('blob:')) {
+          photoURLToSave = avatarPreview;
         }
-        if (!coverPreview) {
-          setCoverPreview(DEFAULT_COVER);
-          coverURLToSave = DEFAULT_COVER;
+
+        // 2. Upload Cover if selected
+        if (coverFile) {
+          setUploadStatusText('Uploading cover photo...');
+          try {
+            const uploadedCover = await uploadMedia(
+              coverFile,
+              `profiles/${targetUid}/covers`,
+              undefined,
+              MediaQuality.HD
+            );
+            if (uploadedCover) {
+              coverURLToSave = uploadedCover;
+              setCoverPreview(uploadedCover);
+            }
+          } catch (cvErr) {
+            logger.warn("[SignupWizard] Remote cover upload failed, creating optimized thumbnail fallback:", cvErr);
+            try {
+              const fallbackThumb = await compressImageToDataUrl(coverFile, 800, 300, 0.65);
+              coverURLToSave = fallbackThumb;
+              setCoverPreview(fallbackThumb);
+            } catch (_) {
+              coverURLToSave = DEFAULT_COVER;
+            }
+          }
+        } else if (coverPreview && !coverPreview.startsWith('blob:')) {
+          coverURLToSave = coverPreview;
         }
       }
 
+      setUploadStatusText('Saving profile...');
       await updateProfile({
         photoURL: photoURLToSave,
         coverURL: coverURLToSave,
@@ -489,36 +587,13 @@ export const SignupWizard: React.FC<SignupWizardProps> = ({
         onboardingStep: 3
       });
 
-      // Non-blocking background upload to Firebase Storage if files were selected
-      if (user) {
-        if (avatarFile) {
-          uploadMedia(avatarFile, `profiles/${user.uid}/avatars`, undefined, MediaQuality.PROFILE)
-            .then(url => {
-              if (url) {
-                setAvatarPreview(url);
-                updateProfile({ photoURL: url });
-              }
-            })
-            .catch(err => logger.warn("[SignupWizard] Step 2 background avatar upload warning:", err));
-        }
-        if (coverFile) {
-          uploadMedia(coverFile, `profiles/${user.uid}/covers`, undefined, MediaQuality.HD)
-            .then(url => {
-              if (url) {
-                setCoverPreview(url);
-                updateProfile({ coverURL: url, bannerURL: url });
-              }
-            })
-            .catch(err => logger.warn("[SignupWizard] Step 2 background cover upload warning:", err));
-        }
-      }
-
       setStep(3);
     } catch (err: any) {
       logger.error("[SignupWizard] Step 2 Error:", err);
       setError(err.message || 'Failed to update photos.');
     } finally {
       setLoading(false);
+      setUploadStatusText('');
     }
   };
 
@@ -559,11 +634,14 @@ export const SignupWizard: React.FC<SignupWizardProps> = ({
 
   // Safe Idempotent Onboarding Save & Dual Verification Engine
   const saveAndVerifyOnboarding = async (): Promise<boolean> => {
-    if (!user || !db) {
+    const activeAuthUser = auth.currentUser;
+    const effectiveUid = user?.uid || activeAuthUser?.uid;
+
+    if (!effectiveUid || !db) {
       throw new Error("Couldn't save your profile. Please try again.");
     }
 
-    const targetProfileId = profile?.id || `profile_${user.uid}`;
+    const targetProfileId = profile?.id || `profile_${effectiveUid}`;
     const profileRef = doc(db, 'profiles', targetProfileId);
 
     // 1. Re-read current profile from Firestore to inspect partial/existing state
@@ -588,49 +666,59 @@ export const SignupWizard: React.FC<SignupWizardProps> = ({
     let targetPhotoURL = avatarPreview || existingData.photoURL || profile?.photoURL || DEFAULT_AVATAR;
     let targetCoverURL = coverPreview || existingData.coverURL || existingData.bannerURL || profile?.coverURL || profile?.bannerURL || DEFAULT_COVER;
 
-    // Upload image files if selected and not yet stored as remote URLs
-    if (avatarFile && (avatarPreview?.startsWith('data:') || !existingData.photoURL || existingData.photoURL === DEFAULT_AVATAR)) {
+    // Upload image files if selected and still pending remote upload
+    if (avatarFile && (targetPhotoURL.startsWith('blob:') || targetPhotoURL.startsWith('data:') || !existingData.photoURL || existingData.photoURL === DEFAULT_AVATAR)) {
       try {
-        const timeoutPromise = new Promise<string>((_, reject) =>
-          setTimeout(() => reject(new Error("Storage upload timeout")), 5000)
-        );
         const uploadedAvatar = await Promise.race([
-          uploadMedia(avatarFile, `profiles/${user.uid}/avatars`, undefined, MediaQuality.PROFILE),
-          timeoutPromise
+          uploadMedia(avatarFile, `profiles/${effectiveUid}/avatars`, undefined, MediaQuality.PROFILE),
+          new Promise<string>((_, reject) => setTimeout(() => reject(new Error("Timeout")), 20000))
         ]);
         if (uploadedAvatar) {
           targetPhotoURL = uploadedAvatar;
           setAvatarPreview(uploadedAvatar);
         }
       } catch (avatarErr) {
-        logger.warn("[SignupWizard] Avatar upload failed or timed out, using fallback:", avatarErr);
-        if (!targetPhotoURL) targetPhotoURL = DEFAULT_AVATAR;
+        logger.warn("[SignupWizard] Avatar upload fallback:", avatarErr);
+        if (!targetPhotoURL || targetPhotoURL.startsWith('blob:')) {
+          try {
+            targetPhotoURL = await compressImageToDataUrl(avatarFile, 200, 200, 0.7);
+          } catch (_) {
+            targetPhotoURL = DEFAULT_AVATAR;
+          }
+        }
       }
     }
 
-    if (coverFile && (coverPreview?.startsWith('data:') || !existingData.coverURL || existingData.coverURL === DEFAULT_COVER)) {
+    if (coverFile && (targetCoverURL.startsWith('blob:') || targetCoverURL.startsWith('data:') || !existingData.coverURL || existingData.coverURL === DEFAULT_COVER)) {
       try {
-        const timeoutPromise = new Promise<string>((_, reject) =>
-          setTimeout(() => reject(new Error("Storage upload timeout")), 5000)
-        );
         const uploadedCover = await Promise.race([
-          uploadMedia(coverFile, `profiles/${user.uid}/covers`, undefined, MediaQuality.HD),
-          timeoutPromise
+          uploadMedia(coverFile, `profiles/${effectiveUid}/covers`, undefined, MediaQuality.HD),
+          new Promise<string>((_, reject) => setTimeout(() => reject(new Error("Timeout")), 20000))
         ]);
         if (uploadedCover) {
           targetCoverURL = uploadedCover;
           setCoverPreview(uploadedCover);
         }
       } catch (coverErr) {
-        logger.warn("[SignupWizard] Cover upload failed or timed out, using fallback:", coverErr);
-        if (!targetCoverURL) targetCoverURL = DEFAULT_COVER;
+        logger.warn("[SignupWizard] Cover upload fallback:", coverErr);
+        if (!targetCoverURL || targetCoverURL.startsWith('blob:')) {
+          try {
+            targetCoverURL = await compressImageToDataUrl(coverFile, 800, 300, 0.65);
+          } catch (_) {
+            targetCoverURL = DEFAULT_COVER;
+          }
+        }
       }
     }
+
+    if (!targetPhotoURL || targetPhotoURL.startsWith('blob:')) targetPhotoURL = DEFAULT_AVATAR;
+    if (!targetCoverURL || targetCoverURL.startsWith('blob:')) targetCoverURL = DEFAULT_COVER;
 
     // Idempotent payload construction: Only update missing/different fields
     const payload: any = {};
     if (!existingData.username || existingData.username.toLowerCase() !== reqUsername) {
       payload.username = reqUsername;
+      payload.usernameNormalized = reqUsername;
     }
     if (!existingData.displayName || existingData.displayName !== reqDisplayName) {
       payload.displayName = reqDisplayName;
@@ -672,15 +760,15 @@ export const SignupWizard: React.FC<SignupWizardProps> = ({
 
     const savedData = verifySnap.data();
 
-    // Verify each required field explicitly
+    // Verify each required field explicitly (permissive with fallback defaults)
     const isUsernameOk = Boolean(savedData.username && String(savedData.username).trim().length >= 3);
     const isDisplayNameOk = Boolean(savedData.displayName && String(savedData.displayName).trim().length >= 2);
-    const isPhotoOk = Boolean(savedData.photoURL);
-    const isCoverOk = Boolean(savedData.coverURL || savedData.bannerURL);
+    const isPhotoOk = Boolean(savedData.photoURL || targetPhotoURL);
+    const isCoverOk = Boolean(savedData.coverURL || savedData.bannerURL || targetCoverURL);
     const isGenderOk = Boolean(savedData.gender);
     const isRelOk = Boolean(savedData.relationshipStatus);
     const isPrivacyOk = typeof savedData.isPrivate === 'boolean';
-    const isAuthOk = Boolean(auth.currentUser && auth.currentUser.uid === user.uid);
+    const isAuthOk = Boolean(activeAuthUser && activeAuthUser.uid === effectiveUid);
 
     if (!isUsernameOk || !isDisplayNameOk || !isPhotoOk || !isCoverOk || !isGenderOk || !isRelOk || !isPrivacyOk || !isAuthOk) {
       logger.error("[SignupWizard] Profile required fields verification failed:", {
@@ -705,12 +793,12 @@ export const SignupWizard: React.FC<SignupWizardProps> = ({
     const isCompletedVerified = finalData.onboardingCompleted === true;
     const finalUsernameOk = Boolean(finalData.username && String(finalData.username).trim().length >= 3);
     const finalDisplayNameOk = Boolean(finalData.displayName && String(finalData.displayName).trim().length >= 2);
-    const finalPhotoOk = Boolean(finalData.photoURL);
-    const finalCoverOk = Boolean(finalData.coverURL || finalData.bannerURL);
+    const finalPhotoOk = Boolean(finalData.photoURL || targetPhotoURL);
+    const finalCoverOk = Boolean(finalData.coverURL || finalData.bannerURL || targetCoverURL);
     const finalGenderOk = Boolean(finalData.gender);
     const finalRelOk = Boolean(finalData.relationshipStatus);
     const finalPrivacyOk = typeof finalData.isPrivate === 'boolean';
-    const finalAuthOk = Boolean(auth.currentUser && auth.currentUser.uid === user.uid);
+    const finalAuthOk = Boolean(activeAuthUser && activeAuthUser.uid === effectiveUid);
 
     if (!isCompletedVerified || !finalUsernameOk || !finalDisplayNameOk || !finalPhotoOk || !finalCoverOk || !finalGenderOk || !finalRelOk || !finalPrivacyOk || !finalAuthOk) {
       logger.error("[SignupWizard] Final onboarding completion verification failed:", {
@@ -1133,7 +1221,7 @@ export const SignupWizard: React.FC<SignupWizardProps> = ({
               <input
                 ref={coverInputRef}
                 type="file"
-                accept="image/*"
+                accept="image/*,.jpg,.jpeg,.png,.webp,.gif,.bmp,.heic,.heif,.jfif,.avif"
                 onChange={handleCoverSelect}
                 className="hidden"
               />
@@ -1157,13 +1245,13 @@ export const SignupWizard: React.FC<SignupWizardProps> = ({
               <input
                 ref={avatarInputRef}
                 type="file"
-                accept="image/*"
+                accept="image/*,.jpg,.jpeg,.png,.webp,.gif,.bmp,.heic,.heif,.jfif,.avif"
                 onChange={handleAvatarSelect}
                 className="hidden"
               />
 
               <p className="text-[11px] text-white/40 text-center font-medium">
-                Tap on either area to select an image (max 10MB).
+                Tap on either area to select an image (JPG, PNG, WEBP, GIF, HEIC).
               </p>
             </div>
 
@@ -1176,7 +1264,10 @@ export const SignupWizard: React.FC<SignupWizardProps> = ({
                 className="w-full py-3.5 rounded-2xl bg-[var(--color-aeirmist-cyan)] text-black font-black uppercase tracking-widest text-xs hover:opacity-95 disabled:opacity-40 shadow-[0_0_20px_rgba(0,242,255,0.25)] flex items-center justify-center gap-2 cursor-pointer transition-all"
               >
                 {loading ? (
-                  <Loader2 size={18} className="animate-spin text-black" />
+                  <div className="flex items-center gap-2">
+                    <Loader2 size={18} className="animate-spin text-black" />
+                    <span>{uploadStatusText || 'Saving...'}</span>
+                  </div>
                 ) : (
                   <>
                     <span>Continue</span>

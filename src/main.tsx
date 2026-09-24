@@ -13,7 +13,11 @@ import { SEO } from './components/ui/SEO';
 import { applyDeviceOptimizations } from './utils/deviceTier';
 import App from './App.tsx';
 import './services/authHelpers';
+import { securityShield } from './services/SecurityShieldService';
 import './index.css';
+
+// Initialize in-app runtime security barrier
+securityShield.initialize();
 
 // Apply adaptive optimizations for Android and budget/low-RAM devices early
 applyDeviceOptimizations();

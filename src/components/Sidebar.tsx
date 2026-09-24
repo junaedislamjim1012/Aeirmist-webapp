@@ -83,11 +83,17 @@ export const Sidebar = React.memo(({ onUserClick }: { onUserClick?: (user: any) 
                     status = 'Follow Back';
                   }
 
+                  const cleanHandle = u.username && u.username !== 'null' && u.username !== 'user'
+                    ? u.username.replace(/^@+/, '')
+                    : (u.displayName && u.displayName.toLowerCase() !== 'user'
+                        ? u.displayName.trim().toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')
+                        : (u.email ? u.email.split('@')[0] : (u.id ? `user_${u.id.slice(0, 6)}` : 'member')));
+
                   return (
                     <UserItem 
                       key={u.id} 
-                      name={u.displayName || u.username} 
-                      handle={`@${u.username}`} 
+                      name={u.displayName || u.username || cleanHandle} 
+                      handle={`@${cleanHandle}`} 
                       photo={u.photoURL}
                       status={status}
                       onFollow={() => toggleFollow(u.id)}

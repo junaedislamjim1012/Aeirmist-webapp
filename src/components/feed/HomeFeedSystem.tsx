@@ -11,8 +11,6 @@ import {
   ShoppingBag,
   AlertTriangle,
   ArrowUpRight,
-  SlidersHorizontal,
-  RotateCcw,
   Sparkles,
   Bookmark,
   Users,
@@ -478,51 +476,6 @@ export const HomeFeedSystem: React.FC<{ onUserClick?: (user: any) => void, onPos
                  </button>
               </motion.div>
             )}
-
-            <div className="mb-3 px-1">
-              <div className="flex items-center justify-between gap-2 overflow-x-auto no-scrollbar" role="toolbar" aria-label="Feed preferences">
-                <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
-                  <div className="flex items-center gap-1.5 px-3 h-9 rounded-xl bg-white/[0.03] border border-white/10 text-white/40 shrink-0">
-                    <SlidersHorizontal size={13} aria-hidden="true" />
-                    <span className="text-[9px] font-black uppercase tracking-widest">Feed</span>
-                  </div>
-                  {([
-                    ['smart', 'Smart'],
-                    ['latest', 'Latest'],
-                    ['following', 'Following'],
-                    ['friends', 'Friends'],
-                    ['saved', 'Saved']
-                  ] as const).map(([mode, label]) => (
-                    <button 
-                      key={mode} 
-                      type="button" 
-                      onClick={() => handleFeedModeChange(mode)} 
-                      aria-pressed={feedMode === mode}
-                      className={`h-9 px-3.5 rounded-xl border text-[9px] font-black uppercase tracking-widest transition-all shrink-0 cursor-pointer ${
-                        feedMode === mode 
-                          ? 'bg-aeirmist-cyan text-black border-aeirmist-cyan shadow-[0_0_12px_rgba(0,242,255,0.3)]' 
-                          : 'bg-white/[0.02] text-white/45 border-white/10 hover:text-white hover:bg-white/[0.06]'
-                      }`}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-
-                {/* Reset Recommendations Action */}
-                <button
-                  type="button"
-                  onClick={handleResetRecommendations}
-                  title="Reset feed recommendations & unhide tuned content"
-                  aria-label="Reset recommendations"
-                  className="h-9 px-3 rounded-xl bg-white/[0.02] hover:bg-white/[0.08] border border-white/10 text-white/40 hover:text-aeirmist-cyan transition-all flex items-center gap-1.5 shrink-0 cursor-pointer"
-                >
-                  <RotateCcw size={13} />
-                  <span className="text-[9px] font-black uppercase tracking-widest hidden sm:inline">Reset</span>
-                </button>
-              </div>
-            </div>
-
             {/* FEED ITEMS */}
             <div className="relative rounded-[2.5rem] backdrop-blur-2xl bg-black/15 py-2">
               <div className="space-y-1.5">

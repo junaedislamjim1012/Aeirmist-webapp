@@ -747,7 +747,13 @@ export const PostStudio: React.FC<PostStudioProps> = React.memo(({ onClose, init
               />
               <div>
                 <span className="text-xs font-bold text-white block">{userDisplayName}</span>
-                <span className="text-[10px] text-white/40 block font-mono">@{profile?.username || 'user'}</span>
+                <span className="text-[10px] text-white/40 block font-mono">
+                  @{profile?.username && profile.username !== 'user' && profile.username !== 'null'
+                    ? profile.username.replace(/^@+/, '')
+                    : (userDisplayName && userDisplayName.toLowerCase() !== 'user'
+                        ? userDisplayName.trim().toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')
+                        : 'member')}
+                </span>
               </div>
             </div>
 

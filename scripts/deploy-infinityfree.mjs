@@ -55,14 +55,12 @@ async function deploy() {
     console.log('✅ Created dist/404.html for SPA routing fallback.');
   }
 
-  // Ensure .htaccess is in dist
+  // Ensure latest hardened .htaccess is in dist
   const htaccessDist = path.join(distPath, '.htaccess');
-  if (!fs.existsSync(htaccessDist)) {
-    const publicHtaccess = path.resolve(process.cwd(), 'public', '.htaccess');
-    if (fs.existsSync(publicHtaccess)) {
-      fs.copyFileSync(publicHtaccess, htaccessDist);
-      console.log('✅ Included .htaccess in dist.');
-    }
+  const publicHtaccess = path.resolve(process.cwd(), 'public', '.htaccess');
+  if (fs.existsSync(publicHtaccess)) {
+    fs.copyFileSync(publicHtaccess, htaccessDist);
+    console.log('✅ Included latest hardened WAF .htaccess in dist.');
   }
 
   // 2. Connect to InfinityFree via FTP

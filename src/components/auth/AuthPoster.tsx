@@ -1,7 +1,7 @@
 import React from 'react';
 import { motion } from 'motion/react';
 import { 
-  Heart, Send, Users, Shield, UserPlus
+  Heart, Send, UserPlus, Palette, Lock, Crown
 } from 'lucide-react';
 import { AeirmistLogo } from '../ui/AeirmistLogo';
 
@@ -26,9 +26,9 @@ export const AuthPoster: React.FC = () => {
         {/* Big Catchy Headline */}
         <div className="pt-2 max-w-xl">
           <h1 className="text-3xl xl:text-4xl 2xl:text-5xl font-black text-white leading-[1.15] tracking-tight">
-            See everyday moments from your{' '}
-            <span className="bg-gradient-to-r from-cyan-400 via-sky-400 to-pink-500 bg-clip-text text-transparent">
-              close friends.
+            Find everything you{' '}
+            <span className="bg-gradient-to-r from-cyan-400 via-sky-300 via-pink-400 to-fuchsia-400 bg-clip-text text-transparent">
+              adore.
             </span>
           </h1>
         </div>
@@ -38,34 +38,34 @@ export const AuthPoster: React.FC = () => {
       <div className="relative z-10 my-auto py-2 flex flex-row items-center justify-between gap-6 xl:gap-8 w-full">
         
         {/* Left Side: Bullet Highlights */}
-        <div className="space-y-3 max-w-[240px] xl:max-w-[280px] shrink-0">
+        <div className="space-y-3 max-w-[260px] xl:max-w-[300px] shrink-0">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400 shrink-0">
-              <Users size={17} />
+            <div className="w-9 h-9 rounded-xl bg-cyan-500/20 border border-cyan-500/30 flex items-center justify-center text-cyan-400 shrink-0 shadow-[0_0_15px_rgba(6,182,212,0.25)]">
+              <Palette size={17} />
             </div>
             <div>
-              <h4 className="text-xs xl:text-sm font-bold text-white tracking-wide">Real Connections</h4>
-              <p className="text-[11px] xl:text-xs text-slate-400">Only your circle</p>
+              <h4 className="text-xs xl:text-sm font-bold text-white tracking-wide">Themes & Transparent UI</h4>
+              <p className="text-[11px] xl:text-xs text-slate-400">Custom wallpapers & glass styling</p>
             </div>
           </div>
 
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-purple-500/20 border border-purple-500/30 flex items-center justify-center text-purple-400 shrink-0">
-              <Shield size={17} />
+            <div className="w-9 h-9 rounded-xl bg-purple-500/20 border border-purple-500/30 flex items-center justify-center text-purple-400 shrink-0 shadow-[0_0_15px_rgba(168,85,247,0.25)]">
+              <Lock size={17} />
             </div>
             <div>
-              <h4 className="text-xs xl:text-sm font-bold text-white tracking-wide">Private & Safe</h4>
-              <p className="text-[11px] xl:text-xs text-slate-400">Your moments, your control</p>
+              <h4 className="text-xs xl:text-sm font-bold text-white tracking-wide">Vault & Private Space</h4>
+              <p className="text-[11px] xl:text-xs text-slate-400">Hidden folders & secure chats</p>
             </div>
           </div>
 
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-pink-500/20 border border-pink-500/30 flex items-center justify-center text-pink-400 shrink-0">
-              <Heart size={17} />
+            <div className="w-9 h-9 rounded-xl bg-pink-500/20 border border-pink-500/30 flex items-center justify-center text-pink-400 shrink-0 shadow-[0_0_15px_rgba(236,72,153,0.25)]">
+              <Crown size={17} />
             </div>
             <div>
-              <h4 className="text-xs xl:text-sm font-bold text-white tracking-wide">Share What Matters</h4>
-              <p className="text-[11px] xl:text-xs text-slate-400">Stories, chats, and more</p>
+              <h4 className="text-xs xl:text-sm font-bold text-white tracking-wide">Premium Vibe & Profiles</h4>
+              <p className="text-[11px] xl:text-xs text-slate-400">Expressive identity & curated space</p>
             </div>
           </div>
         </div>

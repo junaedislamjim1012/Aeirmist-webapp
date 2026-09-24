@@ -4217,9 +4217,16 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         await commitBatchIfNeeded();
       }
 
-      // Delete Username Locks
+      // Retain username locks under 69-day reservation (prohibits re-claiming for 69 days)
+      const deletionTimestamp = Date.now();
+      const reservationMs = 69 * 24 * 60 * 60 * 1000;
       for (const un of usernames) {
-        batch.delete(doc(db, 'usernames', un.toLowerCase()));
+        batch.set(doc(db, 'usernames', un.toLowerCase()), {
+          status: 'deleted',
+          deletedAt: deletionTimestamp,
+          previousOwnerUid: uid,
+          reservedUntil: deletionTimestamp + reservationMs
+        }, { merge: true });
         opCount++;
         await commitBatchIfNeeded();
       }
@@ -4568,6 +4575,19 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         logger.warn("Could not batch hide posts on deletion request", postErr);
       }
 
+      // Lock username under 69-day reservation
+      if (profile.username) {
+        const uNorm = profile.username.toLowerCase().trim().replace(/^@+/, '');
+        try {
+          await setDoc(doc(db, 'usernames', uNorm), {
+            status: 'deleted',
+            deletedAt: Date.now(),
+            previousOwnerUid: user.uid,
+            reservedUntil: Date.now() + 69 * 24 * 60 * 60 * 1000
+          }, { merge: true });
+        } catch (_) {}
+      }
+
       await logActivity('account_deleted_request', `Scheduled account for deletion in 69 days.`);
       addToast({ 
         title: "Account Scheduled For Deletion", 
@@ -4593,6 +4613,20 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         status: 'active'
       });
       setIsScheduledForPurge(false);
+
+      // Reactivate username lock
+      if (profile.username) {
+        const uNorm = profile.username.toLowerCase().trim().replace(/^@+/, '');
+        try {
+          await setDoc(doc(db, 'usernames', uNorm), {
+            status: 'active',
+            deletedAt: null,
+            reservedUntil: null,
+            ownerUid: user.uid,
+            uid: user.uid
+          }, { merge: true });
+        } catch (_) {}
+      }
 
       // Unhide user's posts so they appear back in feed
       try {
@@ -4671,72 +4705,147 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (isSafeMode) return { available: true };
 
     try {
-      // 1. Lock document check — verify the owner is still alive
+      // 1. Lock document check in 'usernames' collection
       const uLockSnap = await getDoc(doc(db, 'usernames', norm));
       if (uLockSnap.exists()) {
         const lockData = uLockSnap.data();
         const lockOwner = lockData.ownerUid || lockData.uid;
 
         // If the lock belongs to the caller, skip it
-        if (excludeUid && lockOwner === excludeUid) {
+        if (excludeUid && (lockOwner === excludeUid || lockData.previousOwnerUid === excludeUid)) {
           /* own lock — fall through */
+        } else if (lockData.status === 'deleted' || lockData.deletedAt) {
+          // 69-Day Reservation Check
+          const deletedAtMs = typeof lockData.deletedAt === 'number'
+            ? lockData.deletedAt
+            : (lockData.deletedAt?.toMillis ? lockData.deletedAt.toMillis() : Date.now());
+          const daysPassed = (Date.now() - deletedAtMs) / (1000 * 60 * 60 * 24);
+          if (daysPassed < 69) {
+            const daysRemaining = Math.max(1, Math.ceil(69 - daysPassed));
+            return {
+              available: false,
+              error: `This username was deleted and is reserved for ${daysRemaining} more days (69-day policy).`
+            };
+          } else {
+            // 69 days passed! Release the lock so user can register it
+            logger.info(`[checkUsernameAvailable] 69-day reservation expired for "${norm}". Releasing lock.`);
+            try { await deleteDoc(doc(db, 'usernames', norm)); } catch (delErr) {
+              logger.warn('[checkUsernameAvailable] Could not release expired lock:', delErr);
+            }
+          }
         } else if (lockOwner) {
-          // Verify the owner actually still exists and is active
+          // Verify owner status
           const ownerUserSnap = await getDoc(doc(db, 'users', lockOwner));
           const ownerProfileSnap = await getDoc(doc(db, 'profiles', `profile_${lockOwner}`));
 
           const ownerUserData = ownerUserSnap.exists() ? ownerUserSnap.data() : null;
           const ownerProfileData = ownerProfileSnap.exists() ? ownerProfileSnap.data() : null;
 
-          const isUserDead = !ownerUserSnap.exists() || ownerUserData?.status === 'DELETED' || ownerUserData?.status === 'purged' || ownerUserData?.isDeleted === true;
-          const isProfileDead = !ownerProfileSnap.exists() || ownerProfileData?.status === 'DELETED' || ownerProfileData?.status === 'purged' || ownerProfileData?.isDeleted === true;
+          const isUserDead = !ownerUserSnap.exists() || ownerUserData?.status === 'DELETED' || ownerUserData?.status === 'purged' || ownerUserData?.isDeleted === true || ownerUserData?.status === 'scheduled_for_deletion';
+          const isProfileDead = !ownerProfileSnap.exists() || ownerProfileData?.status === 'DELETED' || ownerProfileData?.status === 'purged' || ownerProfileData?.isDeleted === true || ownerProfileData?.status === 'scheduled_for_deletion';
 
           if (isUserDead && isProfileDead) {
-            // Owner is gone — auto-release the stale lock
-            logger.info(`[checkUsernameAvailable] Auto-releasing orphan username lock "${norm}" (owner ${lockOwner} no longer exists).`);
-            try { await deleteDoc(doc(db, 'usernames', norm)); } catch (delErr) { logger.warn('[checkUsernameAvailable] Could not auto-release lock:', delErr); }
+            const deletedTime = ownerUserData?.deletedAt || ownerProfileData?.deletedAt || ownerProfileData?.deletionRequestedAt || lockData.updatedAt?.toMillis?.() || Date.now();
+            const deletedTimeMs = typeof deletedTime === 'string' ? new Date(deletedTime).getTime() : Number(deletedTime);
+            const daysPassed = (Date.now() - deletedTimeMs) / (1000 * 60 * 60 * 24);
+            if (daysPassed < 69) {
+              const daysRemaining = Math.max(1, Math.ceil(69 - daysPassed));
+              try {
+                await setDoc(doc(db, 'usernames', norm), {
+                  status: 'deleted',
+                  deletedAt: deletedTimeMs,
+                  previousOwnerUid: lockOwner,
+                  reservedUntil: deletedTimeMs + (69 * 24 * 60 * 60 * 1000)
+                }, { merge: true });
+              } catch (_) {}
+              return {
+                available: false,
+                error: `This username was deleted and is reserved for ${daysRemaining} more days (69-day policy).`
+              };
+            } else {
+              try { await deleteDoc(doc(db, 'usernames', norm)); } catch (_) {}
+            }
           } else {
-            return { available: false };
+            return { available: false, error: "Username is already taken." };
           }
         } else {
-          return { available: false };
+          return { available: false, error: "Username is already taken." };
         }
       }
 
-      // 2. Query users where usernameNormalized == norm (skip deleted/purged)
+      // 2. Query users where usernameNormalized == norm
       const q1 = query(collection(db, 'users'), where('usernameNormalized', '==', norm), limit(1));
       const s1 = await getDocs(q1);
       if (!s1.empty) {
         const uDoc = s1.docs[0];
         const uData = uDoc.data();
-        const isDeleted = uData.status === 'DELETED' || uData.status === 'purged' || uData.isDeleted === true;
-        if (!isDeleted && (!excludeUid || uDoc.id !== excludeUid)) {
-          return { available: false };
+        if (!excludeUid || uDoc.id !== excludeUid) {
+          const isDeleted = uData.status === 'DELETED' || uData.status === 'purged' || uData.isDeleted === true || uData.status === 'scheduled_for_deletion';
+          if (isDeleted) {
+            const delTime = uData.deletedAt || Date.now();
+            const delTimeMs = typeof delTime === 'string' ? new Date(delTime).getTime() : Number(delTime);
+            const daysPassed = (Date.now() - delTimeMs) / (1000 * 60 * 60 * 24);
+            if (daysPassed < 69) {
+              const daysRemaining = Math.max(1, Math.ceil(69 - daysPassed));
+              return {
+                available: false,
+                error: `This username was deleted and is reserved for ${daysRemaining} more days (69-day policy).`
+              };
+            }
+          } else {
+            return { available: false, error: "Username is already taken." };
+          }
         }
       }
 
-      // 3. Query users where username == norm (skip deleted/purged)
+      // 3. Query users where username == norm
       const q2 = query(collection(db, 'users'), where('username', '==', norm), limit(1));
       const s2 = await getDocs(q2);
       if (!s2.empty) {
         const uDoc = s2.docs[0];
         const uData = uDoc.data();
-        const isDeleted = uData.status === 'DELETED' || uData.status === 'purged' || uData.isDeleted === true;
-        if (!isDeleted && (!excludeUid || uDoc.id !== excludeUid)) {
-          return { available: false };
+        if (!excludeUid || uDoc.id !== excludeUid) {
+          const isDeleted = uData.status === 'DELETED' || uData.status === 'purged' || uData.isDeleted === true || uData.status === 'scheduled_for_deletion';
+          if (isDeleted) {
+            const delTime = uData.deletedAt || Date.now();
+            const delTimeMs = typeof delTime === 'string' ? new Date(delTime).getTime() : Number(delTime);
+            const daysPassed = (Date.now() - delTimeMs) / (1000 * 60 * 60 * 24);
+            if (daysPassed < 69) {
+              const daysRemaining = Math.max(1, Math.ceil(69 - daysPassed));
+              return {
+                available: false,
+                error: `This username was deleted and is reserved for ${daysRemaining} more days (69-day policy).`
+              };
+            }
+          } else {
+            return { available: false, error: "Username is already taken." };
+          }
         }
       }
 
-      // 4. Query profiles where usernameNormalized == norm (skip deleted/purged)
+      // 4. Query profiles where usernameNormalized == norm
       const q3 = query(collection(db, 'profiles'), where('usernameNormalized', '==', norm), limit(1));
       const s3 = await getDocs(q3);
       if (!s3.empty) {
         const pDoc = s3.docs[0];
         const pData = pDoc.data();
         const pOwner = pData.ownerUid || pData.uid;
-        const isDeleted = pData.status === 'DELETED' || pData.status === 'purged' || pData.isDeleted === true;
-        if (!isDeleted && (!excludeUid || pOwner !== excludeUid)) {
-          return { available: false };
+        if (!excludeUid || pOwner !== excludeUid) {
+          const isDeleted = pData.status === 'DELETED' || pData.status === 'purged' || pData.isDeleted === true || pData.status === 'scheduled_for_deletion';
+          if (isDeleted) {
+            const delTime = pData.deletedAt || pData.deletionRequestedAt || Date.now();
+            const delTimeMs = typeof delTime === 'string' ? new Date(delTime).getTime() : Number(delTime);
+            const daysPassed = (Date.now() - delTimeMs) / (1000 * 60 * 60 * 24);
+            if (daysPassed < 69) {
+              const daysRemaining = Math.max(1, Math.ceil(69 - daysPassed));
+              return {
+                available: false,
+                error: `This username was deleted and is reserved for ${daysRemaining} more days (69-day policy).`
+              };
+            }
+          } else {
+            return { available: false, error: "Username is already taken." };
+          }
         }
       }
 
@@ -4872,6 +4981,9 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       username: cleanRawUsername,
       usernameNormalized: norm,
       normalizedUsername: norm,
+      status: 'active',
+      deletedAt: null,
+      reservedUntil: null,
       email: activeUser.email || data.email || data.personalEmail || '',
       profileId: profileId,
       createdAt: serverTimestamp(),
@@ -4880,6 +4992,10 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     try {
       await batch.commit(); logger.security("User Ban Toggled", { action: "toggle_ban" });
+      try {
+        localStorage.setItem('aeirmist_saved_username', cleanRawUsername);
+        localStorage.setItem('aeirmist_user_handle', `@${cleanRawUsername}`);
+      } catch (_) {}
       setNeedsUsername(false);
       const unifiedProfile = {
         id: profileId,

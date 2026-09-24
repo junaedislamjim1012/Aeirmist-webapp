@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
-  Eye, EyeOff, Loader2, Chrome, AlertCircle, Check, ArrowLeft, QrCode,
+  Eye, EyeOff, Loader2, AlertCircle, Check, ArrowLeft, QrCode,
   Sparkles, ShieldCheck, Mail, User, Lock, Layers, ArrowRight, ShieldAlert,
   HelpCircle, WifiOff, Settings
 } from 'lucide-react';
@@ -112,6 +112,7 @@ export const AuthSystem: React.FC = () => {
 
   const [savedAccounts, setSavedAccounts] = useState<SavedAccount[]>([]);
   const [selectedAccount, setSelectedAccount] = useState<SavedAccount | null>(null);
+  const [isManagingProfiles, setIsManagingProfiles] = useState(false);
   const [view, setView] = useState<AuthView>('login');
   
   // Set initial view based on saved accounts in localStorage on mount
@@ -140,6 +141,7 @@ export const AuthSystem: React.FC = () => {
         localStorage.setItem('aeirmist_saved_accounts', JSON.stringify(filteredList));
         setSavedAccounts(filteredList);
         if (filteredList.length === 0) {
+          setIsManagingProfiles(false);
           setView('login');
         }
       }
@@ -607,12 +609,29 @@ export const AuthSystem: React.FC = () => {
               )}
               {view === 'saved_accounts' && (
                 <div className="mb-4 flex items-center justify-between border-b border-white/10 pb-3">
-                  <h2 className="text-sm sm:text-base font-bold text-white tracking-wide">
-                    Saved Profiles
-                  </h2>
-                  <span className="text-white/40 hover:text-white cursor-pointer transition-colors p-1" title="Settings">
-                    <Settings size={16} />
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-sm sm:text-base font-bold text-white tracking-wide">
+                      Saved Profiles
+                    </h2>
+                    {isManagingProfiles && (
+                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-red-500/20 text-red-400 border border-red-500/30">
+                        Edit Mode
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsManagingProfiles(!isManagingProfiles)}
+                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                      isManagingProfiles
+                        ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 shadow-[0_0_12px_rgba(0,242,255,0.2)]'
+                        : 'text-white/40 hover:text-white hover:bg-white/5 border border-transparent'
+                    }`}
+                    title={isManagingProfiles ? "Done editing" : "Manage profiles"}
+                  >
+                    <Settings size={15} className={`transition-transform duration-300 ${isManagingProfiles ? 'rotate-90 text-cyan-400' : ''}`} />
+                    {isManagingProfiles && <span>Done</span>}
+                  </button>
                 </div>
               )}
 
@@ -660,6 +679,7 @@ export const AuthSystem: React.FC = () => {
                         <div
                           key={account.uid}
                           onClick={() => {
+                            if (isManagingProfiles) return;
                             setSelectedAccount(account);
                             setView('saved_accounts_login');
                             setPassword('');
@@ -669,7 +689,7 @@ export const AuthSystem: React.FC = () => {
                             activeTheme.isLight
                               ? 'bg-white/60 border-slate-200/50 hover:bg-white/90 shadow-[0_4px_20px_rgba(15,23,42,0.02)]'
                               : 'bg-white/[0.03] border-white/10 hover:bg-white/[0.07] hover:border-white/20 shadow-[0_4px_20px_rgba(0,0,0,0.2)]'
-                          } transition-all duration-300 cursor-pointer overflow-hidden`}
+                          } transition-all duration-300 ${isManagingProfiles ? 'cursor-default' : 'cursor-pointer'} overflow-hidden`}
                         >
                           {/* Square profile picture matching Image 2 */}
                           <div className="relative shrink-0">
@@ -681,27 +701,28 @@ export const AuthSystem: React.FC = () => {
                             />
                           </div>
 
-                          <div className="flex-1 min-w-0 pr-6">
+                          <div className="flex-1 min-w-0 pr-2">
                             <h4 className="text-sm font-bold truncate text-white">{account.displayName || account.username}</h4>
                             <p className="text-xs text-white/50 group-hover:text-white/70 transition-colors truncate">
                               @{account.username}
                             </p>
                           </div>
 
-                          {/* Quick chevron indicator matching Image 2 */}
-                          <div className="text-white/40 group-hover:text-white group-hover:translate-x-0.5 transition-all mr-6">
-                            <ArrowRight size={16} />
-                          </div>
-
-                          {/* Remove button (X) */}
-                          <button
-                            type="button"
-                            onClick={(e) => removeSavedAccount(account.uid, e)}
-                            className="absolute right-3 top-1/2 -translate-y-1/2 w-6 h-6 rounded-lg bg-white/5 hover:bg-red-500/20 border border-white/5 hover:border-red-500/30 flex items-center justify-center text-white/40 hover:text-red-400 transition-all z-20 cursor-pointer"
-                            title="Remove profile"
-                          >
-                            <span className="text-xs font-semibold leading-none">&times;</span>
-                          </button>
+                          {/* Right action indicator: If managing profiles, show remove button (X); otherwise show arrow */}
+                          {isManagingProfiles ? (
+                            <button
+                              type="button"
+                              onClick={(e) => removeSavedAccount(account.uid, e)}
+                              className="w-7 h-7 rounded-lg bg-red-500/15 hover:bg-red-500/25 border border-red-500/30 flex items-center justify-center text-red-400 hover:text-red-300 transition-all z-20 cursor-pointer shrink-0"
+                              title="Remove profile"
+                            >
+                              <span className="text-sm font-bold leading-none">&times;</span>
+                            </button>
+                          ) : (
+                            <div className="text-white/40 group-hover:text-white group-hover:translate-x-0.5 transition-all shrink-0">
+                              <ArrowRight size={16} />
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -710,6 +731,7 @@ export const AuthSystem: React.FC = () => {
                       <button
                         type="button"
                         onClick={() => {
+                          setIsManagingProfiles(false);
                           setView('login');
                           setError(null);
                           setSuccess(null);
@@ -723,6 +745,7 @@ export const AuthSystem: React.FC = () => {
                       <button
                         type="button"
                         onClick={() => {
+                          setIsManagingProfiles(false);
                           setView('signup');
                           setSignupStep(1);
                           setError(null);
@@ -950,23 +973,6 @@ export const AuthSystem: React.FC = () => {
                       className="w-full h-12 rounded-2xl text-xs uppercase tracking-widest font-black transition-all flex items-center justify-center gap-2 cursor-pointer mt-2 shadow-lg bg-gradient-to-r from-[var(--color-aeirmist-cyan)] to-cyan-300 text-black hover:brightness-105 active:scale-[0.98] disabled:bg-[#252a38] disabled:from-transparent disabled:to-transparent disabled:text-slate-400 disabled:border disabled:border-white/10 disabled:shadow-none disabled:cursor-not-allowed"
                     >
                       {loading ? <Loader2 size={16} className="animate-spin text-current" /> : "Verify Identity"}
-                    </button>
-
-                    <div className="flex items-center my-3">
-                      <div className="flex-1 h-px bg-white/20"></div>
-                      <span className="px-4 text-xs font-bold text-slate-300 uppercase tracking-widest">or</span>
-                      <div className="flex-1 h-px bg-white/20"></div>
-                    </div>
-
-                    {/* Google Sign In Only */}
-                    <button
-                      type="button"
-                      onClick={() => handleSocialLogin('google')}
-                      disabled={loading}
-                      className="w-full h-11 bg-white/10 hover:bg-white/15 border border-white/25 text-white font-bold rounded-2xl text-xs uppercase tracking-widest transition-all disabled:opacity-40 flex items-center justify-center gap-2.5 cursor-pointer shadow-sm"
-                    >
-                      <Chrome size={16} className="text-white" />
-                      Continue with Google
                     </button>
                   </motion.form>
                 )}

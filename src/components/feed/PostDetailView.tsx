@@ -15,6 +15,7 @@ import {
   Loader2, 
   AlertCircle,
   Check,
+  ShieldCheck,
   Eye
 } from 'lucide-react';
 import { 
@@ -48,6 +49,19 @@ interface PostDetailViewProps {
   onClose: () => void;
   onNavigate?: (tab: string) => void;
 }
+
+const renderAeirmistVerifiedBadge = (isVerified?: boolean, plan?: string, size = 14) => {
+  if (!isVerified) return null;
+  const isBusiness = plan === 'business' || plan === 'enterprise';
+  return (
+    <span title={isBusiness ? 'Aeirmist Business Verified' : 'Aeirmist Verified'} className="inline-flex items-center ml-0.5 align-middle">
+      <ShieldCheck 
+        size={size} 
+        className={`${isBusiness ? 'text-amber-400' : 'text-aeirmist-cyan'} shrink-0`} 
+      />
+    </span>
+  );
+};
 
 export const PostDetailView: React.FC<PostDetailViewProps> = ({ postId, onClose, onNavigate }) => {
   const { 
@@ -126,7 +140,8 @@ export const PostDetailView: React.FC<PostDetailViewProps> = ({ postId, onClose,
             id: authorId,
             name: data.userName || data.authorName || data.author?.displayName || data.author?.username || 'Aeirmist User',
             avatar: getAvatarUrl(data.author?.photoURL || data.userAvatar || data.authorAvatar),
-            isVerified: data.author?.isVerified || false
+            isVerified: Boolean(data.author?.isVerified || data.isVerified || data.verified),
+            verificationPlan: data.author?.verificationPlan || data.verificationPlan
           },
           likesCount: data.likesCount || 0,
           commentsCount: data.commentsCount || 0,
@@ -622,11 +637,7 @@ export const PostDetailView: React.FC<PostDetailViewProps> = ({ postId, onClose,
                     <span className="font-semibold text-sm text-white hover:underline cursor-pointer truncate max-w-[130px]">
                       {post.author.name}
                     </span>
-                    {post.author.isVerified && (
-                      <span className="w-3.5 h-3.5 rounded-full bg-sky-500 flex items-center justify-center flex-shrink-0">
-                        <Check size={9} className="text-white stroke-[3]" />
-                      </span>
-                    )}
+                    {renderAeirmistVerifiedBadge(post.author.isVerified, post.author.verificationPlan, 14)}
                     {!isOwnPost && (
                       <>
                         <span className="text-neutral-500 text-xs">•</span>
@@ -703,11 +714,7 @@ export const PostDetailView: React.FC<PostDetailViewProps> = ({ postId, onClose,
                         <span className="font-semibold text-white mr-1.5 hover:underline cursor-pointer">
                           {post.author.name}
                         </span>
-                        {post.author.isVerified && (
-                          <span className="inline-flex items-center justify-center w-3 h-3 rounded-full bg-sky-500 text-white mr-1.5 align-middle">
-                            <Check size={8} className="stroke-[3]" />
-                          </span>
-                        )}
+                        {renderAeirmistVerifiedBadge(post.author.isVerified, post.author.verificationPlan, 13)}
                         <span>{post.content}</span>
                       </p>
                       <div className="flex items-center gap-3 text-[11px] text-neutral-500 mt-1.5 font-medium">
@@ -743,11 +750,7 @@ export const PostDetailView: React.FC<PostDetailViewProps> = ({ postId, onClose,
                               <span className="font-semibold text-white mr-1.5 cursor-pointer hover:underline">
                                 {c.authorName}
                               </span>
-                              {c.isVerified && (
-                                <span className="inline-flex items-center justify-center w-3 h-3 rounded-full bg-sky-500 text-white mr-1.5 align-middle">
-                                  <Check size={8} className="stroke-[3]" />
-                                </span>
-                              )}
+                              {renderAeirmistVerifiedBadge(c.isVerified, c.verificationPlan, 12)}
                               <span>{c.content}</span>
                             </p>
 
@@ -1081,11 +1084,7 @@ export const PostDetailView: React.FC<PostDetailViewProps> = ({ postId, onClose,
                     <span className="font-semibold text-sm text-white truncate max-w-[140px]">
                       {post.author.name}
                     </span>
-                    {post.author.isVerified && (
-                      <span className="w-3.5 h-3.5 rounded-full bg-sky-500 flex items-center justify-center flex-shrink-0">
-                        <Check size={9} className="text-white stroke-[3]" />
-                      </span>
-                    )}
+                    {renderAeirmistVerifiedBadge(post.author.isVerified, post.author.verificationPlan, 13)}
                     {!isOwnPost && (
                       <>
                         <span className="text-neutral-500 text-xs">•</span>

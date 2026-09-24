@@ -3708,9 +3708,11 @@ const MediaViewer = ({ post, onClose }: { post: any, onClose: () => void }) => {
                 <img src={getAvatarUrl(livePost.author?.photoURL || livePost.userAvatar || livePost.authorAvatar)} className="w-full h-full rounded-[0.7rem] md:rounded-[0.9rem] object-cover" alt="" referrerPolicy="no-referrer" />
              </div>
              <div>
-                <p className="text-sm md:text-base font-black tracking-tight flex items-center gap-2">
+                <p className="text-sm md:text-base font-black tracking-tight flex items-center gap-1.5">
                   @{livePost.author?.username || livePost.userName || 'aeirmist_node'}
-                  <UserCheck size={12} className="text-aeirmist-cyan" />
+                  {(livePost.author?.isVerified || livePost.isVerified) && (
+                    <ShieldCheck size={14} className={`${livePost.author?.verificationPlan === 'business' ? 'text-amber-400' : 'text-aeirmist-cyan'} shrink-0`} />
+                  )}
                 </p>
                 <p className="text-[8px] md:text-[10px] text-white/20 font-black uppercase tracking-[0.3em]">
                   {livePost.createdAt ? new Date(livePost.createdAt.seconds * 1000).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }) : 'Just now'}

@@ -2483,9 +2483,11 @@ const VerificationRequestsTab = ({ db, addToast, toggleVerification }: { db: any
   const handleQuickApprove = async (r: any) => {
     if (!db) return;
     const plan = (r.plan || 'creator') as 'essential' | 'creator' | 'business';
+    const targetProfileId = r.profileId || r.userId || r.id;
+    const targetUid = r.userId || r.uid || r.id;
     setIsProcessingAction(true);
     try {
-      await toggleVerification(r.userId, true, plan, 30, r.userId);
+      await toggleVerification(targetProfileId, true, plan, 30, targetUid);
       await updateDoc(doc(db, 'verificationApplications', r.id), {
         status: 'approved',
         approvedPlan: plan,
@@ -2503,6 +2505,8 @@ const VerificationRequestsTab = ({ db, addToast, toggleVerification }: { db: any
   const handleConfirmReject = async () => {
     if (!rejectingRequest || !db) return;
     const finalReason = customRejectReason.trim() || rejectReason;
+    const targetProfileId = rejectingRequest.profileId || rejectingRequest.userId || rejectingRequest.id;
+    const targetUid = rejectingRequest.userId || rejectingRequest.uid || rejectingRequest.id;
     setIsProcessingAction(true);
     try {
       await updateDoc(doc(db, 'verificationApplications', rejectingRequest.id), {
@@ -2511,18 +2515,32 @@ const VerificationRequestsTab = ({ db, addToast, toggleVerification }: { db: any
         rejectedAt: serverTimestamp()
       });
 
-      // Send Meta-style rejection notification
-      await addDoc(collection(db, 'notifications'), {
-        userId: rejectingRequest.userId,
-        type: 'verification',
-        message: `Your Aeirmist Verification application could not be approved at this time. Reason: ${finalReason}. You may update your information and reapply.`,
-        metadata: {
-          status: 'rejected',
-          reason: finalReason
-        },
-        read: false,
-        createdAt: serverTimestamp()
-      }).catch(() => {});
+      // Send Meta-style rejection notification to user
+      const targetRecipientIds = Array.from(new Set([targetUid, targetProfileId].filter(Boolean))) as string[];
+      for (const recipientId of targetRecipientIds) {
+        await addDoc(collection(db, 'notifications'), {
+          userId: recipientId,
+          fromUserId: 'aeirmist_system',
+          fromUserUid: 'aeirmist_system',
+          user: {
+            name: 'Aeirmist Official',
+            avatar: '/favicon.png',
+            username: 'aeirmist',
+            isVerified: true
+          },
+          type: 'verification',
+          message: `Your Aeirmist Verification application could not be approved at this time. Reason: ${finalReason}. You may update your information and reapply.`,
+          metadata: {
+            status: 'rejected',
+            reason: finalReason,
+            senderName: 'Aeirmist Official',
+            senderUsername: 'aeirmist',
+            senderPhoto: '/favicon.png'
+          },
+          read: false,
+          createdAt: serverTimestamp()
+        }).catch(() => {});
+      }
 
       addToast({ title: 'Application Rejected', message: `Applicant has been notified with the reason.`, type: 'info' });
       setRejectingRequest(null);
@@ -2777,7 +2795,9 @@ const VerificationRequestsTab = ({ db, addToast, toggleVerification }: { db: any
         user={modalApplicant}
         onApplyPlan={async (plan, durationDays) => {
           if (!modalApplicant) return;
-          await toggleVerification(modalApplicant.id, true, plan, durationDays, modalApplicant.id);
+          const targetProfileId = modalApplicant.profileId || modalApplicant.userId || modalApplicant.uid || modalApplicant.id;
+          const targetUid = modalApplicant.userId || modalApplicant.uid || modalApplicant.id;
+          await toggleVerification(targetProfileId, true, plan, durationDays, targetUid);
           await updateDoc(doc(db, 'verificationApplications', modalApplicant.id), {
             status: 'approved',
             approvedPlan: plan,
@@ -2787,12 +2807,16 @@ const VerificationRequestsTab = ({ db, addToast, toggleVerification }: { db: any
         }}
         onRevoke={async () => {
           if (!modalApplicant) return;
-          await toggleVerification(modalApplicant.id, false, undefined, undefined, modalApplicant.id);
+          const targetProfileId = modalApplicant.profileId || modalApplicant.userId || modalApplicant.uid || modalApplicant.id;
+          const targetUid = modalApplicant.userId || modalApplicant.uid || modalApplicant.id;
+          await toggleVerification(targetProfileId, false, undefined, undefined, targetUid);
           setModalApplicant(null);
         }}
         onExtend={async (days) => {
           if (!modalApplicant) return;
-          await toggleVerification(modalApplicant.id, true, modalApplicant.verificationPlan || 'creator', days, modalApplicant.id);
+          const targetProfileId = modalApplicant.profileId || modalApplicant.userId || modalApplicant.uid || modalApplicant.id;
+          const targetUid = modalApplicant.userId || modalApplicant.uid || modalApplicant.id;
+          await toggleVerification(targetProfileId, true, modalApplicant.verificationPlan || 'creator', days, targetUid);
           setModalApplicant(null);
         }}
       />

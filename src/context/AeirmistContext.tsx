@@ -4350,7 +4350,7 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         snapDocs.forEach(d => set.add(d.id));
       };
 
-      // NOTES: authorUid, authorId, userId, profileId, authorUsername (fixes notes remaining in database!)
+      // NOTES: authorUid, authorId, userId, profileId, authorUsername, userName
       for (const targetId of allTargetIdentifiers) {
         for (const field of ['authorUid', 'authorId', 'userId', 'profileId']) {
           try {
@@ -4360,11 +4360,25 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         }
       }
       for (const un of allUsernames) {
-        try {
-          const snap = await getDocs(query(collection(db, 'notes'), where('authorUsername', '==', un)));
-          addDocsToDelete('notes', snap.docs);
-        } catch (e) {}
+        for (const field of ['authorUsername', 'userName']) {
+          try {
+            const snap = await getDocs(query(collection(db, 'notes'), where(field, '==', un)));
+            addDocsToDelete('notes', snap.docs);
+          } catch (e) {}
+        }
       }
+      // Scan all notes collection to catch any non-indexed or custom author fields
+      try {
+        const allNotesSnap = await getDocs(collection(db, 'notes'));
+        allNotesSnap.forEach(d => {
+          const nd = d.data();
+          const matchesId = allTargetIdentifiers.includes(nd.authorId) || allTargetIdentifiers.includes(nd.authorUid) || allTargetIdentifiers.includes(nd.userId) || allTargetIdentifiers.includes(nd.profileId);
+          const matchesName = allUsernames.includes(nd.userName?.toLowerCase?.()) || allUsernames.includes(nd.authorUsername?.toLowerCase?.());
+          if (matchesId || matchesName) {
+            addDocsToDelete('notes', [d]);
+          }
+        });
+      } catch (e) {}
 
       // POSTS: userId, authorUid, authorId
       for (const targetId of allTargetIdentifiers) {
@@ -4416,11 +4430,19 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         }
       }
 
-      // NOTIFICATIONS: userId, fromUserId, toUid, fromUid, targetProfileId, fromProfileId
+      // NOTIFICATIONS: userId (incoming), fromUserId, fromUserUid, toUid, fromUid, targetProfileId, fromProfileId, metadata.senderId (outgoing)
       for (const targetId of allTargetIdentifiers) {
-        for (const field of ['userId', 'fromUserId', 'toUid', 'fromUid', 'targetProfileId', 'fromProfileId']) {
+        for (const field of ['userId', 'fromUserId', 'fromUserUid', 'toUid', 'fromUid', 'targetProfileId', 'fromProfileId', 'metadata.senderId']) {
           try {
             const snap = await getDocs(query(collection(db, 'notifications'), where(field, '==', targetId)));
+            addDocsToDelete('notifications', snap.docs);
+          } catch (e) {}
+        }
+      }
+      for (const un of allUsernames) {
+        for (const field of ['user.username', 'metadata.senderUsername', 'fromUsername']) {
+          try {
+            const snap = await getDocs(query(collection(db, 'notifications'), where(field, '==', un)));
             addDocsToDelete('notifications', snap.docs);
           } catch (e) {}
         }
@@ -4671,43 +4693,120 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const toggleUserBan = async (uid: string, banStatus: boolean) => {
-    if (!db) return;
+    if (!db || !uid) return;
     try {
+      const banUids = new Set<string>([uid]);
+      const banProfileIds = new Set<string>([uid, `profile_${uid}`]);
+      const banUsernames = new Set<string>();
+
       const profilesRef = collection(db, 'profiles');
-      const q = query(profilesRef, where('ownerUid', '==', uid));
-      const snap = await getDocs(q);
-      
-      const batch = writeBatch(db);
-      snap.forEach(p => {
-        batch.update(doc(db, 'profiles', p.id), { 
-          isBanned: banStatus,
-          status: banStatus ? 'BANNED' : 'ACTIVE'
-        });
+      const qOwner = query(profilesRef, where('ownerUid', '==', uid));
+      const snapOwner = await getDocs(qOwner);
+      snapOwner.forEach(p => {
+        banProfileIds.add(p.id);
+        const d = p.data();
+        if (d.uid) banUids.add(d.uid);
+        if (d.ownerUid) banUids.add(d.ownerUid);
+        if (d.username) banUsernames.add(d.username.toLowerCase());
+        if (d.usernameNormalized) banUsernames.add(d.usernameNormalized.toLowerCase());
       });
 
-      // Also check if uid itself is a profileId
+      const qUid = query(profilesRef, where('uid', '==', uid));
+      const snapUid = await getDocs(qUid);
+      snapUid.forEach(p => {
+        banProfileIds.add(p.id);
+        const d = p.data();
+        if (d.uid) banUids.add(d.uid);
+        if (d.ownerUid) banUids.add(d.ownerUid);
+        if (d.username) banUsernames.add(d.username.toLowerCase());
+        if (d.usernameNormalized) banUsernames.add(d.usernameNormalized.toLowerCase());
+      });
+
       const directRef = doc(db, 'profiles', uid);
       const directSnap = await getDoc(directRef);
       if (directSnap.exists()) {
-        batch.update(directRef, { 
-          isBanned: banStatus,
-          status: banStatus ? 'BANNED' : 'ACTIVE'
-        });
+        const d = directSnap.data();
+        if (d.uid) banUids.add(d.uid);
+        if (d.ownerUid) banUids.add(d.ownerUid);
+        if (d.username) banUsernames.add(d.username.toLowerCase());
+        if (d.usernameNormalized) banUsernames.add(d.usernameNormalized.toLowerCase());
       }
 
-      await batch.commit(); logger.security("User Ban Toggled", { action: "toggle_ban" });
-      
-      // Also update main user doc if it exists
-      try {
-        await updateDoc(doc(db, 'users', uid), { 
+      // Update ban status on profiles
+      for (const pId of Array.from(banProfileIds)) {
+        await setDoc(doc(db, 'profiles', pId), { 
           isBanned: banStatus,
-          status: banStatus ? 'BANNED' : 'ACTIVE'
-        });
-      } catch (e) {}
+          status: banStatus ? 'BANNED' : 'ACTIVE',
+          bannedAt: banStatus ? serverTimestamp() : null
+        }, { merge: true }).catch(() => {});
+      }
 
+      // Update users collection
+      for (const uId of Array.from(banUids)) {
+        await setDoc(doc(db, 'users', uId), { 
+          isBanned: banStatus,
+          status: banStatus ? 'BANNED' : 'ACTIVE',
+          bannedAt: banStatus ? serverTimestamp() : null
+        }, { merge: true }).catch(() => {});
+      }
+
+      // If banning (Meta-style disable/removal): INSTANTLY WIPE ALL ACTIVE NOTES & OUTGOING NOTIFICATIONS
+      if (banStatus) {
+        const allBanTargets = Array.from(new Set([...banUids, ...banProfileIds]));
+        const allBanUnames = Array.from(banUsernames);
+
+        // 1. Delete active notes authored by this banned user
+        for (const tId of allBanTargets) {
+          for (const field of ['authorUid', 'authorId', 'userId', 'profileId']) {
+            try {
+              const snapNotes = await getDocs(query(collection(db, 'notes'), where(field, '==', tId)));
+              for (const nd of snapNotes.docs) {
+                await deleteDoc(doc(db, 'notes', nd.id)).catch(() => {});
+              }
+            } catch (e) {}
+          }
+        }
+        for (const un of allBanUnames) {
+          try {
+            const snapNotes = await getDocs(query(collection(db, 'notes'), where('userName', '==', un)));
+            for (const nd of snapNotes.docs) {
+              await deleteDoc(doc(db, 'notes', nd.id)).catch(() => {});
+            }
+          } catch (e) {}
+        }
+
+        // 2. Delete all outgoing notifications sent by this banned user to anyone else
+        for (const tId of allBanTargets) {
+          for (const field of ['fromUserId', 'fromUserUid', 'fromUid', 'fromProfileId']) {
+            try {
+              const snapNotifs = await getDocs(query(collection(db, 'notifications'), where(field, '==', tId)));
+              for (const nd of snapNotifs.docs) {
+                await deleteDoc(doc(db, 'notifications', nd.id)).catch(() => {});
+              }
+            } catch (e) {}
+          }
+        }
+        for (const un of allBanUnames) {
+          try {
+            const snapNotifs1 = await getDocs(query(collection(db, 'notifications'), where('user.username', '==', un)));
+            for (const nd of snapNotifs1.docs) {
+              await deleteDoc(doc(db, 'notifications', nd.id)).catch(() => {});
+            }
+          } catch (e) {}
+          try {
+            const snapNotifs2 = await getDocs(query(collection(db, 'notifications'), where('metadata.senderUsername', '==', un)));
+            for (const nd of snapNotifs2.docs) {
+              await deleteDoc(doc(db, 'notifications', nd.id)).catch(() => {});
+            }
+          } catch (e) {}
+        }
+      }
+
+      logger.security("User Ban Toggled", { action: "toggle_ban", uid, banStatus });
+      
       addToast({ 
         title: banStatus ? 'Account Restricted' : 'Access Restored', 
-        message: `Account access has been ${banStatus ? 'suspended' : 're-enabled'}.`, 
+        message: `Account access has been ${banStatus ? 'suspended and content disabled' : 're-enabled'}.`, 
         type: banStatus ? 'warning' : 'success' 
       });
     } catch (e) {
@@ -4730,7 +4829,7 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       const profileSnap = await getDoc(profileRef).catch(() => null);
       const pData = profileSnap?.exists() ? profileSnap.data() : null;
 
-      const resolvedUid = targetUid || pData?.ownerUid || pData?.uid || (profileId.startsWith('profile_') ? null : profileId);
+      const resolvedUid = targetUid || pData?.ownerUid || pData?.uid || (profileId.startsWith('profile_') ? profileId.replace('profile_', '') : profileId);
 
       const planNameMap: Record<string, string> = {
         essential: 'Essential ($3.69/mo)',
@@ -4757,43 +4856,106 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           verificationDurationDays: durationDays
         };
 
-        // 1. Update Profile
-        await updateDoc(profileRef, verificationPayload);
+        // 1. Gather all profile document references to update
+        const profileRefsToUpdate = new Map<string, any>();
+        profileRefsToUpdate.set(cleanProfileId, doc(db, 'profiles', cleanProfileId));
+        if (resolvedUid) {
+          profileRefsToUpdate.set(resolvedUid, doc(db, 'profiles', resolvedUid));
+          profileRefsToUpdate.set(`profile_${resolvedUid}`, doc(db, 'profiles', `profile_${resolvedUid}`));
+          try {
+            const qOwner = query(collection(db, 'profiles'), where('ownerUid', '==', resolvedUid));
+            const snapOwner = await getDocs(qOwner);
+            snapOwner.forEach(d => profileRefsToUpdate.set(d.id, d.ref));
+
+            const qUid = query(collection(db, 'profiles'), where('uid', '==', resolvedUid));
+            const snapUid = await getDocs(qUid);
+            snapUid.forEach(d => profileRefsToUpdate.set(d.id, d.ref));
+          } catch (e) {}
+        }
+
+        // Apply verification payload to all matched profile docs with setDoc merge
+        for (const ref of profileRefsToUpdate.values()) {
+          await setDoc(ref, verificationPayload, { merge: true }).catch(() => {});
+        }
 
         // 2. Update User doc if available
         if (resolvedUid) {
-          await updateDoc(doc(db, 'users', resolvedUid), verificationPayload).catch(e => {
-            logger.warn("Could not update users doc verification:", e);
-          });
+          await setDoc(doc(db, 'users', resolvedUid), verificationPayload, { merge: true }).catch(() => {});
 
           // 3. Update any verification application doc
-          await updateDoc(doc(db, 'verificationApplications', resolvedUid), {
+          await setDoc(doc(db, 'verificationApplications', resolvedUid), {
             status: 'approved',
+            approvedPlan: plan,
             plan,
             approvedAt: serverTimestamp(),
+            reviewedAt: serverTimestamp(),
             expiresAt,
             monthlyDeadline: expiresAt,
             autoRenewal: true
-          }).catch(() => {});
+          }, { merge: true }).catch(() => {});
+        }
+        if (cleanProfileId && cleanProfileId !== resolvedUid) {
+          await setDoc(doc(db, 'verificationApplications', cleanProfileId), {
+            status: 'approved',
+            approvedPlan: plan,
+            plan,
+            approvedAt: serverTimestamp(),
+            reviewedAt: serverTimestamp(),
+            expiresAt,
+            monthlyDeadline: expiresAt,
+            autoRenewal: true
+          }, { merge: true }).catch(() => {});
         }
 
-        // 4. Send Meta-style celebration notification to user
-        const targetNotifId = resolvedUid || cleanProfileId;
-        await addDoc(collection(db, 'notifications'), {
-          userId: targetNotifId,
-          type: 'verification',
-          message: `Congratulations! Your account is now Meta-Style Verified under the ${planNameMap[plan] || plan} Plan. Your badge is active until ${deadlineStr}.`,
-          metadata: {
-            plan,
-            verifiedAt: nowMs,
-            expiresAt: expiresAt.getTime(),
-            monthlyDeadline: expiresAt.getTime(),
-            status: 'active',
-            deadlineStr
-          },
-          read: false,
-          createdAt: serverTimestamp()
-        }).catch(err => logger.warn("Failed to send verification notification:", err));
+        // 4. Update local profile state if it matches the verified user
+        setProfile(prev => {
+          if (!prev) return prev;
+          if (prev.id === cleanProfileId || prev.uid === resolvedUid || prev.ownerUid === resolvedUid || (resolvedUid && prev.id === `profile_${resolvedUid}`)) {
+            return {
+              ...prev,
+              isVerified: true,
+              verified: true,
+              verificationPlan: plan,
+              verificationExpiresAt: expiresAt
+            };
+          }
+          return prev;
+        });
+
+        if (profile?.id === cleanProfileId || user?.uid === resolvedUid || profile?.ownerUid === resolvedUid) {
+          setShowVerificationCelebration(true);
+        }
+
+        // 5. Send Meta-style celebration notification to user
+        const targetRecipientIds = Array.from(new Set([resolvedUid, cleanProfileId, ...profileRefsToUpdate.keys()].filter(Boolean))) as string[];
+        for (const rId of targetRecipientIds) {
+          await addDoc(collection(db, 'notifications'), {
+            userId: rId,
+            fromUserId: 'aeirmist_system',
+            fromUserUid: 'aeirmist_system',
+            user: {
+              name: 'Aeirmist Official',
+              avatar: '/favicon.png',
+              username: 'aeirmist',
+              isVerified: true
+            },
+            type: 'verification',
+            message: `🎉 Congratulations! Your Aeirmist account is now officially verified under the ${planNameMap[plan] || plan} Plan. Your badge is active until ${deadlineStr}.`,
+            metadata: {
+              plan,
+              verifiedAt: nowMs,
+              expiresAt: expiresAt.getTime(),
+              monthlyDeadline: expiresAt.getTime(),
+              status: 'active',
+              deadlineStr,
+              senderName: 'Aeirmist Official',
+              senderUsername: 'aeirmist',
+              senderPhoto: '/favicon.png'
+            },
+            read: false,
+            createdAt: serverTimestamp()
+          }).catch(err => logger.warn("Failed to send verification notification:", err));
+        }
 
         addToast({ 
           title: 'Account Verified', 
@@ -4809,25 +4971,62 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           autoRenewal: false
         };
 
-        await updateDoc(profileRef, revokePayload);
-
+        const profileRefsToUpdate = new Map<string, any>();
+        profileRefsToUpdate.set(cleanProfileId, doc(db, 'profiles', cleanProfileId));
         if (resolvedUid) {
-          await updateDoc(doc(db, 'users', resolvedUid), revokePayload).catch(() => {});
-          await updateDoc(doc(db, 'verificationApplications', resolvedUid), {
-            status: 'revoked',
-            revokedAt: serverTimestamp()
-          }).catch(() => {});
+          profileRefsToUpdate.set(resolvedUid, doc(db, 'profiles', resolvedUid));
+          profileRefsToUpdate.set(`profile_${resolvedUid}`, doc(db, 'profiles', `profile_${resolvedUid}`));
         }
 
-        const targetNotifId = resolvedUid || cleanProfileId;
-        await addDoc(collection(db, 'notifications'), {
-          userId: targetNotifId,
-          type: 'verification',
-          message: `Your Aeirmist Verification badge and plan subscription have been revoked.`,
-          metadata: { status: 'revoked' },
-          read: false,
-          createdAt: serverTimestamp()
-        }).catch(() => {});
+        for (const ref of profileRefsToUpdate.values()) {
+          await setDoc(ref, revokePayload, { merge: true }).catch(() => {});
+        }
+
+        if (resolvedUid) {
+          await setDoc(doc(db, 'users', resolvedUid), revokePayload, { merge: true }).catch(() => {});
+          await setDoc(doc(db, 'verificationApplications', resolvedUid), {
+            status: 'revoked',
+            revokedAt: serverTimestamp()
+          }, { merge: true }).catch(() => {});
+        }
+
+        setProfile(prev => {
+          if (!prev) return prev;
+          if (prev.id === cleanProfileId || prev.uid === resolvedUid || prev.ownerUid === resolvedUid) {
+            return {
+              ...prev,
+              isVerified: false,
+              verified: false,
+              verificationPlan: undefined
+            };
+          }
+          return prev;
+        });
+
+        const targetRecipientIds = Array.from(new Set([resolvedUid, cleanProfileId].filter(Boolean))) as string[];
+        for (const rId of targetRecipientIds) {
+          await addDoc(collection(db, 'notifications'), {
+            userId: rId,
+            fromUserId: 'aeirmist_system',
+            fromUserUid: 'aeirmist_system',
+            user: {
+              name: 'Aeirmist Official',
+              avatar: '/favicon.png',
+              username: 'aeirmist',
+              isVerified: true
+            },
+            type: 'verification',
+            message: `Your Aeirmist Verification badge and plan subscription have been revoked.`,
+            metadata: { 
+              status: 'revoked',
+              senderName: 'Aeirmist Official',
+              senderUsername: 'aeirmist',
+              senderPhoto: '/favicon.png'
+            },
+            read: false,
+            createdAt: serverTimestamp()
+          }).catch(() => {});
+        }
 
         addToast({ 
           title: 'Badge Removed', 

@@ -182,8 +182,13 @@ export const HomeFeedSystem: React.FC<{ onUserClick?: (user: any) => void, onPos
 
       const filtered = deduped.slice(0, postLimit * 2).filter(p => {
         if (!p || p.isArchived) return false;
-        // Strictly exclude posts from deleted or scheduled-for-purge accounts
+        // Strictly exclude posts from deleted, banned, or scheduled-for-purge accounts
         if (
+          p.isBanned ||
+          p.author?.isBanned ||
+          p.authorIsBanned ||
+          p.status === 'BANNED' ||
+          p.authorStatus === 'BANNED' ||
           p.isDeletedAuthor || 
           p.scheduledForPurge || 
           p.isDeleted ||

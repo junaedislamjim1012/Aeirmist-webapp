@@ -190,7 +190,9 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
     }
   };
 
-  // Real-time Firestore sync listener
+  const senderStatusCache = useRef<Map<string, { exists: boolean; isBanned: boolean }>>(new Map());
+
+  // Real-time Firestore sync listener with Meta-style ban/deletion filter
   useEffect(() => {
     if (!db || !user) return;
     
@@ -201,10 +203,64 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
       limit(50)
     );
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+    const unsubscribe = onSnapshot(q, async (snapshot) => {
+      // 1. Gather all sender IDs from non-system notifications
+      const pendingSenderIds = new Set<string>();
+
+      snapshot.docs.forEach(docSnap => {
+        const d = docSnap.data();
+        const type = String(d.type || '').toLowerCase();
+        const isSystem = ['verification', 'system', 'system_verification', 'security'].some(t => type.includes(t)) ||
+                         d.fromUserId === 'aeirmist_system' ||
+                         d.user?.username === 'aeirmist' ||
+                         d.user?.username === 'security';
+        if (!isSystem) {
+          const senderId = d.fromUserId || d.fromUserUid || d.metadata?.senderId;
+          if (senderId && !senderStatusCache.current.has(senderId)) {
+            pendingSenderIds.add(senderId);
+          }
+        }
+      });
+
+      // 2. Resolve unknown sender statuses from Firestore
+      if (pendingSenderIds.size > 0 && db) {
+        await Promise.all(
+          Array.from(pendingSenderIds).map(async (sId) => {
+            try {
+              const pSnap = await getDoc(doc(db, 'profiles', sId));
+              if (pSnap.exists()) {
+                const pData = pSnap.data();
+                const isBanned = Boolean(pData.isBanned || pData.status === 'BANNED' || pData.status === 'DELETED');
+                senderStatusCache.current.set(sId, { exists: true, isBanned });
+                return;
+              }
+              const pAltSnap = await getDoc(doc(db, 'profiles', `profile_${sId}`));
+              if (pAltSnap.exists()) {
+                const pData = pAltSnap.data();
+                const isBanned = Boolean(pData.isBanned || pData.status === 'BANNED' || pData.status === 'DELETED');
+                senderStatusCache.current.set(sId, { exists: true, isBanned });
+                return;
+              }
+              const uSnap = await getDoc(doc(db, 'users', sId));
+              if (uSnap.exists()) {
+                const uData = uSnap.data();
+                const isBanned = Boolean(uData.isBanned || uData.status === 'BANNED' || uData.status === 'DELETED');
+                senderStatusCache.current.set(sId, { exists: true, isBanned });
+                return;
+              }
+              // Hard deleted from database!
+              senderStatusCache.current.set(sId, { exists: false, isBanned: true });
+            } catch (e) {
+              senderStatusCache.current.set(sId, { exists: true, isBanned: false });
+            }
+          })
+        );
+      }
+
+      // 3. Map and filter notifications
       const mapped = snapshot.docs
-        .map(doc => {
-          const d = doc.data();
+        .map(docSnap => {
+          const d = docSnap.data();
           const type = String(d.type).toLowerCase();
           const isMessage = ['message', 'message_media', 'message_voice', 'message_video', 'store_message'].includes(type) || type.includes('msg') || type === 'store_message_received' || type.includes('call');
           
@@ -214,8 +270,30 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
                                   String(d.type || '').toLowerCase().includes('device') ||
                                   String(d.type || '').toLowerCase().includes('login');
 
+          const isSystem = ['verification', 'system', 'system_verification', 'security'].some(t => type.includes(t)) ||
+                           d.fromUserId === 'aeirmist_system' ||
+                           d.user?.username === 'aeirmist' ||
+                           d.user?.username === 'security' ||
+                           isSecurityAlert;
+
+          // Check if sender is banned or hard-deleted
+          if (!isSystem) {
+            const senderId = d.fromUserId || d.fromUserUid || d.metadata?.senderId;
+            if (senderId && senderStatusCache.current.has(senderId)) {
+              const status = senderStatusCache.current.get(senderId)!;
+              if (!status.exists || status.isBanned) {
+                deleteDoc(doc(db, 'notifications', docSnap.id)).catch(() => {});
+                return null;
+              }
+            }
+            if (d.user?.isBanned || d.metadata?.isBanned || d.fromUser?.isBanned) {
+              deleteDoc(doc(db, 'notifications', docSnap.id)).catch(() => {});
+              return null;
+            }
+          }
+
           return {
-            id: doc.id,
+            id: docSnap.id,
             ...d,
             isRead: d.read,
             timestampMs: d.createdAt?.toMillis ? d.createdAt.toMillis() : (d.createdAt ? new Date(d.createdAt).getTime() : Date.now()),
@@ -228,7 +306,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
               name: d.user?.name || d.fromUser?.displayName || d.metadata?.senderName || 'Aeirmist User',
               avatar: d.user?.avatar || d.fromUser?.photoURL || d.metadata?.senderPhoto || null,
               username: d.user?.username || (d.fromUser?.displayName ? d.fromUser.displayName.toLowerCase().replace(/\s+/g, '') : (d.metadata?.senderUsername || 'user')),
-              isVerified: d.user?.isVerified || false
+              isVerified: Boolean(d.user?.isVerified || d.user?.verified || d.fromUser?.isVerified)
             }
           };
         })

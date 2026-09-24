@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { 
   collection, 
   query, 
@@ -7,6 +7,7 @@ import {
   addDoc,
   deleteDoc,
   doc,
+  getDoc,
   serverTimestamp,
   Timestamp,
   limit,
@@ -21,6 +22,7 @@ export const useInboxData = (allowedAuthorIds?: string[]) => {
   const [notes, setNotes] = useState<any[]>([]);
   const [activeStories, setActiveStories] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
+  const authorStatusCache = useRef<Map<string, { exists: boolean; isBanned: boolean }>>(new Map());
 
   const allowedIdsStr = allowedAuthorIds?.join(',');
   const followingStr = profile?.social?.following?.join(',') || '';
@@ -52,13 +54,68 @@ export const useInboxData = (allowedAuthorIds?: string[]) => {
       where('createdAt', '>', yesterdayTimestamp)
     );
 
-    const unsubscribeNotes = onSnapshot(notesQuery, (snapshot) => {
+    const unsubscribeNotes = onSnapshot(notesQuery, async (snapshot) => {
+      // 1. Gather unknown authors
+      const pendingAuthorIds = new Set<string>();
+      snapshot.docs.forEach(dSnap => {
+        const d = dSnap.data();
+        const aId = d.authorId || d.authorUid;
+        if (aId && aId !== profile.id && !authorStatusCache.current.has(aId)) {
+          pendingAuthorIds.add(aId);
+        }
+      });
+
+      if (pendingAuthorIds.size > 0) {
+        await Promise.all(
+          Array.from(pendingAuthorIds).map(async (aId) => {
+            try {
+              const pSnap = await getDoc(doc(db, 'profiles', aId));
+              if (pSnap.exists()) {
+                const pd = pSnap.data();
+                authorStatusCache.current.set(aId, { exists: true, isBanned: Boolean(pd.isBanned || pd.status === 'BANNED' || pd.status === 'DELETED') });
+                return;
+              }
+              const pAltSnap = await getDoc(doc(db, 'profiles', `profile_${aId}`));
+              if (pAltSnap.exists()) {
+                const pd = pAltSnap.data();
+                authorStatusCache.current.set(aId, { exists: true, isBanned: Boolean(pd.isBanned || pd.status === 'BANNED' || pd.status === 'DELETED') });
+                return;
+              }
+              const uSnap = await getDoc(doc(db, 'users', aId));
+              if (uSnap.exists()) {
+                const ud = uSnap.data();
+                authorStatusCache.current.set(aId, { exists: true, isBanned: Boolean(ud.isBanned || ud.status === 'BANNED' || ud.status === 'DELETED') });
+                return;
+              }
+              // Author was deleted from database
+              authorStatusCache.current.set(aId, { exists: false, isBanned: true });
+            } catch (e) {
+              authorStatusCache.current.set(aId, { exists: true, isBanned: false });
+            }
+          })
+        );
+      }
+
       const fetchedNotes = snapshot.docs
-        .map(doc => ({
-          id: doc.id,
-          ...doc.data()
+        .map(docSnap => ({
+          id: docSnap.id,
+          ...docSnap.data()
         }))
         .filter((note: any) => {
+          // Check if author is banned or deleted
+          const aId = note.authorId || note.authorUid;
+          if (aId && aId !== profile.id && authorStatusCache.current.has(aId)) {
+            const st = authorStatusCache.current.get(aId)!;
+            if (!st.exists || st.isBanned) {
+              deleteDoc(doc(db, 'notes', note.id)).catch(() => {});
+              return false;
+            }
+          }
+          if (note.isBanned || note.authorIsBanned) {
+            deleteDoc(doc(db, 'notes', note.id)).catch(() => {});
+            return false;
+          }
+
           // Exclude notes explicitly hidden from current user
           if (profile?.id && (note.hiddenFrom || []).includes(profile.id)) return false;
 

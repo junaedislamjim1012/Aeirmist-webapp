@@ -189,7 +189,7 @@ interface AeirmistContextType {
   deleteAccount: () => Promise<void>;
   purgeUser: (uid: string) => Promise<void>;
   toggleUserBan: (uid: string, banStatus: boolean) => Promise<void>;
-  toggleVerification: (profileId: string, verifiedStatus: boolean) => Promise<void>;
+  toggleVerification: (profileId: string, verifiedStatus: boolean, plan?: 'essential' | 'creator' | 'business', durationDays?: number, targetUid?: string) => Promise<void>;
   checkUsernameAvailable: (username: string) => Promise<{ available: boolean, suggestions?: string[] }>;
   registerUsername: (username: string, additionalData?: any) => Promise<void>;
   switchProfile: (profileId: string) => Promise<void>;
@@ -411,6 +411,96 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       } catch (e) {}
     }
   }, [profile]);
+
+  // Meta-Style Automated Verification Lifecycle & Monthly Deadline Monitor
+  useEffect(() => {
+    if (!_db || !profile?.id || !profile?.isVerified) return;
+
+    const checkVerificationLifecycle = async () => {
+      try {
+        const rawExpires = profile.verificationExpiresAt || profile.monthlyDeadline;
+        if (!rawExpires) return;
+
+        let expiresMs: number | null = null;
+        if (typeof rawExpires?.toMillis === 'function') expiresMs = rawExpires.toMillis();
+        else if (typeof rawExpires?.toDate === 'function') expiresMs = rawExpires.toDate().getTime();
+        else if (rawExpires instanceof Date) expiresMs = rawExpires.getTime();
+        else if (typeof rawExpires === 'number') expiresMs = rawExpires;
+        else if (typeof rawExpires === 'string') expiresMs = new Date(rawExpires).getTime();
+
+        if (!expiresMs || isNaN(expiresMs)) return;
+
+        const now = Date.now();
+        const diffMs = expiresMs - now;
+        const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+        const plan = profile.verificationPlan || 'Creator';
+        const planDisplay = plan.charAt(0).toUpperCase() + plan.slice(1);
+        const deadlineDateStr = new Date(expiresMs).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+
+        // 1. Expired state: deadline has passed
+        if (diffDays <= 0) {
+          const expiredStorageKey = `aeirmist_verif_expired_${expiresMs}`;
+          if (typeof window !== 'undefined' && !localStorage.getItem(expiredStorageKey)) {
+            localStorage.setItem(expiredStorageKey, 'true');
+
+            // Deactivate expired badge in Firestore
+            await updateDoc(doc(_db, 'profiles', profile.id), {
+              isVerified: false,
+              verified: false,
+              subscriptionStatus: 'expired'
+            }).catch(() => {});
+
+            if (user?.uid) {
+              await updateDoc(doc(_db, 'users', user.uid), {
+                isVerified: false,
+                verified: false,
+                subscriptionStatus: 'expired'
+              }).catch(() => {});
+            }
+
+            // Send expiration notification
+            await addDoc(collection(_db, 'notifications'), {
+              userId: user?.uid || profile.id,
+              type: 'verification',
+              message: `Your monthly Aeirmist Verified (${planDisplay}) subscription expired on ${deadlineDateStr}. Renew now in Settings to reactivate your badge.`,
+              metadata: {
+                plan,
+                status: 'expired',
+                deadlineDateStr
+              },
+              read: false,
+              createdAt: serverTimestamp()
+            }).catch(() => {});
+          }
+        } 
+        // 2. 3-Day Approaching Deadline Notification
+        else if (diffDays <= 3) {
+          const warningStorageKey = `aeirmist_verif_warn_${expiresMs}_${diffDays}`;
+          if (typeof window !== 'undefined' && !localStorage.getItem(warningStorageKey)) {
+            localStorage.setItem(warningStorageKey, 'true');
+
+            await addDoc(collection(_db, 'notifications'), {
+              userId: user?.uid || profile.id,
+              type: 'verification',
+              message: `Monthly Renewal Reminder: Your verification subscription (${planDisplay}) deadline is in ${diffDays} day${diffDays > 1 ? 's' : ''} (${deadlineDateStr}). Renew your plan to keep your badge active.`,
+              metadata: {
+                plan,
+                status: 'approaching_deadline',
+                daysRemaining: diffDays,
+                deadlineDateStr
+              },
+              read: false,
+              createdAt: serverTimestamp()
+            }).catch(() => {});
+          }
+        }
+      } catch (lifecycleErr) {
+        logger.warn("Verification lifecycle monitor check error:", lifecycleErr);
+      }
+    };
+
+    checkVerificationLifecycle();
+  }, [profile?.id, profile?.isVerified, profile?.verificationExpiresAt, profile?.monthlyDeadline, user?.uid]);
   const [allProfiles, setAllProfiles] = useState<any[]>([]);
   const [activeProfileId, setActiveProfileId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -4303,17 +4393,128 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   };
 
-  const toggleVerification = async (profileId: string, verifiedStatus: boolean) => {
+  const toggleVerification = async (
+    profileId: string, 
+    verifiedStatus: boolean, 
+    plan: 'essential' | 'creator' | 'business' = 'creator', 
+    durationDays: number = 30,
+    targetUid?: string
+  ) => {
     if (!db) return;
     try {
-      await updateDoc(doc(db, 'profiles', profileId), { isVerified: verifiedStatus });
-      addToast({ 
-        title: verifiedStatus ? 'Account Verified' : 'Badge Removed', 
-        message: `Verification status updated for this account.`, 
-        type: 'success' 
-      });
+      const cleanProfileId = profileId.startsWith('profile_') ? profileId : profileId;
+      const profileRef = doc(db, 'profiles', cleanProfileId);
+      const profileSnap = await getDoc(profileRef).catch(() => null);
+      const pData = profileSnap?.exists() ? profileSnap.data() : null;
+
+      const resolvedUid = targetUid || pData?.ownerUid || pData?.uid || (profileId.startsWith('profile_') ? null : profileId);
+
+      const planNameMap: Record<string, string> = {
+        essential: 'Essential ($3.69/mo)',
+        creator: 'Creator ($9.69/mo)',
+        business: 'Business ($12.69/mo)'
+      };
+
+      if (verifiedStatus) {
+        const nowMs = Date.now();
+        const durationMs = durationDays * 24 * 60 * 60 * 1000;
+        const expiresAt = new Date(nowMs + durationMs);
+        const deadlineStr = expiresAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+
+        const verificationPayload = {
+          isVerified: true,
+          verified: true,
+          verificationPlan: plan,
+          verifiedAt: serverTimestamp(),
+          verificationApprovedAt: serverTimestamp(),
+          verificationExpiresAt: expiresAt,
+          monthlyDeadline: expiresAt,
+          subscriptionStatus: 'active',
+          autoRenewal: true,
+          verificationDurationDays: durationDays
+        };
+
+        // 1. Update Profile
+        await updateDoc(profileRef, verificationPayload);
+
+        // 2. Update User doc if available
+        if (resolvedUid) {
+          await updateDoc(doc(db, 'users', resolvedUid), verificationPayload).catch(e => {
+            logger.warn("Could not update users doc verification:", e);
+          });
+
+          // 3. Update any verification application doc
+          await updateDoc(doc(db, 'verificationApplications', resolvedUid), {
+            status: 'approved',
+            plan,
+            approvedAt: serverTimestamp(),
+            expiresAt,
+            monthlyDeadline: expiresAt,
+            autoRenewal: true
+          }).catch(() => {});
+        }
+
+        // 4. Send Meta-style celebration notification to user
+        const targetNotifId = resolvedUid || cleanProfileId;
+        await addDoc(collection(db, 'notifications'), {
+          userId: targetNotifId,
+          type: 'verification',
+          message: `Congratulations! Your account is now Meta-Style Verified under the ${planNameMap[plan] || plan} Plan. Your badge is active until ${deadlineStr}.`,
+          metadata: {
+            plan,
+            verifiedAt: nowMs,
+            expiresAt: expiresAt.getTime(),
+            monthlyDeadline: expiresAt.getTime(),
+            status: 'active',
+            deadlineStr
+          },
+          read: false,
+          createdAt: serverTimestamp()
+        }).catch(err => logger.warn("Failed to send verification notification:", err));
+
+        addToast({ 
+          title: 'Account Verified', 
+          message: `Verified under ${plan.toUpperCase()} plan (Active for ${durationDays} days).`, 
+          type: 'success' 
+        });
+      } else {
+        // Revoke verification
+        const revokePayload = {
+          isVerified: false,
+          verified: false,
+          subscriptionStatus: 'revoked',
+          autoRenewal: false
+        };
+
+        await updateDoc(profileRef, revokePayload);
+
+        if (resolvedUid) {
+          await updateDoc(doc(db, 'users', resolvedUid), revokePayload).catch(() => {});
+          await updateDoc(doc(db, 'verificationApplications', resolvedUid), {
+            status: 'revoked',
+            revokedAt: serverTimestamp()
+          }).catch(() => {});
+        }
+
+        const targetNotifId = resolvedUid || cleanProfileId;
+        await addDoc(collection(db, 'notifications'), {
+          userId: targetNotifId,
+          type: 'verification',
+          message: `Your Aeirmist Verification badge and plan subscription have been revoked.`,
+          metadata: { status: 'revoked' },
+          read: false,
+          createdAt: serverTimestamp()
+        }).catch(() => {});
+
+        addToast({ 
+          title: 'Badge Removed', 
+          message: `Verification badge has been removed for this account.`, 
+          type: 'info' 
+        });
+      }
     } catch (e) {
       logger.error("Verification toggle failed:", e);
+      addToast({ title: 'Verification Error', message: 'Failed to update verification status.', type: 'warning' });
       throw e;
     }
   };

@@ -18,6 +18,7 @@ import {
   Search, 
   User, 
   Clock, 
+  Calendar,
   Lock,
   Eye,
   CheckCircle,
@@ -595,12 +596,267 @@ const DashboardTab = ({ db, setActiveTab }: { db: any; setActiveTab: (tab: any) 
   );
 };
 
+// Meta-Style Verification Plan Modal for Administrators
+const VerificationPlanModal = ({
+  isOpen,
+  onClose,
+  user,
+  onApplyPlan,
+  onRevoke,
+  onExtend
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  user: any;
+  onApplyPlan: (plan: 'essential' | 'creator' | 'business', durationDays: number) => Promise<void>;
+  onRevoke: () => Promise<void>;
+  onExtend: (days: number) => Promise<void>;
+}) => {
+  const [selectedPlan, setSelectedPlan] = useState<'essential' | 'creator' | 'business'>('creator');
+  const [durationDays, setDurationDays] = useState<number>(30);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (user?.verificationPlan) {
+      setSelectedPlan(user.verificationPlan);
+    } else {
+      setSelectedPlan('creator');
+    }
+    setDurationDays(30);
+  }, [user]);
+
+  if (!isOpen || !user) return null;
+
+  const isVerified = Boolean(user.isVerified || user.verified);
+  const currentPlan = user.verificationPlan || (isVerified ? 'creator' : null);
+
+  // Compute deadline details
+  const rawExpires = user.verificationExpiresAt || user.monthlyDeadline;
+  let deadlineStr = 'Not set';
+  let diffDays = 0;
+  if (rawExpires) {
+    let expMs = 0;
+    if (typeof rawExpires?.toMillis === 'function') expMs = rawExpires.toMillis();
+    else if (typeof rawExpires?.toDate === 'function') expMs = rawExpires.toDate().getTime();
+    else if (rawExpires instanceof Date) expMs = rawExpires.getTime();
+    else if (typeof rawExpires === 'number') expMs = rawExpires;
+    else if (typeof rawExpires === 'string') expMs = new Date(rawExpires).getTime();
+
+    if (expMs) {
+      deadlineStr = new Date(expMs).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      diffDays = Math.max(0, Math.ceil((expMs - Date.now()) / (1000 * 60 * 60 * 24)));
+    }
+  }
+
+  const plans = [
+    {
+      id: 'essential' as const,
+      name: 'Essential Plan',
+      price: '$3.69 / mo',
+      badgeColor: 'text-blue-400',
+      badgeBg: 'bg-blue-500/10 border-blue-500/30 text-blue-400',
+      desc: 'Meta-style basic identity authentication & blue checkmark',
+      features: ['Blue Verified Checkmark', 'Identity Authentication', 'Impersonation Defense']
+    },
+    {
+      id: 'creator' as const,
+      name: 'Creator Plan',
+      price: '$9.69 / mo',
+      badgeColor: 'text-aeirmist-cyan',
+      badgeBg: 'bg-cyan-500/10 border-cyan-500/30 text-aeirmist-cyan',
+      desc: 'Most popular creator verification badge & analytics',
+      features: ['Cyan Creator Badge', 'Creator Studio Insights', 'Marketplace Priority Boost']
+    },
+    {
+      id: 'business' as const,
+      name: 'Business Plan',
+      price: '$12.69 / mo',
+      badgeColor: 'text-amber-400',
+      badgeBg: 'bg-amber-500/10 border-amber-500/30 text-amber-400',
+      desc: 'Enterprise & brand verification with verified seller badge',
+      features: ['Gold Business Checkmark', 'Verified Seller Badge', 'Brand Protection']
+    }
+  ];
+
+  return (
+    <div className="fixed inset-0 z-[100002] bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95, y: 15 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.95, y: 15 }}
+        className="w-full max-w-xl bg-[#090b10] border border-white/10 rounded-3xl p-6 md:p-8 space-y-6 shadow-2xl text-white relative max-h-[92vh] overflow-y-auto"
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between pb-4 border-b border-white/10">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-2xl bg-white/5 border border-white/10 overflow-hidden shrink-0">
+              <img src={getAvatarUrl(user.photoURL, user.id)} alt="" className="w-full h-full object-cover" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-base font-bold text-white">{user.displayName || user.username || 'User'}</h3>
+                {isVerified && <ShieldCheck size={16} className="text-aeirmist-cyan" />}
+              </div>
+              <p className="text-xs font-mono text-white/50">@{user.username || 'user'} • UID: {user.uid ? `${user.uid.slice(0, 10)}...` : 'N/A'}</p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="w-9 h-9 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-white/50 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        {/* Current Status banner */}
+        <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/5 flex flex-wrap items-center justify-between gap-3 text-xs font-mono">
+          <div>
+            <span className="text-white/40 block text-[9px] uppercase tracking-wider mb-0.5">Current Status</span>
+            <div className="flex items-center gap-2">
+              <span className={`font-bold ${isVerified ? 'text-emerald-400' : 'text-zinc-400'}`}>
+                {isVerified ? 'VERIFIED (ACTIVE)' : 'UNVERIFIED'}
+              </span>
+              {currentPlan && (
+                <span className="px-2 py-0.5 rounded bg-white/5 text-[9px] uppercase tracking-widest text-aeirmist-cyan font-bold border border-white/10">
+                  {currentPlan}
+                </span>
+              )}
+            </div>
+          </div>
+          {isVerified && (
+            <div className="text-right">
+              <span className="text-white/40 block text-[9px] uppercase tracking-wider mb-0.5">Monthly Deadline</span>
+              <span className="text-white font-bold">{deadlineStr} ({diffDays}d left)</span>
+            </div>
+          )}
+        </div>
+
+        {/* 3 Plans Selection */}
+        <div className="space-y-3">
+          <label className="text-[10px] font-black uppercase tracking-widest text-white/50 block">
+            Select Meta-Style Verification Plan
+          </label>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            {plans.map((p) => {
+              const isSelected = selectedPlan === p.id;
+              return (
+                <div
+                  key={p.id}
+                  onClick={() => setSelectedPlan(p.id)}
+                  className={`p-4 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between space-y-3 ${
+                    isSelected 
+                      ? 'bg-white/[0.06] border-aeirmist-cyan shadow-lg shadow-aeirmist-cyan/10' 
+                      : 'bg-white/[0.02] border-white/5 hover:border-white/20'
+                  }`}
+                >
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
+                        <ShieldCheck size={16} className={p.badgeColor} />
+                        <span className="text-xs font-bold text-white">{p.name}</span>
+                      </div>
+                      {isSelected && <Check size={14} className="text-aeirmist-cyan" />}
+                    </div>
+                    <div className="text-sm font-black text-white font-mono">{p.price}</div>
+                    <p className="text-[10px] text-white/50 leading-relaxed">{p.desc}</p>
+                  </div>
+
+                  <div className="space-y-1 pt-2 border-t border-white/5 text-[9px] text-white/70 font-mono">
+                    {p.features.slice(0, 2).map((f, fi) => (
+                      <div key={fi} className="flex items-center gap-1">
+                        <Check size={10} className={p.badgeColor} />
+                        <span>{f}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Duration Selection */}
+        <div className="space-y-2">
+          <label className="text-[10px] font-black uppercase tracking-widest text-white/50 block">
+            Billing Cycle / Deadline Duration
+          </label>
+          <div className="grid grid-cols-4 gap-2">
+            {[
+              { days: 30, label: '30 Days (1 Mo)' },
+              { days: 60, label: '60 Days (2 Mo)' },
+              { days: 90, label: '90 Days (3 Mo)' },
+              { days: 365, label: '365 Days (1 Yr)' }
+            ].map(dur => (
+              <button
+                key={dur.days}
+                type="button"
+                onClick={() => setDurationDays(dur.days)}
+                className={`py-2 px-1 text-center rounded-xl text-[10px] font-mono font-bold uppercase transition-all ${
+                  durationDays === dur.days
+                    ? 'bg-aeirmist-cyan text-black font-black shadow-md'
+                    : 'bg-white/5 border border-white/5 text-white/70 hover:bg-white/10'
+                }`}
+              >
+                {dur.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div className="pt-4 border-t border-white/10 flex flex-wrap gap-3 justify-end items-center">
+          {isVerified && (
+            <button
+              disabled={isSubmitting}
+              onClick={async () => {
+                setIsSubmitting(true);
+                await onRevoke();
+                setIsSubmitting(false);
+              }}
+              className="py-2.5 px-4 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 hover:bg-red-500/20 text-xs font-black uppercase tracking-wider transition-all mr-auto cursor-pointer"
+            >
+              Revoke Badge
+            </button>
+          )}
+
+          {isVerified && (
+            <button
+              disabled={isSubmitting}
+              onClick={async () => {
+                setIsSubmitting(true);
+                await onExtend(30);
+                setIsSubmitting(false);
+              }}
+              className="py-2.5 px-4 rounded-xl bg-white/5 border border-white/10 text-white/80 hover:bg-white/10 text-xs font-black uppercase tracking-wider transition-all cursor-pointer"
+            >
+              Extend +30 Days
+            </button>
+          )}
+
+          <button
+            disabled={isSubmitting}
+            onClick={async () => {
+              setIsSubmitting(true);
+              await onApplyPlan(selectedPlan, durationDays);
+              setIsSubmitting(false);
+            }}
+            className="py-2.5 px-6 rounded-xl bg-aeirmist-cyan text-black text-xs font-black uppercase tracking-widest hover:bg-white transition-all shadow-lg shadow-aeirmist-cyan/20 cursor-pointer font-bold"
+          >
+            {isVerified ? `Update to ${selectedPlan.toUpperCase()}` : `Approve & Activate ${selectedPlan.toUpperCase()}`}
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  );
+};
+
 const UsersTab = ({ db, addToast, purgeUser, toggleUserBan, toggleVerification, updateUserStatus, suspendUser, onOpenAddAdmin }: { db: any; addToast: any; purgeUser: any; toggleUserBan: any; toggleVerification: any; updateUserStatus: any; suspendUser: any; onOpenAddAdmin: () => void }) => {
   const { auth } = useAeirmist();
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedUserForDrawer, setSelectedUserForDrawer] = useState<any | null>(null);
+  const [verificationModalUser, setVerificationModalUser] = useState<any | null>(null);
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
   const [filterRole, setFilterRole] = useState('ALL');
   const [suspendingUser, setSuspendingUser] = useState<any | null>(null);
@@ -866,7 +1122,20 @@ const UsersTab = ({ db, addToast, purgeUser, toggleUserBan, toggleVerification, 
                     >
                       {u.displayName || u.username || 'Anonymous Node'}
                     </span>
-                    {u.isVerified && <ShieldCheck className="text-aeirmist-cyan shrink-0" size={14} />}
+                    {u.isVerified && (
+                      <span 
+                        onClick={(e) => { e.stopPropagation(); setVerificationModalUser(u); }}
+                        className={`inline-flex items-center gap-1 text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded font-mono border cursor-pointer hover:scale-105 transition-all ${
+                          u.verificationPlan === 'essential' ? 'bg-blue-500/20 text-blue-400 border-blue-500/30' :
+                          u.verificationPlan === 'business' ? 'bg-amber-500/20 text-amber-400 border-amber-500/30' :
+                          'bg-cyan-500/20 text-aeirmist-cyan border-cyan-500/30'
+                        }`}
+                        title="Click to manage Meta verification plan"
+                      >
+                        <ShieldCheck size={11} />
+                        <span>{u.verificationPlan ? u.verificationPlan.toUpperCase() : 'VERIFIED'}</span>
+                      </span>
+                    )}
                     <span className="text-[9px] font-mono text-white/30 px-1.5 py-0.5 rounded bg-white/5">@{u.username || 'unknown'}</span>
                     
                     {/* Role Badge */}
@@ -952,19 +1221,16 @@ const UsersTab = ({ db, addToast, purgeUser, toggleUserBan, toggleVerification, 
                 </select>
 
                 <button
-                  onClick={() => {
-                    const profileId = u.profileId || getProfileId(u);
-                    if (!profileId) {
-                      addToast({ title: 'Action Aborted', message: "Unable to resolve target Profile ID.", type: 'warning' });
-                      return;
-                    }
-                    toggleVerification(profileId, !u.isVerified);
-                  }}
-                  className={`h-9 px-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
-                    u.isVerified ? 'bg-aeirmist-cyan/20 text-aeirmist-cyan hover:bg-aeirmist-cyan/30' : 'bg-white/5 text-white/60 hover:bg-white/10'
+                  onClick={() => setVerificationModalUser(u)}
+                  className={`h-9 px-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-1.5 cursor-pointer ${
+                    u.isVerified 
+                      ? 'bg-aeirmist-cyan/20 text-aeirmist-cyan hover:bg-aeirmist-cyan/30 border border-aeirmist-cyan/30' 
+                      : 'bg-white/5 text-white/60 hover:bg-white/10 hover:text-white'
                   }`}
+                  title="Click to configure Meta-Style verification plan"
                 >
-                  {u.isVerified ? 'Verified' : 'Verify'}
+                  <ShieldCheck size={12} className={u.isVerified ? 'text-aeirmist-cyan' : 'opacity-60'} />
+                  <span>{u.isVerified ? 'VERIFIED' : 'VERIFY'}</span>
                 </button>
 
                 <button
@@ -1232,16 +1498,11 @@ const UsersTab = ({ db, addToast, purgeUser, toggleUserBan, toggleVerification, 
 
                     <button 
                       onClick={() => {
-                        const profileId = selectedUserForDrawer.profileId || getProfileId(selectedUserForDrawer);
-                        if (!profileId) {
-                          addToast({ title: 'Action Aborted', message: "Unable to resolve target Profile ID.", type: 'warning' });
-                          return;
-                        }
-                        toggleVerification(profileId, !selectedUserForDrawer.isVerified);
+                        setVerificationModalUser(selectedUserForDrawer);
                       }}
-                      className="p-3.5 rounded-xl bg-aeirmist-cyan/10 border border-aeirmist-cyan/20 text-aeirmist-cyan text-xs font-bold uppercase tracking-wider hover:bg-aeirmist-cyan/20 transition-all text-left flex items-center justify-between"
+                      className="p-3.5 rounded-xl bg-aeirmist-cyan/10 border border-aeirmist-cyan/20 text-aeirmist-cyan text-xs font-bold uppercase tracking-wider hover:bg-aeirmist-cyan/20 transition-all text-left flex items-center justify-between cursor-pointer"
                     >
-                      <span>{selectedUserForDrawer.isVerified ? 'Remove Verification' : 'Verify Account'}</span>
+                      <span>{selectedUserForDrawer.isVerified ? 'Manage Verification Plan' : 'Verify Account (Choose Plan)'}</span>
                       <ShieldCheck size={14} />
                     </button>
 
@@ -1408,6 +1669,32 @@ const UsersTab = ({ db, addToast, purgeUser, toggleUserBan, toggleVerification, 
           </div>
         )}
       </AnimatePresence>
+
+      {/* Meta-Style Verification Plan Modal */}
+      <VerificationPlanModal
+        isOpen={Boolean(verificationModalUser)}
+        onClose={() => setVerificationModalUser(null)}
+        user={verificationModalUser}
+        onApplyPlan={async (plan, durationDays) => {
+          const profileId = verificationModalUser.profileId || getProfileId(verificationModalUser) || verificationModalUser.id;
+          const targetUid = getCanonicalUid(verificationModalUser) || verificationModalUser.uid || verificationModalUser.id;
+          await toggleVerification(profileId, true, plan, durationDays, targetUid);
+          setVerificationModalUser(null);
+        }}
+        onRevoke={async () => {
+          const profileId = verificationModalUser.profileId || getProfileId(verificationModalUser) || verificationModalUser.id;
+          const targetUid = getCanonicalUid(verificationModalUser) || verificationModalUser.uid || verificationModalUser.id;
+          await toggleVerification(profileId, false, undefined, undefined, targetUid);
+          setVerificationModalUser(null);
+        }}
+        onExtend={async (days) => {
+          const profileId = verificationModalUser.profileId || getProfileId(verificationModalUser) || verificationModalUser.id;
+          const targetUid = getCanonicalUid(verificationModalUser) || verificationModalUser.uid || verificationModalUser.id;
+          const plan = verificationModalUser.verificationPlan || 'creator';
+          await toggleVerification(profileId, true, plan, days, targetUid);
+          setVerificationModalUser(null);
+        }}
+      />
     </div>
   );
 };
@@ -2168,9 +2455,14 @@ const FeatureFlagsTab = ({ db, addToast }: { db: any; addToast: any }) => {
   );
 };
 
-const VerificationRequestsTab = ({ db, addToast }: { db: any; addToast: any }) => {
+const VerificationRequestsTab = ({ db, addToast, toggleVerification }: { db: any; addToast: any; toggleVerification: any }) => {
   const [requests, setRequests] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [modalApplicant, setModalApplicant] = useState<any | null>(null);
+  const [rejectingRequest, setRejectingRequest] = useState<any | null>(null);
+  const [rejectReason, setRejectReason] = useState('Identity document could not be verified or is incomplete.');
+  const [customRejectReason, setCustomRejectReason] = useState('');
+  const [isProcessingAction, setIsProcessingAction] = useState(false);
 
   useEffect(() => {
     if (!db) return;
@@ -2185,33 +2477,76 @@ const VerificationRequestsTab = ({ db, addToast }: { db: any; addToast: any }) =
     return () => unsub();
   }, [db]);
 
-  const handleAction = async (requestId: string, status: 'approved' | 'rejected' | 'refunded', userId: string) => {
+  const handleQuickApprove = async (r: any) => {
+    if (!db) return;
+    const plan = (r.plan || 'creator') as 'essential' | 'creator' | 'business';
+    setIsProcessingAction(true);
+    try {
+      await toggleVerification(r.userId, true, plan, 30, r.userId);
+      await updateDoc(doc(db, 'verificationApplications', r.id), {
+        status: 'approved',
+        approvedPlan: plan,
+        reviewedAt: serverTimestamp()
+      }).catch(() => {});
+      addToast({ title: 'Application Approved', message: `@${r.username || 'user'} is now Meta-Style Verified (${plan.toUpperCase()}).`, type: 'success' });
+    } catch (e) {
+      logger.error("Failed to approve verification:", e);
+      addToast({ title: 'Approval Failed', message: 'Could not approve verification request.', type: 'warning' });
+    } finally {
+      setIsProcessingAction(false);
+    }
+  };
+
+  const handleConfirmReject = async () => {
+    if (!rejectingRequest || !db) return;
+    const finalReason = customRejectReason.trim() || rejectReason;
+    setIsProcessingAction(true);
+    try {
+      await updateDoc(doc(db, 'verificationApplications', rejectingRequest.id), {
+        status: 'rejected',
+        rejectionReason: finalReason,
+        rejectedAt: serverTimestamp()
+      });
+
+      // Send Meta-style rejection notification
+      await addDoc(collection(db, 'notifications'), {
+        userId: rejectingRequest.userId,
+        type: 'verification',
+        message: `Your Aeirmist Verification application could not be approved at this time. Reason: ${finalReason}. You may update your information and reapply.`,
+        metadata: {
+          status: 'rejected',
+          reason: finalReason
+        },
+        read: false,
+        createdAt: serverTimestamp()
+      }).catch(() => {});
+
+      addToast({ title: 'Application Rejected', message: `Applicant has been notified with the reason.`, type: 'info' });
+      setRejectingRequest(null);
+      setCustomRejectReason('');
+    } catch (e) {
+      logger.error("Failed to reject application:", e);
+      addToast({ title: 'Reject Failed', message: 'Could not process rejection.', type: 'warning' });
+    } finally {
+      setIsProcessingAction(false);
+    }
+  };
+
+  const handleRefund = async (r: any) => {
     if (!db) return;
     try {
-      await updateDoc(doc(db, 'verificationApplications', requestId), { status });
-      
-      if (status === 'approved') {
-        const expiresAt = new Date();
-        expiresAt.setFullYear(expiresAt.getFullYear() + 1);
-        
-        await updateDoc(doc(db, 'users', userId), {
-          verified: true,
-          verificationPlan: 'creator', // Or dynamically from request
-          verificationApprovedAt: serverTimestamp(),
-          verificationExpiresAt: expiresAt
-        });
-        
-        // Ensure profile is updated too if needed (usually handled by cloud functions or mirrored)
-        await updateDoc(doc(db, 'profiles', userId), {
-          verified: true,
-          verificationPlan: 'creator'
-        });
-      }
-      
-      addToast({ title: 'Verification Updated', message: `Request marked as ${status}.`, type: 'success' });
+      await updateDoc(doc(db, 'verificationApplications', r.id), { status: 'refunded', refundedAt: serverTimestamp() });
+      await addDoc(collection(db, 'notifications'), {
+        userId: r.userId,
+        type: 'verification',
+        message: `Your payment of $${r.amount} for Aeirmist Verification has been refunded.`,
+        metadata: { status: 'refunded' },
+        read: false,
+        createdAt: serverTimestamp()
+      }).catch(() => {});
+      addToast({ title: 'Payment Refunded', message: `Marked application as refunded.`, type: 'success' });
     } catch (e) {
-      logger.error("Failed to update verification request:", e);
-      addToast({ title: 'Update Failed', message: 'Could not update request status.', type: 'warning' });
+      addToast({ title: 'Refund Failed', message: 'Could not process refund.', type: 'warning' });
     }
   };
 
@@ -2219,100 +2554,245 @@ const VerificationRequestsTab = ({ db, addToast }: { db: any; addToast: any }) =
 
   return (
     <div className="space-y-4">
-      <div>
-        <h2 className="text-base font-black uppercase tracking-widest text-white">Verification Requests</h2>
-        <p className="text-[10px] font-mono text-white/40">Review and manage premium verification applications.</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-base font-black uppercase tracking-widest text-white">Verification Requests</h2>
+          <p className="text-[10px] font-mono text-white/40">Review, approve, or configure Meta-Style verification plans.</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="px-2.5 py-1 rounded-xl bg-white/5 border border-white/10 text-[10px] font-mono font-bold text-white/70">
+            Total Requests: {requests.length}
+          </span>
+        </div>
       </div>
 
       <div className="space-y-3">
         {requests.length === 0 ? (
-          <div className="p-8 text-center text-white/40 text-xs font-mono">No verification requests found.</div>
+          <div className="p-12 text-center text-white/40 text-xs font-mono glass-panel rounded-3xl border-white/5">
+            No pending or processed verification requests found.
+          </div>
         ) : (
-          requests.map((r) => (
-            <div key={r.id} className="glass-panel p-6 rounded-3xl border-white/5 bg-white/[0.01] space-y-4">
-              <div className="flex flex-wrap items-center justify-between gap-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400">
-                    <CheckCircle size={18} />
-                  </div>
-                  <div>
-                    <span className="text-xs font-bold text-white">@{r.username || 'Unknown User'}</span>
-                    <p className="text-[10px] font-mono text-white/40">App ID: {r.applicationId}</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-[9px] font-black uppercase tracking-widest px-2.5 py-1 rounded font-mono bg-white/5 text-white">
-                    {r.plan || 'Unknown'} Plan
-                  </span>
-                  <span className={`text-[9px] font-black uppercase tracking-widest px-2.5 py-1 rounded font-mono ${
-                    r.status === 'approved' ? 'bg-emerald-500/20 text-emerald-400' :
-                    r.status === 'rejected' ? 'bg-red-500/20 text-red-400' :
-                    r.status === 'refunded' ? 'bg-amber-500/20 text-amber-400' :
-                    'bg-blue-500/20 text-blue-400'
-                  }`}>
-                    {r.status || 'Pending'}
-                  </span>
-                </div>
-              </div>
+          requests.map((r) => {
+            const planKey = (r.plan || 'creator').toLowerCase();
+            const badgeBg = planKey === 'essential' ? 'bg-blue-500/20 text-blue-400 border-blue-500/30' :
+                            planKey === 'business' ? 'bg-amber-500/20 text-amber-400 border-amber-500/30' :
+                            'bg-cyan-500/20 text-aeirmist-cyan border-cyan-500/30';
+            const badgeIconColor = planKey === 'essential' ? 'text-blue-400' :
+                                   planKey === 'business' ? 'text-amber-400' :
+                                   'text-aeirmist-cyan';
 
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <div className="p-3 rounded-xl bg-white/[0.02] border border-white/5 text-[10px] font-mono">
-                  <span className="text-white/40 block mb-1 uppercase">Payment Status</span>
-                  <span className="text-green-400 capitalize">{r.paymentStatus || 'Paid'}</span>
+            return (
+              <div key={r.id} className="glass-panel p-6 rounded-3xl border-white/5 bg-white/[0.01] space-y-4 hover:border-white/10 transition-all">
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-11 h-11 rounded-2xl flex items-center justify-center border ${badgeBg}`}>
+                      <ShieldCheck size={20} className={badgeIconColor} />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-bold text-white">@{r.username || 'unknown'}</span>
+                        <span className={`text-[8px] font-black uppercase tracking-wider px-2 py-0.5 rounded font-mono border ${badgeBg}`}>
+                          {planKey.toUpperCase()} PLAN
+                        </span>
+                      </div>
+                      <p className="text-[10px] font-mono text-white/40 mt-0.5">App ID: {r.applicationId} • UID: {r.userId?.slice(0, 12)}...</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className={`text-[9px] font-black uppercase tracking-widest px-3 py-1 rounded-xl font-mono border ${
+                      r.status === 'approved' ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' :
+                      r.status === 'rejected' ? 'bg-red-500/20 text-red-400 border-red-500/30' :
+                      r.status === 'refunded' ? 'bg-amber-500/20 text-amber-400 border-amber-500/30' :
+                      'bg-purple-500/20 text-purple-300 border-purple-500/30 animate-pulse'
+                    }`}>
+                      {r.status?.toUpperCase() || 'PENDING'}
+                    </span>
+                  </div>
                 </div>
-                <div className="p-3 rounded-xl bg-white/[0.02] border border-white/5 text-[10px] font-mono">
-                  <span className="text-white/40 block mb-1 uppercase">Amount</span>
-                  <span className="text-white">${r.amount} {r.currency}</span>
-                </div>
-                <div className="p-3 rounded-xl bg-white/[0.02] border border-white/5 text-[10px] font-mono">
-                  <span className="text-white/40 block mb-1 uppercase">Verification Docs</span>
-                  <span className="text-aeirmist-cyan">Attached</span>
-                </div>
-                <div className="p-3 rounded-xl bg-white/[0.02] border border-white/5 text-[10px] font-mono">
-                  <span className="text-white/40 block mb-1 uppercase">Date</span>
-                  <span className="text-white/80">{r.createdAt?.toDate ? new Date(r.createdAt.toDate()).toLocaleDateString() : 'Recent'}</span>
-                </div>
-              </div>
-              
-              {r.identity && (
-                <div className="p-4 rounded-xl bg-white/[0.01] border border-white/5 text-[10px] font-mono text-white/60 space-y-1">
-                  <p><span className="text-white/40">Full Name:</span> {r.identity.fullName}</p>
-                  <p><span className="text-white/40">Country:</span> {r.identity.country}</p>
-                  {r.identity.website && <p><span className="text-white/40">Website:</span> {r.identity.website}</p>}
-                </div>
-              )}
 
-              {r.status === 'pending' && (
-                <div className="flex flex-wrap gap-2 pt-2 border-t border-white/5">
-                  <button
-                    onClick={() => handleAction(r.id, 'approved', r.userId)}
-                    className="h-8 px-4 rounded-lg bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5"
-                  >
-                    <Check size={12} /> Approve
-                  </button>
-                  <button
-                    onClick={() => handleAction(r.id, 'rejected', r.userId)}
-                    className="h-8 px-4 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5"
-                  >
-                    <X size={12} /> Reject
-                  </button>
-                  <button
-                    className="h-8 px-4 rounded-lg bg-white/5 text-white/60 hover:bg-white/10 hover:text-white text-[10px] font-black uppercase tracking-wider transition-all"
-                  >
-                    Request Info
-                  </button>
-                  <button
-                    onClick={() => handleAction(r.id, 'refunded', r.userId)}
-                    className="h-8 px-4 rounded-lg bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 text-[10px] font-black uppercase tracking-wider transition-all ml-auto"
-                  >
-                    Refund
-                  </button>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <div className="p-3 rounded-xl bg-white/[0.02] border border-white/5 text-[10px] font-mono">
+                    <span className="text-white/40 block mb-1 uppercase">Payment Provider</span>
+                    <span className="text-green-400 font-bold capitalize">{r.paymentProvider || 'Card'} ({r.paymentStatus || 'Paid'})</span>
+                  </div>
+                  <div className="p-3 rounded-xl bg-white/[0.02] border border-white/5 text-[10px] font-mono">
+                    <span className="text-white/40 block mb-1 uppercase">Fee Amount</span>
+                    <span className="text-white font-bold">${r.amount} {r.currency || 'USD'} / mo</span>
+                  </div>
+                  <div className="p-3 rounded-xl bg-white/[0.02] border border-white/5 text-[10px] font-mono">
+                    <span className="text-white/40 block mb-1 uppercase">ID Document</span>
+                    <span className="text-aeirmist-cyan font-bold">{r.identity?.idDocument || 'Government ID Attached'}</span>
+                  </div>
+                  <div className="p-3 rounded-xl bg-white/[0.02] border border-white/5 text-[10px] font-mono">
+                    <span className="text-white/40 block mb-1 uppercase">Applied Date</span>
+                    <span className="text-white/80">{r.createdAt?.toDate ? new Date(r.createdAt.toDate()).toLocaleDateString() : 'Recent'}</span>
+                  </div>
                 </div>
-              )}
-            </div>
-          ))
+                
+                {r.identity && (
+                  <div className="p-4 rounded-xl bg-white/[0.02] border border-white/5 text-[10px] font-mono text-white/70 space-y-1">
+                    <p><span className="text-white/40 uppercase">Full Legal Name:</span> <span className="text-white font-bold">{r.identity.fullName}</span></p>
+                    <p><span className="text-white/40 uppercase">Country:</span> <span className="text-white">{r.identity.country}</span></p>
+                    {r.identity.website && <p><span className="text-white/40 uppercase">Website / Portfolio:</span> <a href={r.identity.website} target="_blank" rel="noreferrer" className="text-aeirmist-cyan underline">{r.identity.website}</a></p>}
+                  </div>
+                )}
+
+                {r.rejectionReason && (
+                  <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-[10px] font-mono text-red-300">
+                    <span className="text-red-400 font-bold block mb-0.5">REJECTION REASON:</span>
+                    {r.rejectionReason}
+                  </div>
+                )}
+
+                {r.status === 'pending' && (
+                  <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-white/5">
+                    <button
+                      disabled={isProcessingAction}
+                      onClick={() => handleQuickApprove(r)}
+                      className="h-9 px-4 rounded-xl bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/30 text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Check size={14} /> Approve ({planKey.toUpperCase()} - 30 Days)
+                    </button>
+
+                    <button
+                      disabled={isProcessingAction}
+                      onClick={() => {
+                        setModalApplicant({
+                          id: r.userId,
+                          uid: r.userId,
+                          username: r.username,
+                          displayName: r.identity?.fullName || r.username,
+                          verificationPlan: r.plan,
+                          isVerified: false
+                        });
+                      }}
+                      className="h-9 px-4 rounded-xl bg-white/5 border border-white/10 text-white/80 hover:text-white hover:bg-white/10 text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Sliders size={13} /> Change Plan / Duration
+                    </button>
+
+                    <button
+                      disabled={isProcessingAction}
+                      onClick={() => setRejectingRequest(r)}
+                      className="h-9 px-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <X size={14} /> Reject
+                    </button>
+
+                    <button
+                      disabled={isProcessingAction}
+                      onClick={() => handleRefund(r)}
+                      className="h-9 px-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 hover:bg-amber-500/20 text-[10px] font-black uppercase tracking-wider transition-all ml-auto cursor-pointer"
+                    >
+                      Refund
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })
         )}
       </div>
+
+      {/* Rejection Reason Modal */}
+      {rejectingRequest && (
+        <div className="fixed inset-0 z-[100003] bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="w-full max-w-md bg-[#090b10] border border-red-500/30 rounded-3xl p-6 space-y-5 shadow-2xl text-white"
+          >
+            <div className="flex items-center justify-between pb-3 border-b border-white/10">
+              <div className="flex items-center gap-2">
+                <AlertCircle size={18} className="text-red-400" />
+                <h3 className="text-sm font-bold text-white uppercase tracking-wider">Reject Verification Application</h3>
+              </div>
+              <button onClick={() => setRejectingRequest(null)} className="text-white/40 hover:text-white cursor-pointer">
+                <X size={16} />
+              </button>
+            </div>
+
+            <p className="text-xs text-white/60">
+              Select or provide a reason for rejecting @{rejectingRequest.username}&apos;s verification application. The user will receive this explanation via in-app notification.
+            </p>
+
+            <div className="space-y-2">
+              {[
+                'Identity document could not be verified or is incomplete.',
+                'Legal name does not match identification documents.',
+                'Profile does not meet community authenticity criteria.',
+                'Suspicious or fraudulent payment activity detected.'
+              ].map((reasonOption, idx) => (
+                <div
+                  key={idx}
+                  onClick={() => { setRejectReason(reasonOption); setCustomRejectReason(''); }}
+                  className={`p-3 rounded-xl border text-xs cursor-pointer transition-all ${
+                    rejectReason === reasonOption && !customRejectReason
+                      ? 'bg-red-500/20 border-red-500/50 text-white font-medium'
+                      : 'bg-white/[0.02] border-white/5 text-white/60 hover:border-white/20'
+                  }`}
+                >
+                  {reasonOption}
+                </div>
+              ))}
+            </div>
+
+            <div>
+              <label className="text-[10px] font-mono uppercase text-white/50 block mb-1">Or write a custom reason:</label>
+              <textarea
+                rows={2}
+                value={customRejectReason}
+                onChange={(e) => setCustomRejectReason(e.target.value)}
+                placeholder="Explain why this request is rejected..."
+                className="w-full px-3 py-2 bg-black/40 border border-white/10 rounded-xl text-xs text-white outline-none focus:border-red-400 transition-colors"
+              />
+            </div>
+
+            <div className="flex gap-3 pt-2">
+              <button
+                onClick={() => setRejectingRequest(null)}
+                className="flex-1 py-2.5 rounded-xl bg-white/5 border border-white/10 text-xs font-bold text-white/70 hover:bg-white/10 transition-all cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                disabled={isProcessingAction}
+                onClick={handleConfirmReject}
+                className="flex-1 py-2.5 rounded-xl bg-red-500 text-white text-xs font-bold uppercase tracking-wider hover:bg-red-400 transition-all cursor-pointer"
+              >
+                Confirm Rejection
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Plan Modal for Verification Requests */}
+      <VerificationPlanModal
+        isOpen={Boolean(modalApplicant)}
+        onClose={() => setModalApplicant(null)}
+        user={modalApplicant}
+        onApplyPlan={async (plan, durationDays) => {
+          if (!modalApplicant) return;
+          await toggleVerification(modalApplicant.id, true, plan, durationDays, modalApplicant.id);
+          await updateDoc(doc(db, 'verificationApplications', modalApplicant.id), {
+            status: 'approved',
+            approvedPlan: plan,
+            reviewedAt: serverTimestamp()
+          }).catch(() => {});
+          setModalApplicant(null);
+        }}
+        onRevoke={async () => {
+          if (!modalApplicant) return;
+          await toggleVerification(modalApplicant.id, false, undefined, undefined, modalApplicant.id);
+          setModalApplicant(null);
+        }}
+        onExtend={async (days) => {
+          if (!modalApplicant) return;
+          await toggleVerification(modalApplicant.id, true, modalApplicant.verificationPlan || 'creator', days, modalApplicant.id);
+          setModalApplicant(null);
+        }}
+      />
     </div>
   );
 };
@@ -2323,6 +2803,16 @@ export const AdminPanel = () => {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'users' | 'reports' | 'appeals' | 'marketplace' | 'security' | 'roles' | 'flags' | 'logs' | 'verification' | 'tickets' | 'system'>('dashboard');
   const [isAddAdminOpen, setIsAddAdminOpen] = useState(false);
   const [allProfiles, setAllProfiles] = useState<any[]>([]);
+  const [pendingVerificationsCount, setPendingVerificationsCount] = useState<number>(0);
+
+  useEffect(() => {
+    if (!db || !isAdminUser) return;
+    const q = query(collection(db, 'verificationApplications'), where('status', '==', 'pending'));
+    const unsub = onSnapshot(q, (snap) => {
+      setPendingVerificationsCount(snap.size);
+    }, (err) => logger.warn("Pending verifications count error:", err));
+    return () => unsub();
+  }, [db, isAdminUser]);
 
   useEffect(() => {
     if (!db || !isAdminUser) return;
@@ -2525,7 +3015,7 @@ export const AdminPanel = () => {
             { id: 'reports', label: 'Reports', icon: <AlertTriangle size={13} /> },
             { id: 'appeals', label: 'Appeals', icon: <ShieldCheck size={13} /> },
             { id: 'tickets', label: 'Support Inbox', icon: <LifeBuoy size={13} /> },
-            { id: 'verification', label: 'Verification', icon: <CheckCircle size={13} /> },
+            { id: 'verification', label: 'Verification', icon: <CheckCircle size={13} />, badge: pendingVerificationsCount },
             { id: 'marketplace', label: 'Pay & Sub', icon: <ShoppingBag size={13} /> },
             { id: 'security', label: 'Security', icon: <Shield size={13} /> },
             { id: 'roles', label: 'Roles', icon: <Key size={13} /> },
@@ -2542,6 +3032,13 @@ export const AdminPanel = () => {
             >
               {tab.icon}
               <span>{tab.label}</span>
+              {Boolean(tab.badge && tab.badge > 0) && (
+                <span className={`px-1.5 py-0.5 rounded-full font-black text-[9px] leading-none ${
+                  activeTab === tab.id ? 'bg-black text-aeirmist-cyan' : 'bg-aeirmist-cyan text-black'
+                }`}>
+                  {tab.badge}
+                </span>
+              )}
             </button>
           ))}
         </div>
@@ -2584,7 +3081,7 @@ export const AdminPanel = () => {
           )}
           {activeTab === 'flags' && <FeatureFlagsTab db={db} addToast={addToast} />}
           {activeTab === 'logs' && <AuditLogTab db={db} />}
-          {activeTab === 'verification' && <VerificationRequestsTab db={db} addToast={addToast} />}
+          {activeTab === 'verification' && <VerificationRequestsTab db={db} addToast={addToast} toggleVerification={toggleVerification} />}
           {activeTab === 'system' && <SystemTab />}
         </motion.div>
 

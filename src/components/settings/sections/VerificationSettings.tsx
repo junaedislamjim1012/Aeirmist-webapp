@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ShieldCheck, Check, AlertCircle, Loader2, ArrowRight, X, UserX, CreditCard, Wallet, Fingerprint, Smartphone, KeyRound, Globe, Lock } from 'lucide-react';
+import { ShieldCheck, Check, AlertCircle, Loader2, ArrowRight, X, UserX, CreditCard, Wallet, Fingerprint, Smartphone, KeyRound, Globe, Lock, Calendar, Clock, Sparkles } from 'lucide-react';
 import { useAeirmist } from '../../../context/AeirmistContext';
 import { useAppearance } from '../../../context/AppearanceContext';
 import { useTheme } from '../../../context/ThemeContext';
-import { doc, getDoc, setDoc, updateDoc, serverTimestamp, writeBatch } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, serverTimestamp, writeBatch, collection, addDoc, getDocs, query, where } from 'firebase/firestore';
 import { logger } from '@/src/utils/logger';
 
 
@@ -146,12 +146,58 @@ export const VerificationSettings = () => {
       
       await batch.commit();
 
+      // Notify Administrators in real time about new verification application
+      try {
+        const adminProfilesQuery = query(collection(db, 'profiles'), where('role', 'in', ['admin', 'Administrator', 'Super Admin', 'Owner']));
+        const adminSnap = await getDocs(adminProfilesQuery);
+        const adminUids = new Set<string>();
+        adminSnap.forEach(d => {
+          const dt = d.data();
+          if (dt.ownerUid) adminUids.add(dt.ownerUid);
+          if (dt.uid) adminUids.add(dt.uid);
+          adminUids.add(d.id);
+        });
+
+        // Add a general system notification for admin dashboard
+        adminUids.add('ADMIN_BROADCAST');
+
+        const notifPromises = Array.from(adminUids).map(admUid => 
+          addDoc(collection(db, 'notifications'), {
+            userId: admUid,
+            fromUserId: user.uid,
+            fromUserUid: user.uid,
+            user: {
+              name: profile?.displayName || profile?.username || 'User',
+              avatar: profile?.photoURL || '',
+              username: profile?.username || 'user',
+              isVerified: false
+            },
+            type: 'admin_verification_request',
+            message: `@${profile?.username || 'user'} applied for Meta-style Verification (${selectedPlan?.toUpperCase()} Plan, $${appData.amount}). Review in Enterprise Control Center.`,
+            metadata: {
+              applicationId: appId,
+              applicantUid: user.uid,
+              applicantProfileId: profile?.id || user.uid,
+              username: profile?.username,
+              plan: selectedPlan,
+              amount: appData.amount,
+              targetTab: 'verification'
+            },
+            read: false,
+            createdAt: serverTimestamp()
+          }).catch(() => {})
+        );
+        await Promise.allSettled(notifPromises);
+      } catch (notifErr) {
+        logger.warn('Failed to notify admins of verification request:', notifErr);
+      }
+
       setVerificationData(appData);
       setShowPaymentModal(false);
       setGatewayMethod(null);
       setStep('submitted');
       
-      addToast({ title: 'Application Filed', message: 'Your payment was successful and verified.', type: 'success' });
+      addToast({ title: 'Application Filed', message: 'Your payment was successful and verified. Review in progress.', type: 'success' });
     } catch (e) {
       logger.error('Submission failed', e);
       addToast({ title: 'System Error', message: 'Could not finalize application.', type: 'warning' });
@@ -537,52 +583,127 @@ export const VerificationSettings = () => {
       )}
 
       {/* Approved Status */}
-      {step === 'approved' && (
-        <div className="max-w-md mx-auto space-y-6">
-          <div className="p-8 rounded-3xl bg-gradient-to-b from-blue-500/10 to-transparent border border-blue-500/30 text-center relative overflow-hidden">
-            <div className="absolute top-0 right-0 p-4 opacity-10">
-              <ShieldCheck size={120} className="text-blue-400" />
-            </div>
-            <div className="relative z-10">
-              <div className="w-16 h-16 mx-auto rounded-full bg-blue-500/20 flex items-center justify-center mb-6">
-                <ShieldCheck size={32} className="text-blue-400" />
+      {step === 'approved' && (() => {
+        const plan = verificationData?.plan || profile?.verificationPlan || 'creator';
+        const planName = plan === 'essential' ? 'Essential' : plan === 'business' ? 'Business' : 'Creator';
+        const planPrice = plan === 'essential' ? '$3.69 / month' : plan === 'business' ? '$12.69 / month' : '$9.69 / month';
+        const badgeColor = plan === 'essential' ? 'text-blue-400' : plan === 'business' ? 'text-amber-400' : 'text-aeirmist-cyan';
+        const badgeBg = plan === 'essential' ? 'bg-blue-500/10 border-blue-500/30' : plan === 'business' ? 'bg-amber-500/10 border-amber-500/30' : 'bg-cyan-500/10 border-cyan-500/30';
+        
+        // Date parsing
+        const rawApproved = profile?.verificationApprovedAt || profile?.verifiedAt || verificationData?.approvedAt || verificationData?.createdAt;
+        let verifiedSinceStr = 'Active';
+        try {
+          if (rawApproved?.toDate) verifiedSinceStr = rawApproved.toDate().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+          else if (rawApproved) verifiedSinceStr = new Date(rawApproved).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        } catch {}
+
+        const rawExpires = profile?.verificationExpiresAt || profile?.monthlyDeadline || verificationData?.expiresAt || verificationData?.monthlyDeadline;
+        let deadlineMs = Date.now() + 30 * 86400 * 1000;
+        let deadlineStr = 'In 30 days';
+        try {
+          if (rawExpires?.toMillis) {
+            deadlineMs = rawExpires.toMillis();
+            deadlineStr = new Date(deadlineMs).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+          } else if (rawExpires?.toDate) {
+            deadlineMs = rawExpires.toDate().getTime();
+            deadlineStr = rawExpires.toDate().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+          } else if (rawExpires) {
+            deadlineMs = new Date(rawExpires).getTime();
+            deadlineStr = new Date(rawExpires).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+          }
+        } catch {}
+
+        const diffDays = Math.max(0, Math.ceil((deadlineMs - Date.now()) / (1000 * 60 * 60 * 24)));
+        const progressPct = Math.min(100, Math.max(5, Math.round((diffDays / 30) * 100)));
+
+        return (
+          <div className="max-w-md mx-auto space-y-6">
+            <div className={`p-8 rounded-3xl bg-gradient-to-b from-white/[0.04] to-transparent border ${badgeBg} text-center relative overflow-hidden shadow-2xl`}>
+              <div className="absolute top-0 right-0 p-4 opacity-10">
+                <ShieldCheck size={120} className={badgeColor} />
               </div>
-              <h3 className="text-2xl font-bold text-white mb-2">Verification Approved</h3>
-              <p className="text-sm text-blue-200 mb-6">Congratulations! Your account has been verified.</p>
-              
-              <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-blue-500/10 border border-blue-500/30 text-blue-400 text-sm font-bold">
-                <Check size={16} /> Blue Badge Active
-              </div>
-            </div>
-          </div>
-          
-          <div className="p-6 rounded-3xl bg-white/[0.02] border border-white/5">
-            <h4 className="text-xs font-black uppercase tracking-widest text-white/40 mb-4">Subscription Management</h4>
-            <div className="space-y-4 mb-6">
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-white/80">Current Plan</span>
-                <span className="text-sm font-bold text-aeirmist-cyan capitalize">{verificationData?.plan || profile?.verificationPlan || 'Creator'}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-white/80">Auto Renewal</span>
-                <span className={`text-sm font-bold ${verificationData?.autoRenewal !== false ? 'text-green-400' : 'text-red-400'}`}>
-                  {verificationData?.autoRenewal !== false ? 'ON' : 'OFF'}
-                </span>
+              <div className="relative z-10">
+                <div className={`w-16 h-16 mx-auto rounded-full ${badgeBg} flex items-center justify-center mb-5 shadow-lg`}>
+                  <ShieldCheck size={32} className={badgeColor} />
+                </div>
+                <h3 className="text-2xl font-bold text-white mb-1">Aeirmist Verified</h3>
+                <p className="text-xs text-white/60 mb-4 font-mono">Meta-Style Verified Identity Active</p>
+                
+                <div className={`inline-flex items-center gap-2 px-4 py-1.5 rounded-full ${badgeBg} border ${badgeColor} text-xs font-black uppercase tracking-wider`}>
+                  <Check size={14} /> {planName} Badge Active
+                </div>
               </div>
             </div>
             
-            {verificationData?.autoRenewal !== false && (
-              <button 
-                onClick={handleCancelSubscription}
-                disabled={isProcessing}
-                className="w-full py-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-xs font-bold uppercase tracking-wider hover:bg-red-500/20 transition-all flex items-center justify-center gap-2"
-              >
-                {isProcessing ? <Loader2 size={16} className="animate-spin" /> : 'Cancel Subscription'}
-              </button>
-            )}
+            {/* Meta-Style Subscription & Deadline Card */}
+            <div className="p-6 rounded-3xl bg-white/[0.02] border border-white/10 space-y-5">
+              <div className="flex items-center justify-between border-b border-white/5 pb-3">
+                <h4 className="text-[10px] font-black uppercase tracking-widest text-white/50 flex items-center gap-1.5">
+                  <Sparkles size={12} className={badgeColor} /> Meta Plan Details
+                </h4>
+                <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded font-mono ${badgeBg}`}>
+                  {planName}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 text-xs">
+                <div className="p-3 rounded-2xl bg-white/[0.02] border border-white/5">
+                  <span className="text-[9px] uppercase font-mono text-white/40 block mb-1">Billing Rate</span>
+                  <span className="font-bold text-white">{planPrice}</span>
+                </div>
+                <div className="p-3 rounded-2xl bg-white/[0.02] border border-white/5">
+                  <span className="text-[9px] uppercase font-mono text-white/40 block mb-1">Verified Since</span>
+                  <span className="font-bold text-white/90">{verifiedSinceStr}</span>
+                </div>
+              </div>
+
+              {/* Monthly Renewal Deadline & Progress */}
+              <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/5 space-y-2">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-white/60 flex items-center gap-1.5 font-mono text-[11px]">
+                    <Clock size={13} className={badgeColor} /> Monthly Deadline
+                  </span>
+                  <span className="font-mono font-bold text-white">{deadlineStr}</span>
+                </div>
+
+                <div className="w-full h-2 bg-white/5 rounded-full overflow-hidden">
+                  <div 
+                    className={`h-full rounded-full transition-all duration-500 ${
+                      diffDays <= 3 ? 'bg-red-400' : diffDays <= 7 ? 'bg-amber-400' : 'bg-aeirmist-cyan'
+                    }`}
+                    style={{ width: `${progressPct}%` }}
+                  />
+                </div>
+
+                <div className="flex justify-between items-center text-[10px] font-mono text-white/40 pt-1">
+                  <span>{diffDays} Day{diffDays === 1 ? '' : 's'} Remaining in Cycle</span>
+                  <span>{verificationData?.autoRenewal !== false ? 'Auto-Renew: ON' : 'Auto-Renew: OFF'}</span>
+                </div>
+              </div>
+
+              <div className="pt-2 flex flex-col gap-2">
+                {verificationData?.autoRenewal !== false ? (
+                  <button 
+                    onClick={handleCancelSubscription}
+                    disabled={isProcessing}
+                    className="w-full py-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs font-bold uppercase tracking-wider hover:bg-red-500/20 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    {isProcessing ? <Loader2 size={16} className="animate-spin" /> : 'Turn Off Auto-Renewal'}
+                  </button>
+                ) : (
+                  <button 
+                    onClick={() => setStep('plans')}
+                    className="w-full py-3 rounded-xl bg-aeirmist-cyan text-black text-xs font-bold uppercase tracking-wider hover:bg-white transition-all flex items-center justify-center gap-2 cursor-pointer font-sans"
+                  >
+                    Renew Subscription Now
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Rejected Status */}
       {step === 'rejected' && (

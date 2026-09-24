@@ -1,147 +1,35 @@
-# ==============================================================================
-# AEIRMIST MILITARY-GRADE WEB APPLICATION FIREWALL (WAF) & SECURITY HARDENING
-# ==============================================================================
-
+# InfinityFree Apache Configuration for Aeirmist SPA
 DirectoryIndex index.html
 
-# ------------------------------------------------------------------------------
-# 1. CORE SERVER HARDENING & LEAK PREVENTION
-# ------------------------------------------------------------------------------
-ServerSignature Off
-Options -Indexes -ExecCGI -MultiViews
-FileETag None
-
-# Block all HTTP methods except secure standard web methods
-<IfModule mod_rewrite.c>
-    RewriteEngine On
-    RewriteCond %{REQUEST_METHOD} ^(TRACK|TRACE|DEBUG|CONNECT|PUT|DELETE|PATCH) [NC]
-    RewriteRule .* - [F,L]
+# Allow all requests
+<IfModule mod_authz_core.c>
+    Require all granted
 </IfModule>
 
-# ------------------------------------------------------------------------------
-# 2. ADVANCED ENTERPRISE SECURITY HEADERS
-# ------------------------------------------------------------------------------
-<IfModule mod_headers.c>
-    # 2.1 Enforce HTTPS everywhere with 2-year HSTS + Subdomains + Preload
-    Header always set Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
-    
-    # 2.2 Anti-Clickjacking: Prevent framing in external phishing iframes
-    Header always set X-Frame-Options "SAMEORIGIN"
-    
-    # 2.3 Strict MIME Sniffing Defense
-    Header always set X-Content-Type-Options "nosniff"
-    
-    # 2.4 Browser-Level XSS Filter
-    Header always set X-XSS-Protection "1; mode=block"
-    
-    # 2.5 Strict Referrer Privacy
-    Header always set Referrer-Policy "strict-origin-when-cross-origin"
-    
-    # 2.6 Hardware & Privacy Feature Permissions Lockdown
-    Header always set Permissions-Policy "camera=(self), microphone=(self), geolocation=(self), payment=(), usb=(), accelerometer=(), gyroscope=(), magnetometer=(), display-capture=()"
-    
-    # 2.7 Cross-Origin Isolation Policies (Allows Firebase OAuth Popups while isolating origin)
-    Header always set Cross-Origin-Opener-Policy "same-origin-allow-popups"
-    Header always set Cross-Origin-Resource-Policy "cross-origin"
-
-    # 2.8 Hide Server Fingerprinting
-    Header unset X-Powered-By
-    Header unset Server
-</IfModule>
-
-# ------------------------------------------------------------------------------
-# 3. COMPREHENSIVE LAYER 7 WEB APPLICATION FIREWALL (WAF)
-# ------------------------------------------------------------------------------
+# Safe SPA Routing & Clean Security Rules
 <IfModule mod_rewrite.c>
     RewriteEngine On
     RewriteBase /
 
-    # --- RULE 3.1: FORCE STRICT HTTPS REDIRECTION (301) ---
-    RewriteCond %{HTTPS} off [OR]
-    RewriteCond %{HTTP:X-Forwarded-Proto} !https
-    RewriteCond %{HTTP_HOST} ^(www\.)?aeirmist\.com$ [NC]
-    RewriteRule ^(.*)$ https://aeirmist.com/$1 [L,R=301]
+    # Force HTTPS Redirection
+    RewriteCond %{HTTPS} off
+    RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
 
-    # --- RULE 3.2: BLOCK HONEYPOT / SENSITIVE PATH SCANNERS (IMMEDIATE 403) ---
-    RewriteCond %{REQUEST_URI} (wp-admin|wp-login|xmlrpc\.php|wp-content|wp-includes) [NC,OR]
-    RewriteCond %{REQUEST_URI} (phpmyadmin|pma|adminer|myadmin|sqladmin|mysql) [NC,OR]
-    RewriteCond %{REQUEST_URI} (shell\.php|c99\.php|r57\.php|alfa\.php|cmd\.php|eval-stdin) [NC,OR]
-    RewriteCond %{REQUEST_URI} (\.env|\.git|\.svn|\.hg|\.bzr|\.cvs) [NC,OR]
-    RewriteCond %{REQUEST_URI} (config\.json|setup\.php|install\.php|composer\.lock|package-lock\.json) [NC,OR]
-    RewriteCond %{REQUEST_URI} (\.aws|\.ssh|id_rsa|id_dsa|\.bash_history|\.mysql_history) [NC,OR]
-    RewriteCond %{REQUEST_URI} (backup|dump|database|schema)\.(sql|tar|gz|zip|bak|old) [NC]
+    # Block common malicious query string exploit attempts
+    RewriteCond %{QUERY_STRING} (<script|%3cscript|javascript:|eval\(|base64_decode|union.*select) [NC]
     RewriteRule .* - [F,L]
 
-    # --- RULE 3.3: BLOCK DIRECTORY TRAVERSAL, LFI & RFI EXPLOITS ---
-    RewriteCond %{QUERY_STRING} (\.\./|\.\.\\|\.\.%2f|\.\.%5c) [NC,OR]
-    RewriteCond %{QUERY_STRING} (%2e%2e|%252e%252e|\.\./\.\./) [NC,OR]
-    RewriteCond %{QUERY_STRING} (etc/passwd|etc/shadow|proc/self/environ|boot\.ini|win\.ini) [NC,OR]
-    RewriteCond %{QUERY_STRING} (ftp|https?|php|data|zip|expect):(?://|%2f%2f) [NC,OR]
-    RewriteCond %{QUERY_STRING} (php://input|php://filter|data:text/html) [NC]
-    RewriteRule .* - [F,L]
+    # Block access to hidden environment or version control files
+    RewriteRule ^(\.git|\.env|\.sql|\.bak|\.log) - [F,L]
 
-    # --- RULE 3.4: BLOCK SQL INJECTION (SQLi) ATTACK VECTORS ---
-    RewriteCond %{QUERY_STRING} (union.*select|insert.*into|drop.*table|truncate.*table) [NC,OR]
-    RewriteCond %{QUERY_STRING} (information_schema|benchmark\s*\(|waitfor\s+delay|sleep\s*\() [NC,OR]
-    RewriteCond %{QUERY_STRING} (concat\s*\(|load_file|into.*outfile|into.*dumpfile) [NC,OR]
-    RewriteCond %{QUERY_STRING} (char\s*\(|unhex\s*\(|hex\s*\(|ord\s*\(|ascii\s*\() [NC,OR]
-    RewriteCond %{QUERY_STRING} (group_concat|order\s+by\s+\d+|union.*all.*select) [NC]
-    RewriteRule .* - [F,L]
-
-    # --- RULE 3.5: BLOCK REMOTE CODE EXECUTION (RCE) & CODE INJECTION ---
-    RewriteCond %{QUERY_STRING} (base64_decode|base64_encode|eval\(|gzinflate|gzuncompress) [NC,OR]
-    RewriteCond %{QUERY_STRING} (passthru|shell_exec|exec\(|system\(|proc_open|popen) [NC,OR]
-    RewriteCond %{QUERY_STRING} (preg_replace.*\/e|create_function|assert\() [NC]
-    RewriteRule .* - [F,L]
-
-    # --- RULE 3.6: BLOCK CROSS-SITE SCRIPTING (XSS) ATTACK VECTORS ---
-    RewriteCond %{QUERY_STRING} (<script|%3cscript|javascript:|vbscript:|data:text) [NC,OR]
-    RewriteCond %{QUERY_STRING} (onload=|onerror=|onclick=|onmouseover=|onfocus=|onblur=) [NC,OR]
-    RewriteCond %{QUERY_STRING} (document\.cookie|document\.location|window\.location) [NC,OR]
-    RewriteCond %{QUERY_STRING} (String\.fromCharCode|<svg/onload=|<img.*onerror=) [NC]
-    RewriteRule .* - [F,L]
-
-    # --- RULE 3.7: BLOCK MALICIOUS HACK SCANNERS & EXPLOIT TOOLS ---
-    RewriteCond %{HTTP_USER_AGENT} (sqlmap|nikto|wpscan|masscan|havij|acunetix|dirbuster|nmap) [NC,OR]
-    RewriteCond %{HTTP_USER_AGENT} (netsparker|zgrab|openvas|nessus|arachni|shodan|censys) [NC,OR]
-    RewriteCond %{HTTP_USER_AGENT} (grabber|cgiscan|morfeus|fuzz|metasploit|gobuster) [NC,OR]
-    RewriteCond %{HTTP_USER_AGENT} (blackwidow|spanner|zeus|blexbot|autoauth) [NC]
-    RewriteRule .* - [F,L]
-
-    # --- RULE 3.8: SPA ROUTING & INTERNAL CACHING FALLBACK ---
+    # SPA Routing Fallback
     RewriteRule ^index\.html$ - [L]
     RewriteCond %{REQUEST_FILENAME} !-f
     RewriteCond %{REQUEST_FILENAME} !-d
     RewriteRule . /index.html [L]
 </IfModule>
 
-# ------------------------------------------------------------------------------
-# 4. STRICT ACCESS CONTROL ON SENSITIVE EXTENSIONS & FILES
-# ------------------------------------------------------------------------------
-<FilesMatch "(^\.|\.(env|git|svn|yml|yaml|config|lock|log|bak|sql|sh|tar|gz|zip|md|ts|tsx))$">
-    <IfModule mod_authz_core.c>
-        Require all denied
-    </IfModule>
-    <IfModule !mod_authz_core.c>
-        Order deny,allow
-        Deny from all
-    </IfModule>
-</FilesMatch>
-
-# Prevent direct access to .htaccess itself
-<Files ~ "^.*\.([Hh][Tt][Aa])">
-    <IfModule mod_authz_core.c>
-        Require all denied
-    </IfModule>
-    <IfModule !mod_authz_core.c>
-        Order deny,allow
-        Deny from all
-    </IfModule>
-</Files>
-
-# ------------------------------------------------------------------------------
-# 5. ASSET EXPIRATION & AGGRESSIVE PERFORMANCE CACHING
-# ------------------------------------------------------------------------------
+# Browser Caching
 <IfModule mod_expires.c>
     ExpiresActive On
     ExpiresDefault "access plus 1 month"
@@ -153,5 +41,4 @@ FileETag None
     ExpiresByType image/jpeg "access plus 1 year"
     ExpiresByType image/webp "access plus 1 year"
     ExpiresByType image/svg+xml "access plus 1 year"
-    ExpiresByType font/woff2 "access plus 1 year"
 </IfModule>

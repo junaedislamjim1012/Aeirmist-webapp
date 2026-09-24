@@ -4934,13 +4934,13 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             fromUserId: 'aeirmist_system',
             fromUserUid: 'aeirmist_system',
             user: {
-              name: 'Aeirmist Official',
+              name: 'Aeirmist',
               avatar: '/favicon.png',
               username: 'aeirmist',
               isVerified: true
             },
             type: 'verification',
-            message: `🎉 Congratulations! Your Aeirmist account is now officially verified under the ${planNameMap[plan] || plan} Plan. Your badge is active until ${deadlineStr}.`,
+            message: `Congratulations! Your account is now Aeirmist ${plan.charAt(0).toUpperCase() + plan.slice(1)} Verified under the ${planNameMap[plan] || plan} Plan. Your badge is active until ${deadlineStr}.`,
             metadata: {
               plan,
               verifiedAt: nowMs,
@@ -4948,7 +4948,7 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
               monthlyDeadline: expiresAt.getTime(),
               status: 'active',
               deadlineStr,
-              senderName: 'Aeirmist Official',
+              senderName: 'Aeirmist',
               senderUsername: 'aeirmist',
               senderPhoto: '/favicon.png'
             },

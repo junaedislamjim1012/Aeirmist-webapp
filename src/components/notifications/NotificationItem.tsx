@@ -97,18 +97,23 @@ export const NotificationItem: React.FC<NotificationItemProps> = ({
                      String(notification.type || '').toLowerCase().includes('device') ||
                      String(notification.type || '').toLowerCase().includes('login');
 
+  const isVerification = String(notification.type || '').toLowerCase().includes('verification');
+
   const getUserDisplayName = () => {
     if (isSecurity) return 'Security Alert';
+    if (isVerification) return 'Aeirmist';
     return notification.user?.name || notification.user?.displayName || notification.fromUser?.displayName || 'Aeirmist User';
   };
 
   const getUserHandle = () => {
     if (isSecurity) return '@security';
+    if (isVerification) return '@aeirmist';
     return notification.user?.username ? `@${notification.user.username}` : `@${getUserDisplayName().toLowerCase().replace(/\s+/g, '')}`;
   };
 
   const getAvatarUrl = () => {
     if (isSecurity) return null;
+    if (isVerification) return '/favicon.png';
     return getAvatarUrlHelper(notification.user?.avatar || notification.user?.photoURL || notification.fromUser?.photoURL, notification.user?.name || notification.id);
   };
 
@@ -120,6 +125,29 @@ export const NotificationItem: React.FC<NotificationItemProps> = ({
   // Meta-style sentence configuration and action icons
   const getMetaContent = () => {
     const type = String(notification.type || '').toLowerCase();
+
+    // Verification Notifications
+    if (isVerification) {
+      let rawMsg = notification.message || notification.content || '';
+      const plan = notification.metadata?.plan || (rawMsg.toLowerCase().includes('business') ? 'business' : rawMsg.toLowerCase().includes('creator') ? 'creator' : 'essential');
+      const planTitle = plan ? (plan.charAt(0).toUpperCase() + plan.slice(1)) : 'Business';
+
+      let formattedMsg = rawMsg
+        .replace(/Meta-Style Verified/gi, `Aeirmist ${planTitle} Verified`)
+        .replace(/Meta-style Verified/gi, `Aeirmist ${planTitle} Verified`)
+        .replace(/Meta Verified/gi, `Aeirmist ${planTitle} Verified`);
+
+      if (!formattedMsg) {
+        formattedMsg = `Congratulations! Your account is now Aeirmist ${planTitle} Verified under the ${planTitle} Plan.`;
+      }
+
+      return {
+        actionText: formattedMsg,
+        badgeIcon: <ShieldCheck size={11} className="text-white" />,
+        badgeBg: 'bg-aeirmist-cyan',
+        category: 'system'
+      };
+    }
 
     // Security & Logins
     if (isSecurity) {
@@ -284,35 +312,43 @@ export const NotificationItem: React.FC<NotificationItemProps> = ({
     >
       <div className="flex items-center gap-3 min-w-0">
         
-        {/* Left: Avatar with Overlapping Meta Action Badge */}
+        {/* Left: Square Avatar with Overlapping Meta Action Badge */}
         <div className="relative shrink-0">
           {isSecurity ? (
-            <div className="w-11 h-11 rounded-full bg-gradient-to-br from-cyan-900/80 to-blue-900/60 border border-cyan-500/30 flex items-center justify-center text-cyan-300 shadow-inner">
+            <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-cyan-900/80 to-blue-900/60 border border-cyan-500/30 flex items-center justify-center text-cyan-300 shadow-inner">
               <ShieldCheck size={22} />
+            </div>
+          ) : isVerification ? (
+            <div className="w-11 h-11 rounded-xl bg-black/90 border border-aeirmist-cyan/40 flex items-center justify-center p-1.5 shadow-sm ring-1 ring-white/10 overflow-hidden">
+              <img 
+                src="/favicon.png" 
+                alt="Aeirmist" 
+                className="w-full h-full object-contain" 
+              />
             </div>
           ) : (
             <img 
               src={getAvatarUrl() || BLANK_DP} 
               alt={displayName} 
               referrerPolicy="no-referrer"
-              className="w-11 h-11 rounded-full object-cover bg-black/60 ring-1 ring-white/10 shadow-sm"
+              className="w-11 h-11 rounded-xl object-cover bg-black/60 ring-1 ring-white/10 shadow-sm"
               onError={(e) => { (e.target as HTMLImageElement).src = BLANK_DP; }}
             />
           )}
 
           {/* Overlapping Meta Action Badge */}
-          <div className={`absolute -bottom-1 -right-1 w-5 h-5 rounded-full ${badgeBg} ring-2 ring-[#18191A] flex items-center justify-center shadow-md`}>
+          <div className={`absolute -bottom-1 -right-1 w-5 h-5 rounded-md ${badgeBg} ring-2 ring-[#18191A] flex items-center justify-center shadow-md`}>
             {badgeIcon}
           </div>
         </div>
 
-        {/* Center: Meta Typography Single-Sentence Flow */}
+        {/* Center: Typography Single-Sentence Flow */}
         <div className="flex-1 min-w-0 pr-1">
           <p className="text-[13px] sm:text-[13.5px] leading-snug text-[#E4E6EB]">
             <strong 
               className="font-bold text-white hover:underline cursor-pointer inline-flex items-center gap-1 mr-1"
               onClick={(e) => {
-                if (onUserClick && targetUserId && !isSecurity) {
+                if (onUserClick && targetUserId && !isSecurity && !isVerification) {
                   e.stopPropagation();
                   onUserClick({
                     id: targetUserId,
@@ -324,8 +360,8 @@ export const NotificationItem: React.FC<NotificationItemProps> = ({
               }}
             >
               {displayName}
-              {notification.user?.isVerified && (
-                <ShieldCheck className="text-[#00B2FF] inline-block shrink-0" size={13} />
+              {(notification.user?.isVerified || isVerification) && (
+                <ShieldCheck className="text-aeirmist-cyan inline-block shrink-0" size={13} />
               )}
             </strong>
             <span className="text-[#D8DADF]">{actionText}</span>

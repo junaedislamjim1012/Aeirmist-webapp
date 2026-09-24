@@ -302,6 +302,11 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
               avatar: null,
               username: 'security',
               isVerified: true
+            } : type.includes('verification') ? {
+              name: 'Aeirmist',
+              avatar: '/favicon.png',
+              username: 'aeirmist',
+              isVerified: true
             } : {
               name: d.user?.name || d.fromUser?.displayName || d.metadata?.senderName || 'Aeirmist User',
               avatar: d.user?.avatar || d.fromUser?.photoURL || d.metadata?.senderPhoto || null,

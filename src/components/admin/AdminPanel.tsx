@@ -2493,7 +2493,7 @@ const VerificationRequestsTab = ({ db, addToast, toggleVerification }: { db: any
         approvedPlan: plan,
         reviewedAt: serverTimestamp()
       }).catch(() => {});
-      addToast({ title: 'Application Approved', message: `@${r.username || 'user'} is now Meta-Style Verified (${plan.toUpperCase()}).`, type: 'success' });
+      addToast({ title: 'Application Approved', message: `@${r.username || 'user'} is now Aeirmist ${plan.toUpperCase()} Verified.`, type: 'success' });
     } catch (e) {
       logger.error("Failed to approve verification:", e);
       addToast({ title: 'Approval Failed', message: 'Could not approve verification request.', type: 'warning' });

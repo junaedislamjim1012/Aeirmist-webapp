@@ -1,44 +1,12 @@
-# InfinityFree Apache Configuration for Aeirmist SPA
+# InfinityFree React SPA Configuration
 DirectoryIndex index.html
 
-# Allow all requests
-<IfModule mod_authz_core.c>
-    Require all granted
-</IfModule>
-
-# Safe SPA Routing & Clean Security Rules
 <IfModule mod_rewrite.c>
-    RewriteEngine On
-    RewriteBase /
-
-    # Force HTTPS Redirection
-    RewriteCond %{HTTPS} off
-    RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
-
-    # Block common malicious query string exploit attempts
-    RewriteCond %{QUERY_STRING} (<script|%3cscript|javascript:|eval\(|base64_decode|union.*select) [NC]
-    RewriteRule .* - [F,L]
-
-    # Block access to hidden environment or version control files
-    RewriteRule ^(\.git|\.env|\.sql|\.bak|\.log) - [F,L]
-
-    # SPA Routing Fallback
-    RewriteRule ^index\.html$ - [L]
-    RewriteCond %{REQUEST_FILENAME} !-f
-    RewriteCond %{REQUEST_FILENAME} !-d
-    RewriteRule . /index.html [L]
-</IfModule>
-
-# Browser Caching
-<IfModule mod_expires.c>
-    ExpiresActive On
-    ExpiresDefault "access plus 1 month"
-    ExpiresByType text/html "access plus 0 seconds"
-    ExpiresByType application/json "access plus 0 seconds"
-    ExpiresByType text/css "access plus 1 year"
-    ExpiresByType application/javascript "access plus 1 year"
-    ExpiresByType image/png "access plus 1 year"
-    ExpiresByType image/jpeg "access plus 1 year"
-    ExpiresByType image/webp "access plus 1 year"
-    ExpiresByType image/svg+xml "access plus 1 year"
+  RewriteEngine On
+  RewriteBase /
+  RewriteRule ^index\.html$ - [L]
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
+  RewriteCond %{REQUEST_FILENAME} !-l
+  RewriteRule . /index.html [L]
 </IfModule>

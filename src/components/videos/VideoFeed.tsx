@@ -109,7 +109,12 @@ export const VideoFeed: React.FC<VideoFeedProps> = ({
 
   // Filtered lists based on active tab and search
   const filterVideos = (vList: Video[]) => {
-    let list = [...vList];
+    const blockedList = new Set(profile?.social?.blocked || []);
+    let list = vList.filter(v => {
+      const cId = v.creatorId || v.authorId || (v as any).author?.id;
+      return !blockedList.has(cId);
+    });
+
     if (searchTerm.trim()) {
       const term = searchTerm.toLowerCase();
       list = list.filter(v => 

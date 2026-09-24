@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Shield, 
@@ -22,7 +22,9 @@ import {
   AtSign,
   Trash2
 } from 'lucide-react';
+import { doc, getDoc, collection, query, where, getDocs, limit } from 'firebase/firestore';
 import { useAeirmist } from '../../../context/AeirmistContext';
+import { getAvatarUrl } from '../../../lib/avatar';
 
 export default function PrivacySettings() {
   const { 
@@ -32,8 +34,8 @@ export default function PrivacySettings() {
     toggleBlockUser, 
     toggleRestrictUser, 
     isBlocked, 
-    isRestricted, 
-    allProfiles = [] 
+    isRestricted,
+    db
   } = useAeirmist();
 
   const [activeSubTab, setActiveSubTab] = useState<'controls' | 'blocked' | 'restricted' | 'vault'>('controls');
@@ -105,14 +107,190 @@ export default function PrivacySettings() {
   const blockedUserIds: string[] = profile?.social?.blocked || [];
   const restrictedUserIds: string[] = profile?.social?.restricted || [];
 
-  const blockedProfiles = allProfiles.filter(p => blockedUserIds.includes(p.id))
-    .filter(p => p.username?.toLowerCase().includes(searchQuery.toLowerCase()) || p.displayName?.toLowerCase().includes(searchQuery.toLowerCase()));
+  const [blockedUsers, setBlockedUsers] = useState<any[]>([]);
+  const [restrictedUsers, setRestrictedUsers] = useState<any[]>([]);
+  const [isLoadingBlocked, setIsLoadingBlocked] = useState(false);
+  const [isLoadingRestricted, setIsLoadingRestricted] = useState(false);
 
-  const restrictedProfiles = allProfiles.filter(p => restrictedUserIds.includes(p.id))
-    .filter(p => p.username?.toLowerCase().includes(searchQuery.toLowerCase()) || p.displayName?.toLowerCase().includes(searchQuery.toLowerCase()));
+  // Real-time / direct loader for blocked user profiles
+  useEffect(() => {
+    let isMounted = true;
+    if (!db || blockedUserIds.length === 0) {
+      setBlockedUsers([]);
+      setIsLoadingBlocked(false);
+      return;
+    }
+
+    const fetchBlockedDetails = async () => {
+      setIsLoadingBlocked(true);
+      try {
+        const loaded: any[] = [];
+        for (const targetId of blockedUserIds) {
+          if (!targetId) continue;
+          
+          // 1. Direct profile lookup by document ID
+          try {
+            const pRef = doc(db, 'profiles', targetId);
+            const pSnap = await getDoc(pRef);
+            if (pSnap.exists()) {
+              loaded.push({ id: pSnap.id, ...pSnap.data() });
+              continue;
+            }
+          } catch {}
+
+          // 2. Query by ownerUid
+          try {
+            const q = query(collection(db, 'profiles'), where('ownerUid', '==', targetId), limit(1));
+            const qSnap = await getDocs(q);
+            if (!qSnap.empty) {
+              const d = qSnap.docs[0];
+              loaded.push({ id: d.id, ...d.data() });
+              continue;
+            }
+          } catch {}
+
+          // 3. Query by uid
+          try {
+            const q = query(collection(db, 'profiles'), where('uid', '==', targetId), limit(1));
+            const qSnap = await getDocs(q);
+            if (!qSnap.empty) {
+              const d = qSnap.docs[0];
+              loaded.push({ id: d.id, ...d.data() });
+              continue;
+            }
+          } catch {}
+
+          // 4. Fallback from users collection
+          try {
+            const uRef = doc(db, 'users', targetId);
+            const uSnap = await getDoc(uRef);
+            if (uSnap.exists()) {
+              const uData = uSnap.data();
+              loaded.push({
+                id: targetId,
+                displayName: uData?.displayName || uData?.name || 'Aeirmist User',
+                username: uData?.username || targetId.slice(0, 8),
+                avatarUrl: uData?.photoURL || uData?.avatarUrl || '',
+                isVerified: uData?.isVerified || false,
+                ...uData
+              });
+              continue;
+            }
+          } catch {}
+
+          // 5. Clean fallback object so the row ALWAYS appears
+          loaded.push({
+            id: targetId,
+            displayName: 'Blocked Account',
+            username: targetId.length > 15 ? targetId.slice(0, 10) + '...' : targetId,
+            avatarUrl: '',
+            isVerified: false
+          });
+        }
+
+        if (isMounted) {
+          setBlockedUsers(loaded);
+        }
+      } catch (e) {
+        console.warn('[PrivacySettings] Error fetching blocked details:', e);
+      } finally {
+        if (isMounted) setIsLoadingBlocked(false);
+      }
+    };
+
+    fetchBlockedDetails();
+    return () => { isMounted = false; };
+  }, [db, blockedUserIds.join(',')]);
+
+  // Real-time / direct loader for restricted user profiles
+  useEffect(() => {
+    let isMounted = true;
+    if (!db || restrictedUserIds.length === 0) {
+      setRestrictedUsers([]);
+      setIsLoadingRestricted(false);
+      return;
+    }
+
+    const fetchRestrictedDetails = async () => {
+      setIsLoadingRestricted(true);
+      try {
+        const loaded: any[] = [];
+        for (const targetId of restrictedUserIds) {
+          if (!targetId) continue;
+          try {
+            const pRef = doc(db, 'profiles', targetId);
+            const pSnap = await getDoc(pRef);
+            if (pSnap.exists()) {
+              loaded.push({ id: pSnap.id, ...pSnap.data() });
+              continue;
+            }
+          } catch {}
+
+          try {
+            const q = query(collection(db, 'profiles'), where('ownerUid', '==', targetId), limit(1));
+            const qSnap = await getDocs(q);
+            if (!qSnap.empty) {
+              const d = qSnap.docs[0];
+              loaded.push({ id: d.id, ...d.data() });
+              continue;
+            }
+          } catch {}
+
+          try {
+            const uRef = doc(db, 'users', targetId);
+            const uSnap = await getDoc(uRef);
+            if (uSnap.exists()) {
+              const uData = uSnap.data();
+              loaded.push({
+                id: targetId,
+                displayName: uData?.displayName || uData?.name || 'Aeirmist User',
+                username: uData?.username || targetId.slice(0, 8),
+                avatarUrl: uData?.photoURL || uData?.avatarUrl || '',
+                isVerified: uData?.isVerified || false,
+                ...uData
+              });
+              continue;
+            }
+          } catch {}
+
+          loaded.push({
+            id: targetId,
+            displayName: 'Restricted Account',
+            username: targetId.length > 15 ? targetId.slice(0, 10) + '...' : targetId,
+            avatarUrl: '',
+            isVerified: false
+          });
+        }
+
+        if (isMounted) {
+          setRestrictedUsers(loaded);
+        }
+      } catch (e) {
+        console.warn('[PrivacySettings] Error fetching restricted details:', e);
+      } finally {
+        if (isMounted) setIsLoadingRestricted(false);
+      }
+    };
+
+    fetchRestrictedDetails();
+    return () => { isMounted = false; };
+  }, [db, restrictedUserIds.join(',')]);
+
+  const blockedProfiles = blockedUsers.filter(p => 
+    p.username?.toLowerCase().includes(searchQuery.toLowerCase()) || 
+    p.displayName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    p.id?.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const restrictedProfiles = restrictedUsers.filter(p => 
+    p.username?.toLowerCase().includes(searchQuery.toLowerCase()) || 
+    p.displayName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    p.id?.toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
   const handleUnblock = async (targetId: string, handle: string) => {
     try {
+      setBlockedUsers(prev => prev.filter(u => u.id !== targetId));
       await toggleBlockUser(targetId);
       addToast({
         title: 'Neutral Status Restored',
@@ -128,6 +306,7 @@ export default function PrivacySettings() {
 
   const handleUnrestrict = async (targetId: string, handle: string) => {
     try {
+      setRestrictedUsers(prev => prev.filter(u => u.id !== targetId));
       await toggleRestrictUser(targetId);
       addToast({
         title: 'Restriction Lifted',
@@ -407,28 +586,38 @@ export default function PrivacySettings() {
               </div>
             </div>
 
-            {blockedProfiles.length > 0 ? (
+            {isLoadingBlocked ? (
+              <div className="p-12 text-center rounded-2xl bg-white/[0.01] border border-dashed border-white/10 space-y-3">
+                <Loader2 size={24} className="mx-auto text-aeirmist-cyan animate-spin" />
+                <h4 className="text-xs font-black uppercase tracking-widest text-white/60">Loading Blocked Users</h4>
+                <p className="text-[10px] text-white/30 uppercase tracking-widest font-mono">Fetching account details...</p>
+              </div>
+            ) : blockedProfiles.length > 0 ? (
               <div className="grid grid-cols-1 gap-3">
                 {blockedProfiles.map((user) => (
                   <div key={user.id} className="flex items-center justify-between p-4 rounded-2xl bg-white/[0.02] border border-white/5 hover:border-white/10 transition-all">
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
                       <img
-                        src={user.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100'}
-                        alt={user.displayName}
-                        className="w-10 h-10 rounded-full object-cover border border-white/10 shrink-0"
+                        src={getAvatarUrl(user.avatarUrl, user.id)}
+                        alt={user.displayName || user.username}
+                        className="w-10 h-10 rounded-full object-cover border border-white/10 shrink-0 bg-white/5"
+                        onError={(e) => {
+                          const target = e.target as HTMLImageElement;
+                          target.src = getAvatarUrl(null, user.id);
+                        }}
                       />
-                      <div>
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-xs font-extrabold text-white">{user.displayName}</span>
+                      <div className="min-w-0 truncate">
+                        <div className="flex items-center gap-1.5 truncate">
+                          <span className="text-xs font-extrabold text-white truncate">{user.displayName || user.username || 'Aeirmist User'}</span>
                           {user.isVerified && <ShieldCheck className="text-aeirmist-cyan shrink-0" size={14} />}
                         </div>
-                        <span className="text-[10px] text-white/40 font-mono">@{user.username}</span>
+                        <span className="text-[10px] text-white/40 font-mono truncate block">@{user.username || 'user'}</span>
                       </div>
                     </div>
 
                     <button
                       onClick={() => handleUnblock(user.id, user.username || 'user')}
-                      className="px-4 py-2 rounded-xl bg-red-500/10 text-red-400 hover:bg-red-500/20 text-[10px] font-black uppercase tracking-widest transition-all cursor-pointer flex items-center gap-1.5"
+                      className="px-4 py-2 rounded-xl bg-red-500/10 text-red-400 hover:bg-red-500/20 text-[10px] font-black uppercase tracking-widest transition-all cursor-pointer flex items-center gap-1.5 shrink-0"
                     >
                       <UserCheck size={12} />
                       <span>Unblock</span>
@@ -440,7 +629,9 @@ export default function PrivacySettings() {
               <div className="p-12 text-center rounded-2xl bg-white/[0.01] border border-dashed border-white/10 space-y-3">
                 <Ghost size={32} className="mx-auto text-white/20" />
                 <h4 className="text-xs font-black uppercase tracking-widest text-white/60">No Blocked Users</h4>
-                <p className="text-[10px] text-white/30 uppercase tracking-widest">Your purge list is completely clear.</p>
+                <p className="text-[10px] text-white/30 uppercase tracking-widest">
+                  {searchQuery ? 'No blocked users match your search query.' : 'Your purge list is completely clear.'}
+                </p>
               </div>
             )}
           </div>
@@ -474,28 +665,38 @@ export default function PrivacySettings() {
               </div>
             </div>
 
-            {restrictedProfiles.length > 0 ? (
+            {isLoadingRestricted ? (
+              <div className="p-12 text-center rounded-2xl bg-white/[0.01] border border-dashed border-white/10 space-y-3">
+                <Loader2 size={24} className="mx-auto text-aeirmist-magenta animate-spin" />
+                <h4 className="text-xs font-black uppercase tracking-widest text-white/60">Loading Restricted Users</h4>
+                <p className="text-[10px] text-white/30 uppercase tracking-widest font-mono">Fetching account details...</p>
+              </div>
+            ) : restrictedProfiles.length > 0 ? (
               <div className="grid grid-cols-1 gap-3">
                 {restrictedProfiles.map((user) => (
                   <div key={user.id} className="flex items-center justify-between p-4 rounded-2xl bg-white/[0.02] border border-white/5 hover:border-white/10 transition-all">
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
                       <img
-                        src={user.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100'}
-                        alt={user.displayName}
-                        className="w-10 h-10 rounded-full object-cover border border-white/10 shrink-0"
+                        src={getAvatarUrl(user.avatarUrl, user.id)}
+                        alt={user.displayName || user.username}
+                        className="w-10 h-10 rounded-full object-cover border border-white/10 shrink-0 bg-white/5"
+                        onError={(e) => {
+                          const target = e.target as HTMLImageElement;
+                          target.src = getAvatarUrl(null, user.id);
+                        }}
                       />
-                      <div>
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-xs font-extrabold text-white">{user.displayName}</span>
+                      <div className="min-w-0 truncate">
+                        <div className="flex items-center gap-1.5 truncate">
+                          <span className="text-xs font-extrabold text-white truncate">{user.displayName || user.username || 'Aeirmist User'}</span>
                           {user.isVerified && <ShieldCheck className="text-aeirmist-cyan shrink-0" size={14} />}
                         </div>
-                        <span className="text-[10px] text-white/40 font-mono">@{user.username}</span>
+                        <span className="text-[10px] text-white/40 font-mono truncate block">@{user.username || 'user'}</span>
                       </div>
                     </div>
 
                     <button
                       onClick={() => handleUnrestrict(user.id, user.username || 'user')}
-                      className="px-4 py-2 rounded-xl bg-aeirmist-magenta/10 text-aeirmist-magenta hover:bg-aeirmist-magenta/20 text-[10px] font-black uppercase tracking-widest transition-all cursor-pointer flex items-center gap-1.5"
+                      className="px-4 py-2 rounded-xl bg-aeirmist-magenta/10 text-aeirmist-magenta hover:bg-aeirmist-magenta/20 text-[10px] font-black uppercase tracking-widest transition-all cursor-pointer flex items-center gap-1.5 shrink-0"
                     >
                       <UserCheck size={12} />
                       <span>Lift Restriction</span>
@@ -507,7 +708,9 @@ export default function PrivacySettings() {
               <div className="p-12 text-center rounded-2xl bg-white/[0.01] border border-dashed border-white/10 space-y-3">
                 <ShieldAlert size={32} className="mx-auto text-white/20" />
                 <h4 className="text-xs font-black uppercase tracking-widest text-white/60">No Restricted Users</h4>
-                <p className="text-[10px] text-white/30 uppercase tracking-widest">No accounts are currently restricted.</p>
+                <p className="text-[10px] text-white/30 uppercase tracking-widest">
+                  {searchQuery ? 'No restricted users match your search query.' : 'No accounts are currently restricted.'}
+                </p>
               </div>
             )}
           </div>

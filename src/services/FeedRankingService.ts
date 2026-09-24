@@ -261,6 +261,16 @@ class FeedRankingService {
       const authorUid = p.authorUid || p.author?.uid || '';
       const isOwnPost = authorId === myProfileId || authorUid === myUid;
 
+      // Filter out blocked users (Meta-style: never show blocked users in feed)
+      const blockedList = new Set(profile?.social?.blocked || []);
+      if (!isOwnPost && (blockedList.has(authorId) || blockedList.has(authorUid))) {
+        return false;
+      }
+      const authorBlocked = p.author?.social?.blocked || [];
+      if (!isOwnPost && (authorBlocked.includes(myProfileId) || (myUid && authorBlocked.includes(myUid)))) {
+        return false;
+      }
+
       // Filter out muted creators (except user's own posts)
       if (!isOwnPost && (mutedCreators.has(authorId) || mutedCreators.has(authorUid))) {
         return false;

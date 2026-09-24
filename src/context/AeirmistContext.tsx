@@ -1884,49 +1884,201 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const toggleBlockUser = async (targetId: string) => {
     if (!profile) return;
-    const isCurrentlyBlocked = (profile.social?.blocked || []).includes(targetId);
-    logger.info('[Block Action Initiated]', { 
+    
+    // Resolve target identity
+    let targetProfileRef = db ? doc(db, 'profiles', targetId) : null;
+    let targetProfileSnap = targetProfileRef ? await getDoc(targetProfileRef).catch(() => null) : null;
+    let targetProfileData: any = targetProfileSnap?.exists() ? targetProfileSnap.data() : null;
+    let resolvedTargetProfileId = targetId;
+    let resolvedTargetUid = targetProfileData?.ownerUid || targetProfileData?.uid || '';
+
+    if (!targetProfileData && db) {
+      // Check if targetId is ownerUid or uid
+      const qSnap = await getDocs(query(collection(db, 'profiles'), where('ownerUid', '==', targetId), limit(1))).catch(() => null);
+      if (qSnap && !qSnap.empty) {
+        resolvedTargetProfileId = qSnap.docs[0].id;
+        targetProfileData = qSnap.docs[0].data();
+        resolvedTargetUid = targetId;
+        targetProfileRef = doc(db, 'profiles', resolvedTargetProfileId);
+      } else {
+        const qSnap2 = await getDocs(query(collection(db, 'profiles'), where('uid', '==', targetId), limit(1))).catch(() => null);
+        if (qSnap2 && !qSnap2.empty) {
+          resolvedTargetProfileId = qSnap2.docs[0].id;
+          targetProfileData = qSnap2.docs[0].data();
+          resolvedTargetUid = targetId;
+          targetProfileRef = doc(db, 'profiles', resolvedTargetProfileId);
+        }
+      }
+    }
+
+    const currentBlocked = profile.social?.blocked || [];
+    const isCurrentlyBlocked = currentBlocked.includes(targetId) || 
+                              currentBlocked.includes(resolvedTargetProfileId) || 
+                              (resolvedTargetUid && currentBlocked.includes(resolvedTargetUid));
+
+    logger.info('[Block Action Initiated - Meta Style]', { 
       targetId, 
-      currentBlockedList: profile.social?.blocked || [], 
+      resolvedTargetProfileId,
+      resolvedTargetUid,
+      currentBlockedList: currentBlocked, 
       action: isCurrentlyBlocked ? 'Unblock' : 'Block' 
     });
+
     try {
-      const updatedBlocked = isCurrentlyBlocked
-        ? (profile.social?.blocked || []).filter((id: string) => id !== targetId)
-        : [...(profile.social?.blocked || []), targetId];
+      if (isCurrentlyBlocked) {
+        // ============================
+        // UNBLOCK FLOW (META-STYLE)
+        // ============================
+        const idsToRemove = [targetId, resolvedTargetProfileId, resolvedTargetUid].filter(Boolean);
+        const updatedBlocked = (profile.social?.blocked || []).filter((id: string) => !idsToRemove.includes(id));
 
-      setProfile((prev: any) => ({
-        ...prev,
-        social: {
-          ...prev?.social,
-          blocked: updatedBlocked
+        // Optimistic State Update
+        setProfile((prev: any) => ({
+          ...prev,
+          social: {
+            ...prev?.social,
+            blocked: updatedBlocked
+          }
+        }));
+
+        if (db && !isSafeMode) {
+          const batch = writeBatch(db);
+          batch.update(doc(db, 'profiles', profile.id), {
+            'social.blocked': arrayRemove(...idsToRemove)
+          });
+          if (user?.uid) {
+            batch.update(doc(db, 'users', user.uid), {
+              'social.blocked': arrayRemove(...idsToRemove),
+              blockedUsers: arrayRemove(...idsToRemove)
+            }).catch(() => {});
+          }
+          await batch.commit();
         }
-      }));
 
-      if (!db || isSafeMode) {
-        logger.info('[Block Action Sandbox Bypass / No DB]', { targetId, isBlocked: !isCurrentlyBlocked });
-        return;
+        addToast({
+          title: "User Unblocked",
+          message: `@${targetProfileData?.username || targetId} has been unblocked.`,
+          type: "success"
+        });
+      } else {
+        // ============================
+        // BLOCK FLOW (META-STYLE)
+        // ============================
+        const myFollowing = profile.social?.following || [];
+        const myFollowers = profile.social?.followers || [];
+        const targetFollowing = targetProfileData?.social?.following || [];
+        const targetFollowers = targetProfileData?.social?.followers || [];
+
+        const targetIdentifiers = [targetId, resolvedTargetProfileId, resolvedTargetUid].filter(Boolean);
+        const myIdentifiers = [profile.id, user?.uid].filter(Boolean);
+
+        // Does current user follow target?
+        const currentFollowsTarget = targetIdentifiers.some(id => myFollowing.includes(id)) || 
+                                    myIdentifiers.some(id => targetFollowers.includes(id));
+
+        // Does target follow current user?
+        const targetFollowsCurrent = targetIdentifiers.some(id => myFollowers.includes(id)) || 
+                                    myIdentifiers.some(id => targetFollowing.includes(id));
+
+        // Mutual unfollow & cleanup
+        const updatedBlocked = Array.from(new Set([...(profile.social?.blocked || []), targetId, resolvedTargetProfileId].filter(Boolean)));
+        const updatedFollowing = (profile.social?.following || []).filter((id: string) => !targetIdentifiers.includes(id));
+        const updatedFollowers = (profile.social?.followers || []).filter((id: string) => !targetIdentifiers.includes(id));
+        const updatedPendingFollowing = (profile.social?.pendingFollowing || []).filter((id: string) => !targetIdentifiers.includes(id));
+        const updatedCloseFriends = (profile.closeFriends || profile.social?.closeFriends || []).filter((id: string) => !targetIdentifiers.includes(id));
+
+        const newFollowingCount = currentFollowsTarget
+          ? Math.max(0, (profile.followingCount ?? (profile.social?.following?.length || 1)) - 1)
+          : (profile.followingCount ?? profile.social?.following?.length ?? 0);
+
+        const newFollowersCount = targetFollowsCurrent
+          ? Math.max(0, (profile.followersCount ?? (profile.social?.followers?.length || 1)) - 1)
+          : (profile.followersCount ?? profile.social?.followers?.length ?? 0);
+
+        // Optimistic State Update
+        setProfile((prev: any) => ({
+          ...prev,
+          social: {
+            ...prev?.social,
+            blocked: updatedBlocked,
+            following: updatedFollowing,
+            followers: updatedFollowers,
+            pendingFollowing: updatedPendingFollowing,
+            closeFriends: updatedCloseFriends
+          },
+          closeFriends: updatedCloseFriends,
+          followingCount: newFollowingCount,
+          followersCount: newFollowersCount
+        }));
+
+        if (db && !isSafeMode) {
+          const batch = writeBatch(db);
+
+          // 1. Update current user's profile
+          const profileUpdates: any = {
+            'social.blocked': arrayUnion(targetId, resolvedTargetProfileId),
+            'social.following': arrayRemove(...targetIdentifiers),
+            'social.followers': arrayRemove(...targetIdentifiers),
+            'social.pendingFollowing': arrayRemove(...targetIdentifiers),
+            'social.closeFriends': arrayRemove(...targetIdentifiers),
+            closeFriends: arrayRemove(...targetIdentifiers)
+          };
+          if (currentFollowsTarget && (profile.followingCount ?? 1) > 0) {
+            profileUpdates.followingCount = increment(-1);
+          }
+          if (targetFollowsCurrent && (profile.followersCount ?? 1) > 0) {
+            profileUpdates.followersCount = increment(-1);
+          }
+          batch.update(doc(db, 'profiles', profile.id), profileUpdates);
+
+          // 2. Update target user's profile (mutual unfollow)
+          if (targetProfileRef && targetProfileSnap?.exists()) {
+            const targetUpdates: any = {
+              'social.following': arrayRemove(...myIdentifiers),
+              'social.followers': arrayRemove(...myIdentifiers),
+              'social.pendingFollowing': arrayRemove(...myIdentifiers),
+              'social.closeFriends': arrayRemove(...myIdentifiers),
+              closeFriends: arrayRemove(...myIdentifiers)
+            };
+            if (targetFollowsCurrent && (targetProfileData?.followingCount ?? 1) > 0) {
+              targetUpdates.followingCount = increment(-1);
+            }
+            if (currentFollowsTarget && (targetProfileData?.followersCount ?? 1) > 0) {
+              targetUpdates.followersCount = increment(-1);
+            }
+            batch.update(targetProfileRef, targetUpdates);
+          }
+
+          // 3. Delete any follow requests between them
+          const req1 = doc(db, 'follow_requests', `req_${profile.id}_${resolvedTargetProfileId}`);
+          const req2 = doc(db, 'follow_requests', `req_${resolvedTargetProfileId}_${profile.id}`);
+          batch.delete(req1);
+          batch.delete(req2);
+
+          // 4. Update users collections if available
+          if (user?.uid) {
+            batch.update(doc(db, 'users', user.uid), {
+              'social.blocked': arrayUnion(targetId, resolvedTargetProfileId),
+              blockedUsers: arrayUnion(targetId, resolvedTargetProfileId),
+              'social.following': arrayRemove(...targetIdentifiers),
+              'social.followers': arrayRemove(...targetIdentifiers)
+            }).catch(() => {});
+          }
+
+          await batch.commit();
+        }
+
+        addToast({
+          title: "User Blocked",
+          message: `@${targetProfileData?.username || targetId} has been blocked and removed from your followers & following.`,
+          type: "info"
+        });
       }
-      if (!canWrite(`block_${targetId}`, 1000)) {
-        logger.warn('[Block Action Throttled]', { targetId });
-        return;
-      }
-      
-      const profileRef = doc(db, 'profiles', profile.id);
-      await updateDoc(profileRef, {
-        'social.blocked': isCurrentlyBlocked ? arrayRemove(targetId) : arrayUnion(targetId)
-      });
-      logger.info('[Block Action Successful]', { targetId, isBlocked: !isCurrentlyBlocked });
+
+      window.dispatchEvent(new CustomEvent('aeirmist-feed-updated'));
+      logger.info('[Block Action Successful - Meta Style]', { targetId, isBlocked: !isCurrentlyBlocked });
     } catch (e) {
       logger.error('[Block Action Failed]', e);
-      // Revert state on failure
-      setProfile((prev: any) => ({
-        ...prev,
-        social: {
-          ...prev?.social,
-          blocked: profile.social?.blocked || []
-        }
-      }));
       addToast({
         title: "Block Operation Failed",
         message: `Failed to ${isCurrentlyBlocked ? 'unblock' : 'block'} user. Please check your connection.`,

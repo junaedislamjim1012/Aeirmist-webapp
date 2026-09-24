@@ -14,7 +14,7 @@ interface ExploreGridProps {
 }
 
 export const ExploreGrid: React.FC<ExploreGridProps> = ({ category, onUserClick }) => {
-  const { db, user, addToast } = useAeirmist();
+  const { db, user, profile, addToast } = useAeirmist();
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [retryCount, setRetryCount] = useState(0);
@@ -31,8 +31,16 @@ export const ExploreGrid: React.FC<ExploreGridProps> = ({ category, onUserClick 
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
+      const blockedList = new Set(profile?.social?.blocked || []);
       const fetchedItems = snapshot.docs.map(doc => {
         const data = doc.data();
+        const authorId = data.authorId || data.userId || data.author?.id || '';
+        const authorUid = data.authorUid || data.author?.uid || '';
+
+        if (blockedList.has(authorId) || blockedList.has(authorUid)) {
+          return null;
+        }
+
         const isDeleted = Boolean(
           data.isDeletedAuthor ||
           data.scheduledForPurge ||

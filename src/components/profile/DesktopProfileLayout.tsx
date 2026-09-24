@@ -879,7 +879,20 @@ export const DesktopProfileLayout = React.memo<DesktopProfileLayoutProps>(({
 
           {/* Active Tab contents */}
           <div className="w-full">
-            {isLocked ? (
+            {isBlockedUser ? (
+              <div className="w-full border border-red-500/20 bg-red-500/[0.02] rounded-[2rem] p-16 text-center space-y-4">
+                <Ghost size={32} className="mx-auto text-red-400" />
+                <h3 className="text-sm font-black uppercase tracking-widest text-white">Account Blocked</h3>
+                <p className="text-[10px] text-white/40 uppercase tracking-widest">You have blocked this account. You cannot view their posts or interact with them.</p>
+                <button
+                  onClick={() => toggleBlockUser(displayUser.id)}
+                  className="px-6 py-2.5 rounded-xl bg-red-500/20 border border-red-500/30 text-red-400 hover:bg-red-500/30 text-xs font-black uppercase tracking-wider transition-all cursor-pointer inline-flex items-center gap-2"
+                >
+                  <UserCheck size={14} />
+                  <span>Unblock @{displayUser.username}</span>
+                </button>
+              </div>
+            ) : isLocked ? (
               <div className="w-full border border-white/5 bg-white/[0.01] rounded-[2rem] p-16 text-center space-y-4">
                 <Lock size={32} className="mx-auto text-aeirmist-cyan animate-pulse" />
                 <h3 className="text-sm font-black uppercase tracking-widest text-white">Login required to save</h3>

@@ -2308,6 +2308,36 @@ const ChatWindow = ({
   onClearPendingNoteReply?: () => void,
   onMessageSent?: (chatId: string, text: string, currentChat?: any) => void
 }) => {
+  const { 
+    db, 
+    storage, 
+    user, 
+    profile, 
+    sendMessage, 
+    setTypingStatus, 
+    markAsRead, 
+    updateSeenStatus, 
+    endCall, 
+    acceptCall, 
+    rejectCall, 
+    uploadMedia, 
+    setCameraConfig, 
+    requestPermission, 
+    isOffline, 
+    activeCall, 
+    onlineUsers, 
+    mediaSettings, 
+    isBlocked, 
+    isRestricted, 
+    isFollowing, 
+    isFollowPending, 
+    editMessage, 
+    togglePinMessage, 
+    clearChat, 
+    toggleFollow, 
+    addToast
+  } = useAeirmist();
+
   const [messages, setMessages] = useState<any[]>([]);
   const [optimistic, setOptimistic] = useState<any[]>([]);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
@@ -2395,36 +2425,6 @@ const ChatWindow = ({
       });
     }
   }, [chat.id, profile?.id]);
-
-  const { 
-    db, 
-    storage, 
-    user, 
-    profile, 
-    sendMessage, 
-    setTypingStatus, 
-    markAsRead, 
-    updateSeenStatus, 
-    endCall, 
-    acceptCall, 
-    rejectCall, 
-    uploadMedia, 
-    setCameraConfig, 
-    requestPermission, 
-    isOffline, 
-    activeCall, 
-    onlineUsers,
-    mediaSettings,
-    isBlocked,
-    isRestricted,
-    isFollowing,
-    isFollowPending,
-    editMessage,
-    togglePinMessage,
-    clearChat,
-    toggleFollow,
-    addToast
-  } = useAeirmist();
 
   const showTheirPresence = otherProfile?.privacySettings?.showActivity !== false;
   const isMySpace = chat.id.startsWith('myspace_');

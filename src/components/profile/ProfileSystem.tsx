@@ -202,6 +202,7 @@ const ProfileSystem = ({ targetProfile, onMessageClick, onEditProfile, onUserCli
   const isMutual = isFollowingUser && (profile?.social?.followers || []).includes(displayUser?.id);
   const isPendingUser = targetProfile ? isFollowPending(targetProfile.id) : false;
   const isLocked = !isOwnProfile && (displayUser?.isPrivate || displayUser?.isProfileLocked) && !isFollowingUser;
+  const isOnline = Boolean(onlineUsers?.has(displayUser?.id));
   const isBlockedUser = targetProfile 
     ? (isBlocked(targetProfile.id) || isBlocked(targetProfile.ownerUid || '') || isBlocked(targetProfile.uid || '')) 
     : false;

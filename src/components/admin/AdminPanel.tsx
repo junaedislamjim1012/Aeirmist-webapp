@@ -865,7 +865,7 @@ const UsersTab = ({ db, addToast, purgeUser, toggleUserBan, toggleVerification, 
   const [suspendNotes, setSuspendNotes] = useState('');
   const [isSubmittingSuspend, setIsSubmittingSuspend] = useState(false);
   const [deleteModalUser, setDeleteModalUser] = useState<any | null>(null);
-  const [deleteType, setDeleteType] = useState<'soft' | 'hard' | 'anonymize'>('soft');
+  const [deleteType, setDeleteType] = useState<'soft' | 'hard' | 'anonymize'>('hard');
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [userReports, setUserReports] = useState<any[]>([]);
   const [loadingUserReports, setLoadingUserReports] = useState(false);
@@ -1006,7 +1006,11 @@ const UsersTab = ({ db, addToast, purgeUser, toggleUserBan, toggleVerification, 
         }
         addToast({ title: 'Soft Deleted', message: 'Account marked as deleted (recoverable).', type: 'success' });
       } else {
-        // Full Hard Delete
+        // Full Hard Delete - Wipe everything from A-Z
+        const targetId = targetUid || profileId || deleteModalUser.id;
+        if (targetId) {
+          await purgeUser(targetId, profileId);
+        }
         if (profileId) {
           await deleteDoc(doc(db, 'profiles', profileId)).catch(() => {});
         }
@@ -1016,12 +1020,11 @@ const UsersTab = ({ db, addToast, purgeUser, toggleUserBan, toggleVerification, 
         }
         if (targetUid) {
           await deleteDoc(doc(db, 'users', targetUid)).catch(() => {});
-          await purgeUser(targetUid);
         }
         if (deleteModalUser.username) {
           await deleteDoc(doc(db, 'usernames', deleteModalUser.username.toLowerCase())).catch(() => {});
         }
-        addToast({ title: 'Hard Deleted', message: 'All user data, posts, comments, stories, and username permanently wiped.', type: 'success' });
+        addToast({ title: 'Hard Deleted', message: 'All user data, notes, posts, comments, stories, and username permanently wiped from database.', type: 'success' });
       }
       setDeleteModalUser(null);
       setDeleteConfirmText('');
@@ -1237,7 +1240,7 @@ const UsersTab = ({ db, addToast, purgeUser, toggleUserBan, toggleVerification, 
                   onClick={() => {
                     setDeleteModalUser(u);
                     setDeleteConfirmText('');
-                    setDeleteType('soft');
+                    setDeleteType('hard');
                   }}
                   className="h-9 w-9 rounded-xl bg-red-500/10 text-red-500 flex items-center justify-center hover:bg-red-500/20 transition-all cursor-pointer"
                   title="Advanced Delete System"

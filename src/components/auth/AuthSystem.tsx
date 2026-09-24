@@ -18,6 +18,7 @@ import { SignupWizard } from './SignupWizard';
 import { logger } from '@/src/utils/logger';
 import { getAvatarUrl } from '../../lib/avatar';
 import { AuthPoster } from './AuthPoster';
+import { validateEmailDetailed, isValidEmail } from '../../utils/emailValidator';
 
 
 type AuthView = 'login' | 'signup' | 'forgot' | 'pairing' | 'reset' | 'saved_accounts' | 'saved_accounts_login' | 'two_factor';
@@ -364,7 +365,7 @@ export const AuthSystem: React.FC = () => {
     special: /[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?~]/.test(password),
   };
   const strength = Object.values(rules).filter(Boolean).length;
-  const isSignupValid = usernameStatus === 'available' && strength === 5 && identifier && fullName && password === confirmPassword;
+  const isSignupValid = usernameStatus === 'available' && strength === 5 && isValidEmail(identifier) && fullName && password === confirmPassword;
 
   const getContextualError = (rawErr: string | null): string | null => {
     if (!rawErr) return null;
@@ -428,9 +429,16 @@ export const AuthSystem: React.FC = () => {
     e.preventDefault();
     if (loading || !isSignupValid) return;
     setError(null);
+
+    const emailValidation = validateEmailDetailed(identifier);
+    if (!emailValidation.isValid) {
+      setError(emailValidation.error || "Please enter a valid Gmail or Email address.");
+      return;
+    }
+
     setLoading(true);
     try {
-      const userCredential = await completeSignup(identifier, password, username, fullName, null, null);
+      const userCredential = await completeSignup(emailValidation.normalizedEmail || identifier.trim().toLowerCase(), password, username, fullName, null, null);
       const userUid = (userCredential as any)?.uid || (userCredential as any)?.user?.uid;
       if (userUid) logger.security("Login Success", { uid: userUid }); await trackLoginSession(userUid);
 

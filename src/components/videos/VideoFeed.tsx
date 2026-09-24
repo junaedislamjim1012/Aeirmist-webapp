@@ -111,7 +111,7 @@ export const VideoFeed: React.FC<VideoFeedProps> = ({
   const filterVideos = (vList: Video[]) => {
     const blockedList = new Set(profile?.social?.blocked || []);
     let list = vList.filter(v => {
-      const cId = v.creatorId || v.authorId || (v as any).author?.id;
+      const cId = v.creatorId || (v as any).authorId || (v as any).author?.id;
       return !blockedList.has(cId);
     });
 

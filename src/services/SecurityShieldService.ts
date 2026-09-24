@@ -51,7 +51,7 @@ class SecurityShieldService {
     try {
       if (typeof window !== 'undefined' && window.top && window.self !== window.top) {
         // If framed by external origin, break out to top window
-        window.top.location = window.self.location;
+        window.top.location.href = window.self.location.href;
       }
     } catch {
       // Cross-origin framing access blocked - force reload to top

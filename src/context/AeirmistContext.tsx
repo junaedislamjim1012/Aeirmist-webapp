@@ -61,6 +61,7 @@ import firebaseConfig from '../../firebase-applet-config.json';
 import { normalizeUsername } from '../utils/usernameUtils';
 import { migrateUsernamesNormalized } from '../utils/migrateUsernames';
 import { consolidateAndSyncUserProfiles } from '../services/accountSyncService';
+import { validateEmailDetailed, isValidEmail } from '../utils/emailValidator';
 
 /**
  * Deduplicates profiles ensuring only one profile per normalized username / UID
@@ -187,7 +188,7 @@ interface AeirmistContextType {
   updateUserStatus: (uid: string, status: AccountStatus) => Promise<void>;
   suspendUser: (uid: string, duration: string, reason: string, notes?: string) => Promise<void>;
   deleteAccount: () => Promise<void>;
-  purgeUser: (uid: string) => Promise<void>;
+  purgeUser: (uid: string, explicitProfileId?: string) => Promise<void>;
   toggleUserBan: (uid: string, banStatus: boolean) => Promise<void>;
   toggleVerification: (profileId: string, verifiedStatus: boolean, plan?: 'essential' | 'creator' | 'business', durationDays?: number, targetUid?: string) => Promise<void>;
   checkUsernameAvailable: (username: string) => Promise<{ available: boolean, suggestions?: string[] }>;
@@ -3764,12 +3765,24 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const signupWithEmail = async (email: string, pass: string) => {
-    return await createUserWithEmailAndPassword(auth, email, pass);
+    const emailRes = validateEmailDetailed(email);
+    if (!emailRes.isValid) {
+      throw new Error(emailRes.error || "A valid Gmail or Email address is required to register.");
+    }
+    const cleanEmail = emailRes.normalizedEmail || email.trim().toLowerCase();
+    return await createUserWithEmailAndPassword(auth, cleanEmail, pass);
   };
 
   const completeSignup = async (email: string, pass: string, username: string, fullName: string, avatarFile: File | null, presetPhotoURL?: string | null) => {
     if (!auth || !db) throw new Error("Connection failed: Aeirmist Logic not initialized.");
     
+    // Strict email/Gmail validation
+    const emailRes = validateEmailDetailed(email);
+    if (!emailRes.isValid) {
+      throw new Error(emailRes.error || "A valid Gmail or Email address is required to create an account.");
+    }
+    const cleanEmail = emailRes.normalizedEmail || email.trim().toLowerCase();
+
     // Check if username is already taken first
     const usernameResult = await checkUsernameAvailable(username);
     if (!usernameResult.available) {
@@ -3781,11 +3794,11 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     try {
       if (auth.currentUser && auth.currentUser.isAnonymous === false && (auth.currentUser.providerData.length > 0)) {
         // If user is already signed in (e.g. from Google), link credential instead of creating a new user
-        const credential = EmailAuthProvider.credential(email, pass);
+        const credential = EmailAuthProvider.credential(cleanEmail, pass);
         const userCredential = await linkWithCredential(auth.currentUser, credential);
         newUser = userCredential.user;
       } else {
-        const userCredential = await createUserWithEmailAndPassword(auth, email, pass);
+        const userCredential = await createUserWithEmailAndPassword(auth, cleanEmail, pass);
         newUser = userCredential.user;
       }
     } catch (authErr: any) {
@@ -3794,10 +3807,10 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       if (errCode === 'auth/email-already-in-use' || errMsg.includes('email-already-in-use')) {
         // Attempt login if password matches existing account
         try {
-          const userCredential = await signInWithEmailAndPassword(auth, email, pass);
+          const userCredential = await signInWithEmailAndPassword(auth, cleanEmail, pass);
           newUser = userCredential.user;
         } catch (signInErr) {
-          throw new Error("An account with this email/mobile already exists.");
+          throw new Error("An account with this email already exists.");
         }
       } else {
         throw authErr;
@@ -4226,220 +4239,379 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     await logout();
   };
 
-  const purgeUser = async (uid: string) => {
-    if (!db) return;
+  const purgeUser = async (uid: string, explicitProfileId?: string) => {
+    if (!db || !uid) return;
     try {
-      logger.security("[Security] User Purged", { targetUid: uid }); logger.info(`[purgeUser] Comprehensive clean-up initiated for UID: ${uid}`);
+      logger.security("[Security] User Purged", { targetUid: uid, explicitProfileId });
+      logger.info(`[purgeUser] Comprehensive A-Z clean-up initiated for UID/ProfileID: ${uid}`);
 
-      // 1. Gather ALL associated Profile IDs and Usernames
+      // 1. Gather ALL associated Profile IDs, UIDs, and Usernames
       const profileIdsSet = new Set<string>();
+      const uidsSet = new Set<string>();
       const usernamesSet = new Set<string>();
 
+      uidsSet.add(uid);
       profileIdsSet.add(uid);
       profileIdsSet.add(`profile_${uid}`);
-      if (profile?.id && (profile.uid === uid || profile.id === uid)) profileIdsSet.add(profile.id);
+      if (uid.startsWith('profile_')) {
+        const rawUid = uid.replace('profile_', '');
+        uidsSet.add(rawUid);
+        profileIdsSet.add(rawUid);
+      }
+      if (explicitProfileId) {
+        profileIdsSet.add(explicitProfileId);
+        profileIdsSet.add(`profile_${explicitProfileId}`);
+        if (explicitProfileId.startsWith('profile_')) {
+          profileIdsSet.add(explicitProfileId.replace('profile_', ''));
+        }
+      }
+      if (profile?.id && (profile.uid === uid || profile.id === uid || profile.ownerUid === uid)) {
+        profileIdsSet.add(profile.id);
+        if (profile.uid) uidsSet.add(profile.uid);
+        if (profile.ownerUid) uidsSet.add(profile.ownerUid);
+      }
 
-      // Query profiles by ownerUid
-      try {
-        const qOwner = query(collection(db, 'profiles'), where('ownerUid', '==', uid));
-        const ownerSnap = await getDocs(qOwner);
-        ownerSnap.forEach(p => {
-          profileIdsSet.add(p.id);
-          const d = p.data();
-          if (d.username) usernamesSet.add(d.username.toLowerCase());
-          if (d.usernameNormalized) usernamesSet.add(d.usernameNormalized.toLowerCase());
-        });
-      } catch (e) {}
-
-      // Query profiles by uid
-      try {
-        const qUid = query(collection(db, 'profiles'), where('uid', '==', uid));
-        const uidSnap = await getDocs(qUid);
-        uidSnap.forEach(p => {
-          profileIdsSet.add(p.id);
-          const d = p.data();
-          if (d.username) usernamesSet.add(d.username.toLowerCase());
-          if (d.usernameNormalized) usernamesSet.add(d.usernameNormalized.toLowerCase());
-        });
-      } catch (e) {}
-
-      // Direct lookup for profile documents
+      // Check profile docs for all gathered profile IDs
       for (const pId of Array.from(profileIdsSet)) {
         try {
           const pDoc = await getDoc(doc(db, 'profiles', pId));
           if (pDoc.exists()) {
             const d = pDoc.data();
+            if (d.ownerUid) uidsSet.add(d.ownerUid);
+            if (d.uid) uidsSet.add(d.uid);
             if (d.username) usernamesSet.add(d.username.toLowerCase());
             if (d.usernameNormalized) usernamesSet.add(d.usernameNormalized.toLowerCase());
           }
         } catch (e) {}
       }
 
-      if (profile?.username) usernamesSet.add(profile.username.toLowerCase());
+      // Query profiles by ownerUid or uid for all gathered uids
+      for (const curUid of Array.from(uidsSet)) {
+        try {
+          const qOwner = query(collection(db, 'profiles'), where('ownerUid', '==', curUid));
+          const ownerSnap = await getDocs(qOwner);
+          ownerSnap.forEach(p => {
+            profileIdsSet.add(p.id);
+            const d = p.data();
+            if (d.ownerUid) uidsSet.add(d.ownerUid);
+            if (d.uid) uidsSet.add(d.uid);
+            if (d.username) usernamesSet.add(d.username.toLowerCase());
+            if (d.usernameNormalized) usernamesSet.add(d.usernameNormalized.toLowerCase());
+          });
+        } catch (e) {}
 
-      // Also gather usernames from the users collection (important when profile is missing)
-      try {
-        const userDocSnap = await getDoc(doc(db, 'users', uid));
-        if (userDocSnap.exists()) {
-          const uData = userDocSnap.data();
-          if (uData.username) usernamesSet.add(uData.username.toLowerCase());
-          if (uData.usernameNormalized) usernamesSet.add(uData.usernameNormalized.toLowerCase());
-        }
-      } catch (e) {}
+        try {
+          const qUid = query(collection(db, 'profiles'), where('uid', '==', curUid));
+          const uidSnap = await getDocs(qUid);
+          uidSnap.forEach(p => {
+            profileIdsSet.add(p.id);
+            const d = p.data();
+            if (d.ownerUid) uidsSet.add(d.ownerUid);
+            if (d.uid) uidsSet.add(d.uid);
+            if (d.username) usernamesSet.add(d.username.toLowerCase());
+            if (d.usernameNormalized) usernamesSet.add(d.usernameNormalized.toLowerCase());
+          });
+        } catch (e) {}
 
-      // Reverse-scan the usernames collection to find any lock owned by this UID
+        // Check users collection doc
+        try {
+          const uDoc = await getDoc(doc(db, 'users', curUid));
+          if (uDoc.exists()) {
+            const uData = uDoc.data();
+            if (uData.profileId) profileIdsSet.add(uData.profileId);
+            if (uData.username) usernamesSet.add(uData.username.toLowerCase());
+            if (uData.usernameNormalized) usernamesSet.add(uData.usernameNormalized.toLowerCase());
+          }
+        } catch (e) {}
+      }
+
+      // Reverse-scan usernames collection for any username lock belonging to this user
       try {
         const allUsernamesSnap = await getDocs(collection(db, 'usernames'));
         allUsernamesSnap.forEach(d => {
           const lockData = d.data();
           const lockOwner = lockData.ownerUid || lockData.uid;
-          if (lockOwner === uid) {
+          if (lockOwner && (uidsSet.has(lockOwner) || profileIdsSet.has(lockOwner))) {
             usernamesSet.add(d.id.toLowerCase());
           }
         });
       } catch (e) {}
 
-      const profileIds = Array.from(profileIdsSet);
-      const usernames = Array.from(usernamesSet);
+      const allUids = Array.from(uidsSet);
+      const allProfileIds = Array.from(profileIdsSet);
+      const allUsernames = Array.from(usernamesSet);
+      const allTargetIdentifiers = Array.from(new Set([...allUids, ...allProfileIds]));
 
-      // Collect doc IDs for batch deletion across all collections
+      // 2. Collect doc IDs for batch deletion across all collections
       const deleteDocsMap = new Map<string, Set<string>>();
-
       const addDocsToDelete = (collName: string, snapDocs: any[]) => {
         if (!deleteDocsMap.has(collName)) deleteDocsMap.set(collName, new Set());
         const set = deleteDocsMap.get(collName)!;
         snapDocs.forEach(d => set.add(d.id));
       };
 
-      // Query Posts
-      try {
-        const qP1 = await getDocs(query(collection(db, 'posts'), where('userId', '==', uid)));
-        addDocsToDelete('posts', qP1.docs);
-        const qP2 = await getDocs(query(collection(db, 'posts'), where('authorUid', '==', uid)));
-        addDocsToDelete('posts', qP2.docs);
-        for (const pid of profileIds) {
-          const qP3 = await getDocs(query(collection(db, 'posts'), where('authorId', '==', pid)));
-          addDocsToDelete('posts', qP3.docs);
+      // NOTES: authorUid, authorId, userId, profileId, authorUsername (fixes notes remaining in database!)
+      for (const targetId of allTargetIdentifiers) {
+        for (const field of ['authorUid', 'authorId', 'userId', 'profileId']) {
+          try {
+            const snap = await getDocs(query(collection(db, 'notes'), where(field, '==', targetId)));
+            addDocsToDelete('notes', snap.docs);
+          } catch (e) {}
         }
-      } catch (e) {}
+      }
+      for (const un of allUsernames) {
+        try {
+          const snap = await getDocs(query(collection(db, 'notes'), where('authorUsername', '==', un)));
+          addDocsToDelete('notes', snap.docs);
+        } catch (e) {}
+      }
 
-      // Query Stories
-      try {
-        const qS1 = await getDocs(query(collection(db, 'stories'), where('userId', '==', uid)));
-        addDocsToDelete('stories', qS1.docs);
-        const qS2 = await getDocs(query(collection(db, 'stories'), where('authorUid', '==', uid)));
-        addDocsToDelete('stories', qS2.docs);
-        for (const pid of profileIds) {
-          const qS3 = await getDocs(query(collection(db, 'stories'), where('authorId', '==', pid)));
-          addDocsToDelete('stories', qS3.docs);
+      // POSTS: userId, authorUid, authorId
+      for (const targetId of allTargetIdentifiers) {
+        for (const field of ['userId', 'authorUid', 'authorId']) {
+          try {
+            const snap = await getDocs(query(collection(db, 'posts'), where(field, '==', targetId)));
+            addDocsToDelete('posts', snap.docs);
+          } catch (e) {}
         }
-      } catch (e) {}
+      }
 
-      // Query Comments
-      try {
-        const qC1 = await getDocs(query(collection(db, 'feed_comments'), where('userId', '==', uid)));
-        addDocsToDelete('feed_comments', qC1.docs);
-        const qC2 = await getDocs(query(collection(db, 'feed_comments'), where('authorUid', '==', uid)));
-        addDocsToDelete('feed_comments', qC2.docs);
-        for (const pid of profileIds) {
-          const qC3 = await getDocs(query(collection(db, 'feed_comments'), where('authorId', '==', pid)));
-          addDocsToDelete('feed_comments', qC3.docs);
+      // STORIES: userId, authorUid, authorId
+      for (const targetId of allTargetIdentifiers) {
+        for (const field of ['userId', 'authorUid', 'authorId']) {
+          try {
+            const snap = await getDocs(query(collection(db, 'stories'), where(field, '==', targetId)));
+            addDocsToDelete('stories', snap.docs);
+          } catch (e) {}
         }
-      } catch (e) {}
+      }
 
-      // Query Notifications
-      try {
-        for (const field of ['userId', 'fromUserId', 'toUid', 'fromUid']) {
-          const qN = await getDocs(query(collection(db, 'notifications'), where(field, '==', uid)));
-          addDocsToDelete('notifications', qN.docs);
+      // FEED COMMENTS: userId, authorUid, authorId
+      for (const targetId of allTargetIdentifiers) {
+        for (const field of ['userId', 'authorUid', 'authorId']) {
+          try {
+            const snap = await getDocs(query(collection(db, 'feed_comments'), where(field, '==', targetId)));
+            addDocsToDelete('feed_comments', snap.docs);
+          } catch (e) {}
         }
-        for (const pid of profileIds) {
-          for (const field of ['targetProfileId', 'fromProfileId', 'userId']) {
-            const qN = await getDocs(query(collection(db, 'notifications'), where(field, '==', pid)));
-            addDocsToDelete('notifications', qN.docs);
+      }
+
+      // VIDEO COMMENTS: userId, authorUid, authorId
+      for (const targetId of allTargetIdentifiers) {
+        for (const field of ['userId', 'authorUid', 'authorId']) {
+          try {
+            const snap = await getDocs(query(collection(db, 'video_comments'), where(field, '==', targetId)));
+            addDocsToDelete('video_comments', snap.docs);
+          } catch (e) {}
+        }
+      }
+
+      // VIDEOS / REELS: userId, authorUid, authorId, creatorId
+      for (const targetId of allTargetIdentifiers) {
+        for (const field of ['userId', 'authorUid', 'authorId', 'creatorId']) {
+          try {
+            const snap = await getDocs(query(collection(db, 'videos'), where(field, '==', targetId)));
+            addDocsToDelete('videos', snap.docs);
+          } catch (e) {}
+        }
+      }
+
+      // NOTIFICATIONS: userId, fromUserId, toUid, fromUid, targetProfileId, fromProfileId
+      for (const targetId of allTargetIdentifiers) {
+        for (const field of ['userId', 'fromUserId', 'toUid', 'fromUid', 'targetProfileId', 'fromProfileId']) {
+          try {
+            const snap = await getDocs(query(collection(db, 'notifications'), where(field, '==', targetId)));
+            addDocsToDelete('notifications', snap.docs);
+          } catch (e) {}
+        }
+      }
+
+      // ACTIVITIES: userId, profileId
+      for (const targetId of allTargetIdentifiers) {
+        for (const field of ['userId', 'profileId']) {
+          try {
+            const snap = await getDocs(query(collection(db, 'activities'), where(field, '==', targetId)));
+            addDocsToDelete('activities', snap.docs);
+          } catch (e) {}
+        }
+      }
+
+      // REPORTS & APPEALS
+      for (const targetId of allTargetIdentifiers) {
+        for (const field of ['reporterUid', 'reporterId', 'reportedUid', 'reportedUserId', 'targetId', 'userId']) {
+          try {
+            const snap = await getDocs(query(collection(db, 'reports'), where(field, '==', targetId)));
+            addDocsToDelete('reports', snap.docs);
+          } catch (e) {}
+        }
+        for (const field of ['userId', 'profileId']) {
+          try {
+            const snap = await getDocs(query(collection(db, 'appeals'), where(field, '==', targetId)));
+            addDocsToDelete('appeals', snap.docs);
+          } catch (e) {}
+        }
+      }
+
+      // FOLLOW REQUESTS
+      for (const targetId of allTargetIdentifiers) {
+        for (const field of ['fromUid', 'toUid', 'fromProfileId', 'toProfileId', 'senderId', 'receiverId', 'targetId', 'requesterId']) {
+          try {
+            const snap = await getDocs(query(collection(db, 'follow_requests'), where(field, '==', targetId)));
+            addDocsToDelete('follow_requests', snap.docs);
+          } catch (e) {}
+        }
+      }
+
+      // SAVED ITEMS & VAULT
+      for (const targetId of allTargetIdentifiers) {
+        for (const field of ['userId', 'profileId']) {
+          try {
+            const snap = await getDocs(query(collection(db, 'saved_items'), where(field, '==', targetId)));
+            addDocsToDelete('saved_items', snap.docs);
+          } catch (e) {}
+          try {
+            const snap = await getDocs(query(collection(db, 'vault_folders'), where(field, '==', targetId)));
+            addDocsToDelete('vault_folders', snap.docs);
+          } catch (e) {}
+          try {
+            const snap = await getDocs(query(collection(db, 'vault_media'), where(field, '==', targetId)));
+            addDocsToDelete('vault_media', snap.docs);
+          } catch (e) {}
+        }
+      }
+
+      // VERIFICATION APPLICATIONS
+      for (const targetId of allTargetIdentifiers) {
+        for (const field of ['userId', 'uid', 'targetUid', 'profileId']) {
+          try {
+            const snap = await getDocs(query(collection(db, 'verificationApplications'), where(field, '==', targetId)));
+            addDocsToDelete('verificationApplications', snap.docs);
+          } catch (e) {}
+        }
+      }
+
+      // MARKETPLACE ITEMS, PRODUCTS, SERVICES
+      for (const targetId of allTargetIdentifiers) {
+        for (const coll of ['marketplace_items', 'products', 'services']) {
+          for (const field of ['sellerId', 'userId', 'authorId']) {
+            try {
+              const snap = await getDocs(query(collection(db, coll), where(field, '==', targetId)));
+              addDocsToDelete(coll, snap.docs);
+            } catch (e) {}
           }
         }
-      } catch (e) {}
+      }
 
-      // Query Activities
-      try {
-        const qA = await getDocs(query(collection(db, 'activities'), where('userId', '==', uid)));
-        addDocsToDelete('activities', qA.docs);
-        for (const pid of profileIds) {
-          const qA2 = await getDocs(query(collection(db, 'activities'), where('profileId', '==', pid)));
-          addDocsToDelete('activities', qA2.docs);
+      // NGL MESSAGES & HIGHLIGHTS & CALLS & LOGIN SESSIONS
+      for (const targetId of allTargetIdentifiers) {
+        for (const field of ['toUserId', 'fromUserId', 'targetProfileId', 'profileId', 'recipientId']) {
+          try {
+            const snap = await getDocs(query(collection(db, 'ngl_messages'), where(field, '==', targetId)));
+            addDocsToDelete('ngl_messages', snap.docs);
+          } catch (e) {}
         }
-      } catch (e) {}
-
-      // Query Reports & Appeals
-      try {
-        const qR1 = await getDocs(query(collection(db, 'reports'), where('reporterUid', '==', uid)));
-        addDocsToDelete('reports', qR1.docs);
-        const qR1_old = await getDocs(query(collection(db, 'reports'), where('reporterId', '==', uid)));
-        addDocsToDelete('reports', qR1_old.docs);
-        const qR2 = await getDocs(query(collection(db, 'reports'), where('reportedUid', '==', uid)));
-        addDocsToDelete('reports', qR2.docs);
-        const qR2_old = await getDocs(query(collection(db, 'reports'), where('reportedUserId', '==', uid)));
-        addDocsToDelete('reports', qR2_old.docs);
-        const qAp = await getDocs(query(collection(db, 'appeals'), where('userId', '==', uid)));
-        addDocsToDelete('appeals', qAp.docs);
-      } catch (e) {}
-
-      // Query Videos, Notes, Saved items
-      try {
-        const qV1 = await getDocs(query(collection(db, 'videos'), where('userId', '==', uid)));
-        addDocsToDelete('videos', qV1.docs);
-        const qV2 = await getDocs(query(collection(db, 'videos'), where('authorUid', '==', uid)));
-        addDocsToDelete('videos', qV2.docs);
-
-        const qNt = await getDocs(query(collection(db, 'notes'), where('userId', '==', uid)));
-        addDocsToDelete('notes', qNt.docs);
-
-        const qSv = await getDocs(query(collection(db, 'saved_items'), where('userId', '==', uid)));
-        addDocsToDelete('saved_items', qSv.docs);
-      } catch (e) {}
-
-      // Conversations
-      try {
-        const qConvs = await getDocs(query(collection(db, 'conversations'), where('participants', 'array-contains', uid)));
-        qConvs.docs.forEach(c => {
-          const cData = c.data();
-          const otherP = (cData.participants || []).filter((pUid: string) => pUid !== uid && !profileIds.includes(pUid));
-          if (otherP.length === 0) {
-            addDocsToDelete('conversations', [c]);
+        for (const field of ['userId', 'profileId', 'authorId']) {
+          try {
+            const snap = await getDocs(query(collection(db, 'highlights'), where(field, '==', targetId)));
+            addDocsToDelete('highlights', snap.docs);
+          } catch (e) {}
+        }
+        for (const coll of ['calls', 'callHistory']) {
+          for (const field of ['callerId', 'receiverId']) {
+            try {
+              const snap = await getDocs(query(collection(db, coll), where(field, '==', targetId)));
+              addDocsToDelete(coll, snap.docs);
+            } catch (e) {}
           }
-        });
-      } catch (e) {}
+        }
+        for (const coll of ['login_history', 'login_sessions']) {
+          for (const field of ['userId', 'uid']) {
+            try {
+              const snap = await getDocs(query(collection(db, coll), where(field, '==', targetId)));
+              addDocsToDelete(coll, snap.docs);
+            } catch (e) {}
+          }
+        }
+      }
 
-      // Clean up following/followers references in other users' profiles
-      try {
-        for (const pid of profileIds) {
-          const qFollowing = await getDocs(query(collection(db, 'profiles'), where('social.following', 'array-contains', pid)));
+      // CONVERSATIONS: remove from participants or delete if alone
+      for (const targetId of allTargetIdentifiers) {
+        try {
+          const qConvs = await getDocs(query(collection(db, 'conversations'), where('participants', 'array-contains', targetId)));
+          for (const cDoc of qConvs.docs) {
+            const cData = cDoc.data();
+            const remaining = (cData.participants || []).filter((p: string) => !allTargetIdentifiers.includes(p));
+            if (remaining.length === 0) {
+              addDocsToDelete('conversations', [cDoc]);
+            } else {
+              try {
+                await updateDoc(doc(db, 'conversations', cDoc.id), {
+                  participants: arrayRemove(targetId)
+                });
+              } catch (e) {}
+            }
+          }
+        } catch (e) {}
+      }
+
+      // 3. Clean up following/followers references and counts in OTHER users' profiles
+      for (const targetId of allTargetIdentifiers) {
+        try {
+          const qFollowing = await getDocs(query(collection(db, 'profiles'), where('social.following', 'array-contains', targetId)));
           for (const fDoc of qFollowing.docs) {
             try {
               await updateDoc(doc(db, 'profiles', fDoc.id), {
-                'social.following': arrayRemove(pid)
+                'social.following': arrayRemove(targetId),
+                followingCount: increment(-1)
               });
             } catch (err) {}
           }
-          const qFollowers = await getDocs(query(collection(db, 'profiles'), where('social.followers', 'array-contains', pid)));
+        } catch (e) {}
+
+        try {
+          const qFollowers = await getDocs(query(collection(db, 'profiles'), where('social.followers', 'array-contains', targetId)));
           for (const fDoc of qFollowers.docs) {
             try {
               await updateDoc(doc(db, 'profiles', fDoc.id), {
-                'social.followers': arrayRemove(pid)
+                'social.followers': arrayRemove(targetId),
+                followersCount: increment(-1)
               });
             } catch (err) {}
           }
-        }
-      } catch (e) {}
+        } catch (e) {}
 
-      // Perform Batched Deletions
+        try {
+          const qPending = await getDocs(query(collection(db, 'profiles'), where('social.pendingFollowing', 'array-contains', targetId)));
+          for (const pDoc of qPending.docs) {
+            try {
+              await updateDoc(doc(db, 'profiles', pDoc.id), {
+                'social.pendingFollowing': arrayRemove(targetId)
+              });
+            } catch (err) {}
+          }
+        } catch (e) {}
+
+        for (const listField of ['social.closeFriends', 'closeFriends', 'social.blocked', 'blockedUsers', 'social.restricted', 'restrictedUsers']) {
+          try {
+            const qList = await getDocs(query(collection(db, 'profiles'), where(listField, 'array-contains', targetId)));
+            for (const docSnap of qList.docs) {
+              try {
+                await updateDoc(doc(db, 'profiles', docSnap.id), {
+                  [listField]: arrayRemove(targetId)
+                });
+              } catch (e) {}
+            }
+          } catch (e) {}
+        }
+      }
+
+      // 4. Batch commit all gathered deletions
       let batch = writeBatch(db);
       let opCount = 0;
 
       const commitBatchIfNeeded = async () => {
         if (opCount >= 400) {
-          await batch.commit(); logger.security("User Ban Toggled", { action: "toggle_ban" });
+          await batch.commit();
           batch = writeBatch(db);
           opCount = 0;
         }
@@ -4454,46 +4626,44 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }
 
       // Delete Profiles
-      for (const pid of profileIds) {
+      for (const pid of allProfileIds) {
         batch.delete(doc(db, 'profiles', pid));
         opCount++;
         await commitBatchIfNeeded();
       }
 
-      // Retain username locks under 69-day reservation (prohibits re-claiming for 69 days)
-      const deletionTimestamp = Date.now();
-      const reservationMs = 69 * 24 * 60 * 60 * 1000;
-      for (const un of usernames) {
-        batch.set(doc(db, 'usernames', un.toLowerCase()), {
-          status: 'deleted',
-          deletedAt: deletionTimestamp,
-          previousOwnerUid: uid,
-          reservedUntil: deletionTimestamp + reservationMs
-        }, { merge: true });
+      // Delete Usernames Locks (freeing up the handle completely)
+      for (const un of allUsernames) {
+        batch.delete(doc(db, 'usernames', un.toLowerCase()));
         opCount++;
         await commitBatchIfNeeded();
       }
 
       // Delete User Docs
-      batch.delete(doc(db, 'users', uid));
-      opCount++;
-      await commitBatchIfNeeded();
-
-      batch.delete(doc(db, 'users', `user_${uid}`));
-      opCount++;
-      await commitBatchIfNeeded();
-
-      try {
-        batch.delete(doc(db, 'admins', uid));
+      for (const u of allUids) {
+        batch.delete(doc(db, 'users', u));
         opCount++;
         await commitBatchIfNeeded();
-      } catch (e) {}
-
-      if (opCount > 0) {
-        await batch.commit(); logger.security("User Ban Toggled", { action: "toggle_ban" });
+        batch.delete(doc(db, 'users', `user_${u}`));
+        opCount++;
+        await commitBatchIfNeeded();
       }
 
-      logger.security("[Security] User Purged", { targetUid: uid }); logger.info(`[purgeUser] Successfully purged all Firestore data for user ${uid}.`);
+      // Delete Admins Docs
+      for (const u of allTargetIdentifiers) {
+        try {
+          batch.delete(doc(db, 'admins', u));
+          opCount++;
+          await commitBatchIfNeeded();
+        } catch (e) {}
+      }
+
+      if (opCount > 0) {
+        await batch.commit();
+      }
+
+      logger.security("[Security] User Purged", { targetUid: uid, explicitProfileId });
+      logger.info(`[purgeUser] Successfully wiped all Firestore data from A-Z for user ${uid}.`);
     } catch (error) {
       logger.error("[purgeUser] failed:", error);
       throw error;

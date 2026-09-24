@@ -28,6 +28,7 @@ import { doc, getDoc } from 'firebase/firestore';
 import { db, auth } from '../../lib/firebase';
 import { logger } from '@/src/utils/logger';
 import { BLANK_DP } from '../../lib/avatar';
+import { validateEmailDetailed, isValidEmail } from '../../utils/emailValidator';
 
 interface SignupWizardProps {
   onGoToLogin: () => void;
@@ -357,11 +358,11 @@ export const SignupWizard: React.FC<SignupWizardProps> = ({
 
   // Validate Step 1
   const isStep1Valid = useMemo(() => {
-    const isEmailOrPhoneValid = identifier.trim().length >= 3;
+    const isEmailValid = isValidEmail(identifier);
     const isNameValid = fullName.trim().length >= 2;
     const isPassValid = user ? true : password.length >= 6;
     const isUserValid = usernameStatus === 'available';
-    return isEmailOrPhoneValid && isNameValid && isPassValid && isUserValid;
+    return isEmailValid && isNameValid && isPassValid && isUserValid;
   }, [identifier, fullName, password, usernameStatus, user]);
 
   // Handle Step 1 Submit
@@ -374,8 +375,9 @@ export const SignupWizard: React.FC<SignupWizardProps> = ({
     setError(null);
 
     // Explicit validation messages
-    if (identifier.trim().length < 3) {
-      setError('Please enter a valid mobile number or email address.');
+    const emailValidation = validateEmailDetailed(identifier);
+    if (!emailValidation.isValid) {
+      setError(emailValidation.error || 'Please enter a valid Gmail or Email address (e.g. yourname@gmail.com).');
       return;
     }
     if (fullName.trim().length < 2) {
@@ -449,9 +451,7 @@ export const SignupWizard: React.FC<SignupWizardProps> = ({
     setLoading(true);
 
     try {
-      const emailToUse = identifier.includes('@')
-        ? identifier.trim().toLowerCase()
-        : `${identifier.replace(/[^0-9]/g, '')}@aeirmist.social`;
+      const emailToUse = emailValidation.normalizedEmail || identifier.trim().toLowerCase();
 
       const formattedDOB = `${birthYear}-${birthMonth}-${birthDay}`;
 
@@ -459,8 +459,8 @@ export const SignupWizard: React.FC<SignupWizardProps> = ({
       if (user) {
         await registerUsername(username, {
           displayName: fullName,
-          personalEmail: identifier.includes('@') ? identifier : '',
-          phoneNumber: !identifier.includes('@') ? identifier : ''
+          personalEmail: emailToUse,
+          phoneNumber: ''
         });
       } else {
         await completeSignup(
@@ -479,8 +479,8 @@ export const SignupWizard: React.FC<SignupWizardProps> = ({
       try {
         await updateProfile({
           dateOfBirth: formattedDOB,
-          personalEmail: identifier.includes('@') ? identifier : '',
-          phoneNumber: !identifier.includes('@') ? identifier : '',
+          personalEmail: emailToUse,
+          phoneNumber: '',
           onboardingStep: 2,
           onboardingCompleted: false
         });
@@ -946,25 +946,37 @@ export const SignupWizard: React.FC<SignupWizardProps> = ({
               </p>
             </div>
 
-            {/* Field 1: Mobile number or email */}
+            {/* Field 1: Email or Gmail address */}
             <div className="space-y-1.5 pt-1">
-              <label className="text-xs font-bold text-slate-200 tracking-wider uppercase">
-                Mobile number or email
-              </label>
-              <div className="relative rounded-2xl bg-[#161a26] border border-white/20 focus-within:border-[var(--color-aeirmist-cyan)] focus-within:ring-2 focus-within:ring-[var(--color-aeirmist-cyan)]/25 transition-all shadow-inner">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-slate-200 tracking-wider uppercase flex items-center gap-1.5">
+                  <Mail size={13} className="text-aeirmist-cyan" />
+                  <span>Email or Gmail Address</span>
+                </label>
+                {identifier.trim().length > 0 && (
+                  <span className={`text-[10px] font-mono font-bold ${isValidEmail(identifier) ? 'text-emerald-400' : 'text-amber-400'}`}>
+                    {isValidEmail(identifier) ? '✓ Valid' : 'Format: user@gmail.com'}
+                  </span>
+                )}
+              </div>
+              <div className={`relative rounded-2xl bg-[#161a26] border transition-all shadow-inner ${
+                identifier.trim().length > 0 && !isValidEmail(identifier)
+                  ? 'border-amber-500/40 focus-within:border-amber-400'
+                  : 'border-white/20 focus-within:border-[var(--color-aeirmist-cyan)] focus-within:ring-2 focus-within:ring-[var(--color-aeirmist-cyan)]/25'
+              }`}>
                 <input
-                  type="text"
+                  type="email"
                   required
-                  placeholder="Mobile number or email"
+                  placeholder="name@gmail.com or valid email"
                   value={identifier}
                   onChange={(e) => setIdentifier(e.target.value)}
                   className="w-full py-3.5 pl-4 pr-4 bg-transparent outline-none text-sm text-white placeholder:text-slate-400 font-medium"
                 />
               </div>
               <p className="text-[11px] text-slate-300 leading-snug">
-                You may receive notifications from us.{' '}
+                A valid email (or Gmail) is required for account security and recovery.{' '}
                 <span className="text-cyan-300 underline decoration-cyan-300/30 cursor-pointer">
-                  Learn why we ask for your contact information
+                  Learn why we require verified email
                 </span>
               </p>
             </div>

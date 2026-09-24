@@ -86,13 +86,13 @@ export const PremiumPostCard = React.memo<PostCardProps>(({ post, onUserClick, o
   const postTopics = React.useMemo(() => {
     const t: string[] = [];
     if (Array.isArray(post.tags)) post.tags.forEach((tag: any) => typeof tag === 'string' && t.push(tag.replace(/^#/, '')));
-    if (post.category) t.push(post.category);
+    if ((post as any).category) t.push((post as any).category);
     if (post.content) {
       const matches = post.content.match(/#(\w+)/g);
       if (matches) matches.forEach((m: string) => t.push(m.replace('#', '')));
     }
     return Array.from(new Set(t));
-  }, [post.tags, post.category, post.content]);
+  }, [post.tags, (post as any).category, post.content]);
   
   // Voice Simulation Player States
   const [voicePlaying, setVoicePlaying] = useState(false);

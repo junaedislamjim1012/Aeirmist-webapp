@@ -1,4 +1,22 @@
 User-agent: *
 Allow: /
+Allow: /explore
+Allow: /videos
+Allow: /marketplace
+Allow: /community-guidelines
+Allow: /login
+Allow: /signup
 
-Sitemap: https://aeirmist.social/sitemap.xml
+# Disallow private and authenticated endpoints
+Disallow: /settings
+Disallow: /messages
+Disallow: /inbox
+Disallow: /chat
+Disallow: /notifications
+Disallow: /vault
+Disallow: /admin
+Disallow: /dashboard
+Disallow: /create-post
+Disallow: /new-post
+
+Sitemap: https://aeirmist.com/sitemap.xml

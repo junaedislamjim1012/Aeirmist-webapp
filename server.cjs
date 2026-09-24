@@ -29,11 +29,10 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 ));
 
 // src/utils/logger.ts
-var import_meta, isProd, SENSITIVE_KEYS, sanitize, logger;
+var isProd, SENSITIVE_KEYS, sanitize, logger;
 var init_logger = __esm({
   "src/utils/logger.ts"() {
-    import_meta = {};
-    isProd = typeof process !== "undefined" && process.env && process.env.NODE_ENV === "production" || typeof import_meta !== "undefined" && import_meta.env && import_meta.env.PROD;
+    isProd = typeof process !== "undefined" && process.env && process.env.NODE_ENV === "production" || Boolean(globalThis?.__PROD_ENV__);
     SENSITIVE_KEYS = [
       "password",
       "token",

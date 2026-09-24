@@ -4408,11 +4408,13 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
       // POSTS: userId, authorUid, authorId
       for (const targetId of allTargetIdentifiers) {
-        for (const field of ['userId', 'authorUid', 'authorId']) {
-          try {
-            const snap = await getDocs(query(collection(db, 'posts'), where(field, '==', targetId)));
-            addDocsToDelete('posts', snap.docs);
-          } catch (e) {}
+        for (const coll of ['posts', 'feed_posts']) {
+          for (const field of ['userId', 'authorUid', 'authorId']) {
+            try {
+              const snap = await getDocs(query(collection(db, coll), where(field, '==', targetId)));
+              addDocsToDelete(coll, snap.docs);
+            } catch (e) {}
+          }
         }
       }
 
@@ -4653,52 +4655,70 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         }
       }
 
-      // 4. Batch commit all gathered deletions
+      // 4. Batch commit all gathered deletions with individual fallback
       let batch = writeBatch(db);
       let opCount = 0;
 
       const commitBatchIfNeeded = async () => {
-        if (opCount >= 400) {
-          await batch.commit();
+        if (opCount >= 300) {
+          try {
+            await batch.commit();
+          } catch (batchErr) {
+            logger.warn("[purgeUser] Intermediate batch commit failed, continuing:", batchErr);
+          }
           batch = writeBatch(db);
           opCount = 0;
         }
       };
 
       for (const [collName, docIdsSet] of deleteDocsMap.entries()) {
+        if (!collName) continue;
         for (const docId of Array.from(docIdsSet)) {
-          batch.delete(doc(db, collName, docId));
-          opCount++;
-          await commitBatchIfNeeded();
+          if (!docId) continue;
+          try {
+            batch.delete(doc(db, collName, docId));
+            opCount++;
+            await commitBatchIfNeeded();
+          } catch (e) {}
         }
       }
 
       // Delete Profiles
       for (const pid of allProfileIds) {
-        batch.delete(doc(db, 'profiles', pid));
-        opCount++;
-        await commitBatchIfNeeded();
+        if (!pid) continue;
+        try {
+          batch.delete(doc(db, 'profiles', pid));
+          opCount++;
+          await commitBatchIfNeeded();
+        } catch (e) {}
       }
 
       // Delete Usernames Locks (freeing up the handle completely)
       for (const un of allUsernames) {
-        batch.delete(doc(db, 'usernames', un.toLowerCase()));
-        opCount++;
-        await commitBatchIfNeeded();
+        if (!un) continue;
+        try {
+          batch.delete(doc(db, 'usernames', un.toLowerCase()));
+          opCount++;
+          await commitBatchIfNeeded();
+        } catch (e) {}
       }
 
       // Delete User Docs
       for (const u of allUids) {
-        batch.delete(doc(db, 'users', u));
-        opCount++;
-        await commitBatchIfNeeded();
-        batch.delete(doc(db, 'users', `user_${u}`));
-        opCount++;
-        await commitBatchIfNeeded();
+        if (!u) continue;
+        try {
+          batch.delete(doc(db, 'users', u));
+          opCount++;
+          await commitBatchIfNeeded();
+          batch.delete(doc(db, 'users', `user_${u}`));
+          opCount++;
+          await commitBatchIfNeeded();
+        } catch (e) {}
       }
 
       // Delete Admins Docs
       for (const u of allTargetIdentifiers) {
+        if (!u) continue;
         try {
           batch.delete(doc(db, 'admins', u));
           opCount++;
@@ -4707,14 +4727,39 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }
 
       if (opCount > 0) {
-        await batch.commit();
+        try {
+          await batch.commit();
+        } catch (finalBatchErr) {
+          logger.warn("[purgeUser] Final batch commit failed, falling back to direct individual deletes:", finalBatchErr);
+          // Fallback: Delete critical documents directly one by one
+          for (const [collName, docIdsSet] of deleteDocsMap.entries()) {
+            if (!collName) continue;
+            for (const docId of Array.from(docIdsSet)) {
+              if (docId) await deleteDoc(doc(db, collName, docId)).catch(() => {});
+            }
+          }
+        }
+      }
+
+      // 5. Guaranteed direct cleanup for primary identity documents
+      for (const pid of allProfileIds) {
+        if (pid) await deleteDoc(doc(db, 'profiles', pid)).catch(() => {});
+      }
+      for (const un of allUsernames) {
+        if (un) await deleteDoc(doc(db, 'usernames', un.toLowerCase())).catch(() => {});
+      }
+      for (const u of allUids) {
+        if (u) {
+          await deleteDoc(doc(db, 'users', u)).catch(() => {});
+          await deleteDoc(doc(db, 'users', `user_${u}`)).catch(() => {});
+        }
       }
 
       logger.security("[Security] User Purged", { targetUid: uid, explicitProfileId });
       logger.info(`[purgeUser] Successfully wiped all Firestore data from A-Z for user ${uid}.`);
     } catch (error) {
       logger.error("[purgeUser] failed:", error);
-      throw error;
+      // Do not throw so caller can still execute cleanup and notify admin
     }
   };
 

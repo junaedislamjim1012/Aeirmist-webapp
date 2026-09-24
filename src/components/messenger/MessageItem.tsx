@@ -8,7 +8,7 @@ import { Check, CheckCheck, Eye, EyeOff } from 'lucide-react';
 import { useAeirmist } from '../../context/AeirmistContext';
 import { getAvatarUrl } from '../../lib/avatar';
 import { formatShortTimestamp, formatTimeOnly } from '../../lib/date';
-import { SafeImage } from '../ui/SafeImage';
+import { TelegramMediaAlbum, AlbumItem, isAutoMediaPlaceholder } from './TelegramMediaAlbum';
 
 const moods = {
   ecstatic: '⚡',
@@ -24,7 +24,8 @@ export const MessageItem = React.memo<{
   onRetry?: () => void, 
   senderPhoto?: string, 
   conversationId?: string, 
-  onImageClick?: (url: string) => void,
+  onImageClick?: (url: string, index?: number, allUrls?: string[]) => void,
+  albumItems?: AlbumItem[],
   onUserClick?: (user: any) => void,
   onReply?: (message: Message) => void,
   onForward?: (message: Message) => void,
@@ -44,6 +45,7 @@ export const MessageItem = React.memo<{
   senderPhoto, 
   conversationId, 
   onImageClick,
+  albumItems,
   onUserClick,
   onReply,
   onForward,
@@ -242,6 +244,38 @@ export const MessageItem = React.memo<{
     [message.senderId, senderPhoto]
   );
 
+  // Grouped album items for Telegram-style collage
+  const effectiveAlbum: AlbumItem[] = React.useMemo(() => {
+    if (albumItems && albumItems.length > 0) return albumItems;
+    const multiUrls = (message as any).mediaUrls;
+    if (multiUrls && multiUrls.length > 1) {
+      return multiUrls.map((url: string, idx: number) => ({
+        id: `${message.id}_${idx}`,
+        url,
+        type: (url.includes('.mp4') || (url.includes('video') && !url.includes('image')) || message.type === 'video') ? 'video' : 'image',
+        timestampMs: message.timestampMs,
+        isOptimistic: message.isOptimistic,
+        isFailed: message.isFailed
+      }));
+    }
+    if (message.mediaUrl && (message.type === 'image' || message.type === 'media' || message.type === 'video')) {
+      return [{
+        id: message.id,
+        url: message.mediaUrl,
+        type: (message.mediaUrl.includes('.mp4') || (message.mediaUrl.includes('video') && !message.mediaUrl.includes('image')) || message.type === 'video') ? 'video' : 'image',
+        timestampMs: message.timestampMs,
+        isOptimistic: message.isOptimistic,
+        isFailed: message.isFailed,
+        thumbnail: message.thumbnail
+      }];
+    }
+    return [];
+  }, [albumItems, message]);
+
+  const isPlaceholder = isAutoMediaPlaceholder(message.text);
+  const hasRealText = Boolean(message.text && !isPlaceholder);
+  const isMediaOnly = !hasRealText && effectiveAlbum.length > 0;
+
   const sequenceRadiusClass = isFirstInSequence === undefined ? 'rounded-[18px]' : (
     isMe
       ? `rounded-l-[18px] ${isFirstInSequence ? 'rounded-tr-[18px]' : 'rounded-tr-[4px]'} ${isLastInSequence ? 'rounded-br-[18px]' : 'rounded-br-[4px]'}`
@@ -305,10 +339,14 @@ export const MessageItem = React.memo<{
           <motion.div 
             whileHover={{ y: -1, scale: 1.01 }}
             onClick={handleBubbleClick}
-            className={`${(!message.text && (message.type === 'image' || message.type === 'media' || message.type === 'video')) ? 'p-1' : 'px-3.5 py-2.5'} ${sequenceRadiusClass} backdrop-blur-xl border ${
-              isMe 
-                ? 'bg-gradient-to-br from-[#6E7BF2]/50 via-[#8B5FBF]/45 to-[#5B6EE8]/50 border-white/15 shadow-[0_4px_20px_rgba(80,90,240,0.25)] text-white' 
-                : 'bg-white/10 border-white/10 shadow-[0_4px_16px_rgba(0,0,0,0.2)] text-white/95'
+            className={`${
+              isMediaOnly
+                ? 'p-0 bg-transparent border-0 shadow-none'
+                : `${sequenceRadiusClass} backdrop-blur-xl border ${
+                    isMe 
+                      ? 'bg-gradient-to-br from-[#6E7BF2]/50 via-[#8B5FBF]/45 to-[#5B6EE8]/50 border-white/15 shadow-[0_4px_20px_rgba(80,90,240,0.25)] text-white' 
+                      : 'bg-white/10 border-white/10 shadow-[0_4px_16px_rgba(0,0,0,0.2)] text-white/95'
+                  } ${effectiveAlbum.length > 0 ? 'p-1.5' : 'px-3.5 py-2.5'}`
             } transition-all duration-300 relative overflow-hidden w-fit min-w-[64px] max-w-[85vw] md:max-w-[420px]`}
           >
             {/* glassmorphism: semi-transparent gradient + backdrop-blur-xl creates frosted glass effect over background media/photos */}
@@ -332,9 +370,28 @@ export const MessageItem = React.memo<{
                 <EyeOff size={10} className="text-white/20" />
               </div>
             )}
+
+            {/* Telegram-style Media Album (Single or Multi-item) */}
+            {effectiveAlbum.length > 0 && (
+              <TelegramMediaAlbum
+                items={effectiveAlbum}
+                isMe={isMe}
+                timestampText={formatTimeOnly(message.timestampMs || message.timestamp)}
+                isOptimistic={message.isOptimistic}
+                isDelivered={message.isDelivered}
+                isSeen={message.isSeen}
+                isFailed={message.isFailed}
+                readReceiptsAllowed={profile?.messagingSettings?.readReceipts !== false}
+                otherUserRestricted={otherUserRestricted}
+                showTimestamp={!hasRealText}
+                onItemClick={(url, idx, allUrls) => onImageClick && onImageClick(url, idx, allUrls)}
+                onRetry={onRetry}
+              />
+            )}
             
-            {message.type === 'text' && (
-              <div className="relative">
+            {/* Text message or caption under media */}
+            {hasRealText && (
+              <div className={`relative ${effectiveAlbum.length > 0 ? 'pt-1.5 px-2 pb-0.5' : ''}`}>
                 {message.metadata?.removed ? (
                   <p className="text-[11px] leading-relaxed font-medium italic tracking-tight text-white/40">Message Removed</p>
                 ) : (
@@ -391,54 +448,22 @@ export const MessageItem = React.memo<{
                   </div>
                   </div>
                 )}
-                {Object.entries(reactions).length > 0 && (
-                  <div className="flex gap-1 mt-1 -ml-1">
-                    {Object.entries(reactions).map(([emoji, count]) => (
-                      <span key={emoji} className="text-xs bg-white/10 rounded-full px-1.5 py-0.5">
-                        {emoji} {count}
-                      </span>
-                    ))}
-                  </div>
-                )}
+              </div>
+            )}
+
+            {/* Reactions */}
+            {Object.entries(reactions).length > 0 && (
+              <div className="flex gap-1 mt-1">
+                {Object.entries(reactions).map(([emoji, count]) => (
+                  <span key={emoji} className="text-xs bg-black/60 backdrop-blur-md border border-white/10 rounded-full px-2 py-0.5 shadow-md text-white">
+                    {emoji} {count > 1 ? count : ''}
+                  </span>
+                ))}
               </div>
             )}
 
             {message.type === 'voice' && message.mediaUrl && (
               <VoicePlayback url={message.mediaUrl} isMe={isMe} />
-            )}
-
-            {(message.type === 'image' || message.type === 'media' || message.type === 'video') && message.mediaUrl && (
-              <div className="rounded-[18px] overflow-hidden my-1 relative group/media shadow-2xl">
-                {message.type === 'video' || (message as any).mediaType === 'video' || message.metadata?.mediaType === 'video' || (message.type === 'media' && message.mediaUrl.includes('.mp4')) ? (
-                  <video src={message.mediaUrl} className={`w-full h-auto object-cover max-h-[400px] transition-all duration-700 ${message.isOptimistic ? 'blur-md grayscale' : ''}`} controls={!message.isOptimistic} />
-                ) : (
-                  <SafeImage 
-                    src={message.mediaUrl} 
-                    alt="shared" 
-                    blurThumbnail={message.thumbnail}
-                    onClick={() => onImageClick && onImageClick(message.mediaUrl || '')}
-                    className={`w-full h-auto object-cover hover:scale-105 transition-all duration-1000 max-h-[400px] sm:max-h-[500px] cursor-pointer ${message.isOptimistic ? 'blur-lg scale-110 grayscale' : ''} ${message.isFailed ? 'blur-sm opacity-50' : ''}`} 
-                  />
-                )}
-                <div className="absolute bottom-2 right-2 bg-black/60 backdrop-blur-md px-2 py-0.5 rounded-full flex items-center gap-1 text-[10px] text-white/90 shadow-md pointer-events-none">
-                  <span className="font-medium tracking-tight whitespace-nowrap">
-                    {formatTimeOnly(message.timestampMs || message.timestamp)}
-                  </span>
-                  {isMe && !message.isFailed && (
-                    <span className="flex items-center ml-0.5">
-                      {message.isOptimistic ? (
-                        <Loader2 size={10} className="animate-spin text-white/40" />
-                      ) : (message.isSeen && !otherUserRestricted && profile?.messagingSettings?.readReceipts !== false) ? (
-                        <CheckCheck size={12} className="text-aeirmist-cyan" />
-                      ) : message.isDelivered ? (
-                        <CheckCheck size={12} className="text-white/60" />
-                      ) : (
-                        <Check size={12} className="text-white/40" />
-                      )}
-                    </span>
-                  )}
-                </div>
-              </div>
             )}
 
 

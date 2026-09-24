@@ -51,6 +51,7 @@ import { MessageItem } from './messenger/MessageItem';
 import { CallHistorySection } from './messenger/CallHistorySection';
 import { AeirmistInputSystem } from './messenger/AeirmistInputSystem';
 import { ImageViewerModal } from './messenger/ImageViewerModal';
+import { TelegramMediaAlbum, AlbumItem, isAutoMediaPlaceholder } from './messenger/TelegramMediaAlbum';
 import { NotesSystem } from './messenger/NotesSystem';
 import { ChatWallpaperLayer } from './messenger/ChatWallpaperLayer';
 import { ChatWallpaperController } from './messenger/ChatWallpaperController';
@@ -2374,6 +2375,8 @@ const ChatWindow = ({
   const [editingMessage, setEditingMessage] = useState<Message | null>(null);
   const [loading, setLoading] = useState(true);
   const [expandedImage, setExpandedImage] = useState<string | null>(null);
+  const [expandedAlbumImages, setExpandedAlbumImages] = useState<string[] | undefined>(undefined);
+  const [expandedImageIndex, setExpandedImageIndex] = useState<number>(0);
   const [callType, setCallType] = useState<'audio' | 'video' | null>(null);
   const [isOutgoingCallLocally, setIsOutgoingCallLocally] = useState<boolean>(false);
   const [remoteTyping, setRemoteTyping] = useState(false);
@@ -2444,6 +2447,7 @@ const ChatWindow = ({
   useBackHandler(() => {
     if (expandedImage) {
       setExpandedImage(null);
+      setExpandedAlbumImages(undefined);
       return true;
     }
     if (isWallpaperCustomizerOpen) {
@@ -2655,6 +2659,88 @@ const ChatWindow = ({
       }
     }));
   }, [messages, optimistic, chat.lastRead, chat.lastDelivered, chat.id, profile?.id, failedMessages]);
+  
+  // Group consecutive media messages (sent within 120s by same sender with no caption) into Telegram albums
+  const groupedDisplayItems = useMemo(() => {
+    const result: Array<{
+      msg: any;
+      albumItems?: AlbumItem[];
+      isGroupedAlbum?: boolean;
+    }> = [];
+
+    let currentAlbum: {
+      leadMsg: any;
+      items: AlbumItem[];
+    } | null = null;
+
+    const flushAlbum = () => {
+      if (!currentAlbum) return;
+      if (currentAlbum.items.length > 1) {
+        // Render as a single unified album message using lead message attributes
+        result.push({
+          msg: {
+            ...currentAlbum.leadMsg,
+            mediaUrls: currentAlbum.items.map(it => it.url),
+            albumItems: currentAlbum.items
+          },
+          albumItems: currentAlbum.items,
+          isGroupedAlbum: true
+        });
+      } else {
+        // Only 1 item, keep as original message
+        result.push({ msg: currentAlbum.leadMsg });
+      }
+      currentAlbum = null;
+    };
+
+    for (let i = 0; i < displayedMessages.length; i++) {
+      const msg = displayedMessages[i];
+      const hasRealText = msg.text && !isAutoMediaPlaceholder(msg.text);
+      const isMediaCandidate = (
+        !hasRealText &&
+        !msg.metadata?.removed &&
+        (msg.type === 'image' || msg.type === 'video' || msg.type === 'media') &&
+        Boolean(msg.mediaUrl || (msg.mediaUrls && msg.mediaUrls.length > 0))
+      );
+
+      if (isMediaCandidate) {
+        const itemUrls: string[] = (msg.mediaUrls && msg.mediaUrls.length > 0) ? msg.mediaUrls : (msg.mediaUrl ? [msg.mediaUrl] : []);
+        const newAlbumItems: AlbumItem[] = itemUrls.map((u: string, idx: number) => ({
+          id: `${msg.id}_${idx}`,
+          url: u,
+          type: (u.includes('.mp4') || (u.includes('video') && !u.includes('image')) || msg.type === 'video') ? 'video' : 'image',
+          timestampMs: msg.timestampMs,
+          isOptimistic: msg.isOptimistic,
+          isFailed: msg.isFailed,
+          thumbnail: msg.thumbnail
+        }));
+
+        if (currentAlbum) {
+          const sameSender = currentAlbum.leadMsg.senderId === msg.senderId;
+          const withinTime = Math.abs((msg.timestampMs || 0) - (currentAlbum.leadMsg.timestampMs || 0)) <= 120000; // 2 minutes window
+          if (sameSender && withinTime) {
+            currentAlbum.items.push(...newAlbumItems);
+            if (msg.isSeen) currentAlbum.leadMsg.isSeen = true;
+            if (msg.isDelivered) currentAlbum.leadMsg.isDelivered = true;
+            continue;
+          } else {
+            flushAlbum();
+          }
+        }
+
+        currentAlbum = {
+          leadMsg: { ...msg },
+          items: newAlbumItems
+        };
+      } else {
+        flushAlbum();
+        result.push({ msg });
+      }
+    }
+
+    flushAlbum();
+    return result;
+  }, [displayedMessages]);
   
   // Stable auto-scroll on new messages or list growth
   const prevMsgLengthRef = useRef(displayedMessages.length);
@@ -3182,11 +3268,11 @@ const ChatWindow = ({
         )}
 
       <div className="flex flex-col gap-1.5 px-4 md:px-6 lg:px-8 w-full min-w-0 overflow-x-hidden">
-          {displayedMessages.filter(msg => {
+          {groupedDisplayItems.filter(({ msg }) => {
             if (!messageFilter) return true;
             return msg.text?.toLowerCase().includes(messageFilter.toLowerCase());
-          }).map((msg, idx, self) => {
-            const showDate = idx === 0 || formatDateSeparator(self[idx-1].timestampMs) !== formatDateSeparator(msg.timestampMs);
+          }).map(({ msg, albumItems }, idx, self) => {
+            const showDate = idx === 0 || formatDateSeparator(self[idx-1].msg.timestampMs) !== formatDateSeparator(msg.timestampMs);
             return (
               <div key={msg.id || `msg-${idx}-${msg.timestampMs}`} className="contents">
                 {showDate && (
@@ -3200,12 +3286,17 @@ const ChatWindow = ({
                 )}
                 <MessageItem 
                   message={msg} 
+                  albumItems={albumItems}
                   isMe={msg.senderId === profile?.id} 
                   theme={chat.theme}
                   senderPhoto={msg.senderId === profile?.id ? (localAvatarURL || profile?.photoURL) : (otherProfile?.photoURL || chat.photo)}
                   onRetry={() => handleRetry(msg)} 
                   conversationId={chat.id}
-                  onImageClick={setExpandedImage}
+                  onImageClick={(url, imgIdx, allUrls) => {
+                    setExpandedImage(url);
+                    setExpandedAlbumImages(allUrls);
+                    setExpandedImageIndex(imgIdx ?? 0);
+                  }}
                   onUserClick={onUserClick}
                   onReply={handleReply}
                   onForward={onForwardMessage}
@@ -3221,8 +3312,8 @@ const ChatWindow = ({
                     return chat.lastRead[otherId];
                   })()}
                   otherParticipantName={otherProfile?.displayName || otherProfile?.username || chat.name}
-                  isFirstInSequence={idx === 0 || self[idx-1].senderId !== msg.senderId}
-                  isLastInSequence={idx === self.length - 1 || self[idx+1].senderId !== msg.senderId}
+                  isFirstInSequence={idx === 0 || self[idx-1].msg.senderId !== msg.senderId}
+                  isLastInSequence={idx === self.length - 1 || self[idx+1].msg.senderId !== msg.senderId}
                 />
               </div>
             );
@@ -3463,8 +3554,13 @@ const ChatWindow = ({
       </AnimatePresence>
       <ImageViewerModal 
         isOpen={!!expandedImage} 
-        onClose={() => setExpandedImage(null)} 
+        onClose={() => {
+          setExpandedImage(null);
+          setExpandedAlbumImages(undefined);
+        }} 
         imageUrl={expandedImage || ''} 
+        images={expandedAlbumImages}
+        initialIndex={expandedImageIndex}
       />
     </div>
   );

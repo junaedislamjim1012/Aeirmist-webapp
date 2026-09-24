@@ -1,31 +1,45 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Volume2, VolumeX, Play, Pause, Maximize } from 'lucide-react';
+import { Volume2, VolumeX, Play, Pause, Maximize, Film, Loader2 } from 'lucide-react';
 import { mediaService } from '../../services/MediaService';
 import { logger } from '@/src/utils/logger';
-
 
 interface VideoPlayerProps {
   src: string;
   className?: string;
+  poster?: string;
+  title?: string;
+  caption?: string;
   useCache?: boolean;
   controls?: boolean;
   autoPlay?: boolean;
+  onNavigateToWatch?: () => void;
 }
 
 export const VideoPlayer: React.FC<VideoPlayerProps> = ({ 
   src, 
   className = "w-full h-full object-cover",
+  poster,
+  title,
+  caption,
   useCache = false,
   controls = false,
-  autoPlay = false
+  autoPlay = false,
+  onNavigateToWatch
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isMuted, setIsMuted] = useState(true);
   const [progress, setProgress] = useState(0);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [isBuffering, setIsBuffering] = useState(false);
   const [currentSrc, setCurrentSrc] = useState(src);
+  const [showControls, setShowControls] = useState(true);
+  const [userInteracted, setUserInteracted] = useState(false);
+  const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Cached media loader
   useEffect(() => {
     if (!useCache || !src) {
       setCurrentSrc(src);
@@ -56,14 +70,17 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           if (entry.isIntersecting) {
             video.play()
               .then(() => setIsPlaying(true))
-              .catch((err) => logger.info('Auto-play blocked by policy:', err));
+              .catch((err) => {
+                logger.info('Auto-play prevented by browser policy:', err);
+                setIsPlaying(false);
+              });
           } else {
             video.pause();
             setIsPlaying(false);
           }
         });
       },
-      { threshold: 0.25 } // Auto play when 25% is in view for smoother scroll feed experience
+      { threshold: 0.35 }
     );
 
     if (containerRef.current) {
@@ -77,15 +94,20 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
   const handlePlayPause = (e: React.MouseEvent) => {
     e.stopPropagation();
+    setUserInteracted(true);
     const video = videoRef.current;
     if (!video) return;
 
     if (isPlaying) {
       video.pause();
       setIsPlaying(false);
+      setShowControls(true);
     } else {
       video.play()
-        .then(() => setIsPlaying(true))
+        .then(() => {
+          setIsPlaying(true);
+          resetControlsTimer();
+        })
         .catch((err) => logger.info(err));
     }
   };
@@ -102,8 +124,28 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const handleTimeUpdate = () => {
     const video = videoRef.current;
     if (!video) return;
+    setCurrentTime(video.currentTime);
     const progressPct = (video.currentTime / video.duration) * 100;
     setProgress(isNaN(progressPct) ? 0 : progressPct);
+  };
+
+  const handleLoadedMetadata = () => {
+    const video = videoRef.current;
+    if (video && video.duration) {
+      setDuration(video.duration);
+    }
+  };
+
+  const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
+    e.stopPropagation();
+    const video = videoRef.current;
+    if (!video || !duration) return;
+
+    const rect = e.currentTarget.getBoundingClientRect();
+    const clickX = e.clientX - rect.left;
+    const newProgress = Math.max(0, Math.min(1, clickX / rect.width));
+    video.currentTime = newProgress * duration;
+    setProgress(newProgress * 100);
   };
 
   const handleFullscreen = (e: React.MouseEvent) => {
@@ -116,70 +158,145 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     }
   };
 
+  const resetControlsTimer = () => {
+    setShowControls(true);
+    if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
+    controlsTimeoutRef.current = setTimeout(() => {
+      if (isPlaying) setShowControls(false);
+    }, 3000);
+  };
+
+  const formatTime = (secs: number) => {
+    if (isNaN(secs) || secs < 0) return '0:00';
+    const m = Math.floor(secs / 60);
+    const s = Math.floor(secs % 60);
+    return `${m}:${s < 10 ? '0' : ''}${s}`;
+  };
+
+  const displayHeadline = title || caption;
+
   return (
     <div 
       ref={containerRef} 
       onClick={handlePlayPause}
-      className="relative w-full h-full overflow-hidden group/video bg-black/40 flex items-center justify-center cursor-pointer"
+      onMouseMove={resetControlsTimer}
+      className="relative w-full h-full min-h-[220px] max-h-[520px] overflow-hidden group/video bg-[#0b0c10] flex items-center justify-center cursor-pointer select-none"
     >
+      {/* Video Element */}
       <video
         ref={videoRef}
         src={currentSrc}
+        poster={poster}
         className={className}
         loop
         muted={isMuted}
         playsInline
         preload="metadata"
         onTimeUpdate={handleTimeUpdate}
+        onLoadedMetadata={handleLoadedMetadata}
+        onWaiting={() => setIsBuffering(true)}
+        onPlaying={() => {
+          setIsBuffering(false);
+          setIsPlaying(true);
+        }}
+        onPause={() => setIsPlaying(false)}
       />
 
-      {/* Video Overlays */}
-      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover/video:opacity-100 transition-all duration-300 pointer-events-none flex flex-col justify-end p-4">
-        <div className="flex items-center justify-between pointer-events-auto w-full">
-          {/* Play/Pause Button */}
-          <button 
-            onClick={handlePlayPause}
-            className="w-8 h-8 rounded-lg bg-black/60 border border-white/10 flex items-center justify-center text-white hover:text-aeirmist-cyan transition-all"
-          >
-            {isPlaying ? <Pause size={14} className="fill-current" /> : <Play size={14} className="fill-current ml-0.5" />}
-          </button>
+      {/* Fallback Poster Background if paused and video has not loaded frame */}
+      {!isPlaying && poster && (
+        <div 
+          className="absolute inset-0 bg-cover bg-center opacity-40 filter blur-[1px] pointer-events-none transition-opacity duration-500"
+          style={{ backgroundImage: `url(${poster})` }}
+        />
+      )}
 
-          {/* Video Timeline Scrubber */}
-          <div className="flex-1 mx-3 h-1 bg-white/20 rounded-full overflow-hidden relative">
+      {/* TOP HEADER OVERLAY (Always readable or elegant gradient) */}
+      <div className={`absolute top-0 left-0 right-0 p-3 bg-gradient-to-b from-black/85 via-black/40 to-transparent flex items-center justify-between z-20 transition-opacity duration-300 ${(!isPlaying || showControls) ? 'opacity-100' : 'opacity-0 md:group-hover/video:opacity-100'}`}>
+        <div className="flex items-center gap-2 min-w-0 pr-3">
+          <span className="px-2.5 py-1 rounded-full bg-aeirmist-cyan/20 border border-aeirmist-cyan/40 text-aeirmist-cyan text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 backdrop-blur-md shadow-sm shrink-0">
+            <Film size={11} className="fill-current" /> Video
+          </span>
+          {displayHeadline && (
+            <span className="text-xs font-semibold text-white/95 truncate drop-shadow-md">
+              {displayHeadline}
+            </span>
+          )}
+        </div>
+
+        {duration > 0 && (
+          <span className="text-[10px] font-mono text-white/70 px-2 py-0.5 rounded-md bg-black/50 backdrop-blur-md border border-white/10 shrink-0">
+            {formatTime(duration)}
+          </span>
+        )}
+      </div>
+
+      {/* CENTER PLAY / PAUSE / BUFFERING INDICATOR */}
+      <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-15">
+        {isBuffering ? (
+          <div className="w-14 h-14 rounded-full bg-black/60 backdrop-blur-md border border-white/20 flex items-center justify-center text-aeirmist-cyan shadow-2xl">
+            <Loader2 size={26} className="animate-spin" />
+          </div>
+        ) : !isPlaying ? (
+          <div className="w-16 h-16 rounded-full bg-black/65 backdrop-blur-lg border border-white/25 flex items-center justify-center text-white shadow-[0_8px_32px_rgba(0,0,0,0.6)] group-hover/video:scale-110 active:scale-95 transition-all">
+            <Play size={26} className="fill-current ml-1 text-aeirmist-cyan drop-shadow-[0_0_12px_rgba(0,242,255,0.6)]" />
+          </div>
+        ) : null}
+      </div>
+
+      {/* BOTTOM CONTROLS & TIMELINE (Standard Social Media Video Layout) */}
+      <div className={`absolute bottom-0 left-0 right-0 p-3 pt-6 bg-gradient-to-t from-black/90 via-black/50 to-transparent flex flex-col gap-2 z-20 transition-opacity duration-300 ${(!isPlaying || showControls) ? 'opacity-100' : 'opacity-0 md:group-hover/video:opacity-100'}`}>
+        {/* Timeline Scrubber */}
+        <div 
+          onClick={handleSeek}
+          className="h-2 w-full flex items-center cursor-pointer group/scrub relative"
+        >
+          <div className="w-full h-1 bg-white/25 rounded-full overflow-hidden group-hover/scrub:h-1.5 transition-all">
             <div 
-              className="h-full bg-gradient-to-r from-aeirmist-cyan to-aeirmist-magenta cursor-pointer" 
-              style={{ width: `${progress}%` }} 
+              className="h-full bg-gradient-to-r from-aeirmist-cyan to-aeirmist-magenta rounded-full relative"
+              style={{ width: `${progress}%` }}
             />
           </div>
+        </div>
 
-          <div className="flex items-center gap-1.5">
-            {/* Audio Toggle */}
+        {/* Action Controls Row */}
+        <div className="flex items-center justify-between text-white text-xs pointer-events-auto">
+          <div className="flex items-center gap-2.5">
+            {/* Play/Pause Button */}
+            <button 
+              onClick={handlePlayPause}
+              className="w-7 h-7 rounded-lg bg-black/50 border border-white/10 flex items-center justify-center text-white hover:text-aeirmist-cyan transition-all active:scale-90"
+              title={isPlaying ? 'Pause' : 'Play'}
+            >
+              {isPlaying ? <Pause size={13} className="fill-current" /> : <Play size={13} className="fill-current ml-0.5" />}
+            </button>
+
+            {/* Time Indicator */}
+            <span className="text-[10px] font-mono text-white/80 font-medium">
+              {formatTime(currentTime)} / {formatTime(duration)}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {/* Floating Speaker Mute Button */}
             <button 
               onClick={handleMuteToggle}
-              className="w-8 h-8 rounded-lg bg-black/60 border border-white/10 flex items-center justify-center text-white hover:text-aeirmist-cyan transition-all"
+              className="w-7 h-7 rounded-lg bg-black/50 border border-white/10 flex items-center justify-center text-white hover:text-aeirmist-cyan transition-all active:scale-90"
+              title={isMuted ? 'Unmute' : 'Mute'}
             >
-              {isMuted ? <VolumeX size={14} /> : <Volume2 size={14} />}
+              {isMuted ? <VolumeX size={13} /> : <Volume2 size={13} className="text-aeirmist-cyan" />}
             </button>
 
             {/* Fullscreen Button */}
             <button 
               onClick={handleFullscreen}
-              className="w-8 h-8 rounded-lg bg-black/60 border border-white/10 flex items-center justify-center text-white hover:text-aeirmist-cyan transition-all"
+              className="w-7 h-7 rounded-lg bg-black/50 border border-white/10 flex items-center justify-center text-white hover:text-aeirmist-cyan transition-all active:scale-90"
+              title="Fullscreen"
             >
-              <Maximize size={14} />
+              <Maximize size={13} />
             </button>
           </div>
         </div>
       </div>
-
-      {/* Large visual play indicator when paused and not hovered */}
-      {!isPlaying && (
-        <div className="absolute inset-0 flex items-center justify-center bg-black/20 backdrop-blur-[1px] pointer-events-none">
-          <div className="w-14 h-14 rounded-full bg-black/50 border border-white/10 flex items-center justify-center text-white group-hover/video:scale-110 transition-transform duration-300 shadow-[0_0_15px_rgba(0,0,0,0.5)]">
-            <Play size={20} className="fill-current ml-1 text-aeirmist-cyan" />
-          </div>
-        </div>
-      )}
     </div>
   );
 };

@@ -1707,11 +1707,8 @@ export const PremiumPostCard = React.memo<PostCardProps>(({ post, onUserClick, o
             <div
               className="w-full border-y border-white/5 bg-black/20 cursor-pointer relative"
               onClickCapture={(e) => {
-                if ((post as any).type === 'video') {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  onNavigate?.('videos');
-                } else if (!showComments) {
+                // Allow video controls / clicks to play inline without forced redirection
+                if (!showComments && (post as any).type !== 'video' && collageItems?.[0]?.type !== 'video') {
                   onPostClick?.(post.id);
                 }
               }}
@@ -1719,7 +1716,13 @@ export const PremiumPostCard = React.memo<PostCardProps>(({ post, onUserClick, o
               <Collage 
                 items={collageItems} 
                 fitMode={(post as any).fitMode || 'cover'} 
-                onItemClick={() => onPostClick?.(post.id)}
+                caption={post.content || (post as any).caption || (post as any).title}
+                poster={(post as any).thumbnail || (post as any).thumbnailURL || (post as any).coverImage}
+                onItemClick={() => {
+                  if ((post as any).type !== 'video' && collageItems?.[0]?.type !== 'video') {
+                    onPostClick?.(post.id);
+                  }
+                }}
                 renderLightboxSidebar={renderLightboxSidebar}
               />
 

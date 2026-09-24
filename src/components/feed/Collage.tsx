@@ -13,11 +13,20 @@ interface CollageProps {
   items: MediaItem[];
   fitMode?: 'contain' | 'cover';
   aspectRatioClassName?: string;
+  caption?: string;
+  poster?: string;
   onItemClick?: (idx: number) => void;
   renderLightboxSidebar?: () => React.ReactNode;
 }
 
-export const Collage: React.FC<CollageProps> = ({ items, fitMode = 'cover', onItemClick, renderLightboxSidebar }) => {
+export const Collage: React.FC<CollageProps> = ({ 
+  items, 
+  fitMode = 'cover', 
+  caption,
+  poster,
+  onItemClick, 
+  renderLightboxSidebar 
+}) => {
   const [modalOpen, setModalOpen] = useState(false);
   const [activeIdx, setActiveIdx] = useState(0);
   const [isFirstImageLandscape, setIsFirstImageLandscape] = useState<boolean | null>(true);
@@ -92,7 +101,13 @@ export const Collage: React.FC<CollageProps> = ({ items, fitMode = 'cover', onIt
         className="relative w-full h-full overflow-hidden hover:opacity-95 transition-opacity cursor-pointer group bg-black/30"
       >
         {isVideo ? (
-          <VideoPlayer src={item.url} className={customClass} useCache />
+          <VideoPlayer 
+            src={item.url} 
+            className={customClass} 
+            poster={poster}
+            caption={caption}
+            useCache 
+          />
         ) : (
           <SafeImage 
             src={item.url} 
@@ -132,7 +147,13 @@ export const Collage: React.FC<CollageProps> = ({ items, fitMode = 'cover', onIt
               />
               <div className="relative z-10 w-full h-full flex items-center justify-center">
                 {items[0].type === 'video' ? (
-                  <VideoPlayer src={items[0].url} className="w-full h-full object-contain" useCache />
+                  <VideoPlayer 
+                    src={items[0].url} 
+                    className="w-full h-full object-contain" 
+                    poster={poster}
+                    caption={caption}
+                    useCache 
+                  />
                 ) : (
                   <SafeImage 
                     src={items[0].url} 
@@ -331,6 +352,8 @@ export const Collage: React.FC<CollageProps> = ({ items, fitMode = 'cover', onIt
                       <VideoPlayer 
                         src={items[activeIdx].url} 
                         className="max-w-full max-h-full object-contain shadow-2xl rounded-lg" 
+                        poster={poster}
+                        caption={caption}
                         useCache
                       />
                     ) : (

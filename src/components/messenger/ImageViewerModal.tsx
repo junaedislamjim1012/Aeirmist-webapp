@@ -1,15 +1,58 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, ZoomIn, ZoomOut, Download, RefreshCw, Heart, MessageCircle, Repeat } from 'lucide-react';
+import { X, ZoomIn, ZoomOut, Download, RefreshCw, Heart, MessageCircle, Repeat, ChevronLeft, ChevronRight } from 'lucide-react';
 import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
 
 interface ImageViewerModalProps {
   isOpen: boolean;
   onClose: () => void;
   imageUrl: string;
+  images?: string[];
+  initialIndex?: number;
 }
 
-export const ImageViewerModal: React.FC<ImageViewerModalProps> = ({ isOpen, onClose, imageUrl }) => {
+export const ImageViewerModal: React.FC<ImageViewerModalProps> = ({ 
+  isOpen, 
+  onClose, 
+  imageUrl,
+  images,
+  initialIndex = 0
+}) => {
+  const activeList = images && images.length > 0 ? images : [imageUrl];
+  const [currentIndex, setCurrentIndex] = useState(initialIndex);
+
+  useEffect(() => {
+    if (images && images.length > 0) {
+      const idx = images.indexOf(imageUrl);
+      setCurrentIndex(idx >= 0 ? idx : initialIndex);
+    } else {
+      setCurrentIndex(0);
+    }
+  }, [imageUrl, images, initialIndex]);
+
+  const currentImage = activeList[currentIndex] || imageUrl;
+
+  const handlePrev = (e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    setCurrentIndex(prev => (prev > 0 ? prev - 1 : activeList.length - 1));
+  };
+
+  const handleNext = (e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    setCurrentIndex(prev => (prev < activeList.length - 1 ? prev + 1 : 0));
+  };
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+      if (e.key === 'ArrowLeft' && activeList.length > 1) handlePrev();
+      if (e.key === 'ArrowRight' && activeList.length > 1) handleNext();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, activeList.length]);
+
   return (
     <AnimatePresence>
       {isOpen && (
@@ -17,7 +60,7 @@ export const ImageViewerModal: React.FC<ImageViewerModalProps> = ({ isOpen, onCl
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 z-[200] flex items-center justify-center bg-black/95 backdrop-blur-xl"
+          className="fixed inset-0 z-[200] flex items-center justify-center bg-black/95 backdrop-blur-xl select-none"
           onClick={onClose}
         >
           <TransformWrapper
@@ -63,7 +106,7 @@ export const ImageViewerModal: React.FC<ImageViewerModalProps> = ({ isOpen, onCl
                     <RefreshCw size={18} />
                   </button>
                   <a 
-                    href={imageUrl} 
+                    href={currentImage} 
                     download 
                     target="_blank" 
                     rel="noreferrer"
@@ -77,14 +120,38 @@ export const ImageViewerModal: React.FC<ImageViewerModalProps> = ({ isOpen, onCl
                   </button>
                 </div>
 
+                {/* Left/Right Gallery Nav for albums */}
+                {activeList.length > 1 && (
+                  <>
+                    <button
+                      onClick={handlePrev}
+                      className="absolute left-4 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full bg-black/60 border border-white/10 text-white flex items-center justify-center hover:bg-white/20 transition-all z-50 shadow-2xl active:scale-95"
+                      title="Previous (Left Arrow)"
+                    >
+                      <ChevronLeft size={22} />
+                    </button>
+                    <button
+                      onClick={handleNext}
+                      className="absolute right-4 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full bg-black/60 border border-white/10 text-white flex items-center justify-center hover:bg-white/20 transition-all z-50 shadow-2xl active:scale-95"
+                      title="Next (Right Arrow)"
+                    >
+                      <ChevronRight size={22} />
+                    </button>
+                    <div className="absolute top-6 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-black/60 border border-white/10 text-white/80 text-xs font-mono z-50">
+                      {currentIndex + 1} / {activeList.length}
+                    </div>
+                  </>
+                )}
+
                 {/* Viewer Area */}
                 <div className="relative w-full h-full flex items-center justify-center overflow-hidden" onClick={e => e.stopPropagation()}>
                   <TransformComponent wrapperClass="w-full h-full !flex !items-center !justify-center" contentClass="!flex !items-center !justify-center min-w-full min-h-full">
                     <motion.img
-                      initial={{ scale: 0.9, opacity: 0 }}
+                      key={currentImage}
+                      initial={{ scale: 0.95, opacity: 0 }}
                       animate={{ scale: 1, opacity: 1 }}
-                      exit={{ scale: 0.9, opacity: 0 }}
-                      src={imageUrl}
+                      exit={{ scale: 0.95, opacity: 0 }}
+                      src={currentImage}
                       alt="Expanded format"
                       className="max-w-full max-h-[100dvh] object-contain select-none pointer-events-auto rounded-md md:rounded-xl shadow-2xl"
                       draggable={false}

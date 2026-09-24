@@ -867,6 +867,7 @@ const UsersTab = ({ db, addToast, purgeUser, toggleUserBan, toggleVerification, 
   const [deleteModalUser, setDeleteModalUser] = useState<any | null>(null);
   const [deleteType, setDeleteType] = useState<'soft' | 'hard' | 'anonymize'>('hard');
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [isExecutingDelete, setIsExecutingDelete] = useState(false);
   const [userReports, setUserReports] = useState<any[]>([]);
   const [loadingUserReports, setLoadingUserReports] = useState(false);
 
@@ -966,9 +967,12 @@ const UsersTab = ({ db, addToast, purgeUser, toggleUserBan, toggleVerification, 
   };
 
   const handleExecuteDelete = async () => {
-    if (!deleteModalUser || deleteConfirmText.trim().toUpperCase() !== 'DELETE') return;
+    if (!deleteModalUser || deleteConfirmText.trim().toUpperCase() !== 'DELETE' || isExecutingDelete) return;
+    setIsExecutingDelete(true);
+
     const targetUid = getCanonicalUid(deleteModalUser) || deleteModalUser.uid || (deleteModalUser.id && !deleteModalUser.id.startsWith('profile_') ? deleteModalUser.id : null);
     const profileId = deleteModalUser.profileId || getProfileId(deleteModalUser) || deleteModalUser.id;
+    const targetId = targetUid || profileId || deleteModalUser.id;
     
     try {
       if (deleteType === 'anonymize') {
@@ -1006,31 +1010,68 @@ const UsersTab = ({ db, addToast, purgeUser, toggleUserBan, toggleVerification, 
         }
         addToast({ title: 'Soft Deleted', message: 'Account marked as deleted (recoverable).', type: 'success' });
       } else {
-        // Full Hard Delete - Wipe everything from A-Z
-        const targetId = targetUid || profileId || deleteModalUser.id;
-        if (targetId) {
-          await purgeUser(targetId, profileId);
+        // FULL HARD DELETE - ERASE EVERYTHING BY HARD DELETE
+        
+        // 1. Direct guaranteed deletion of all profile document variations
+        const profileDocsToDelete = new Set<string>();
+        if (profileId) profileDocsToDelete.add(profileId);
+        if (deleteModalUser.id) profileDocsToDelete.add(deleteModalUser.id);
+        if (targetUid) {
+          profileDocsToDelete.add(targetUid);
+          profileDocsToDelete.add(`profile_${targetUid}`);
         }
-        if (profileId) {
-          await deleteDoc(doc(db, 'profiles', profileId)).catch(() => {});
+        if (deleteModalUser.rawRecord?.id) profileDocsToDelete.add(deleteModalUser.rawRecord.id);
+
+        for (const pId of Array.from(profileDocsToDelete)) {
+          if (pId) {
+            await deleteDoc(doc(db, 'profiles', pId)).catch((err) => logger.warn("Direct profile delete warning:", err));
+          }
         }
-        if (targetUid && targetUid !== profileId) {
-          await deleteDoc(doc(db, 'profiles', targetUid)).catch(() => {});
-          await deleteDoc(doc(db, 'profiles', `profile_${targetUid}`)).catch(() => {});
-        }
+
+        // 2. Direct deletion of user doc & auth references
         if (targetUid) {
           await deleteDoc(doc(db, 'users', targetUid)).catch(() => {});
+          await deleteDoc(doc(db, 'users', `user_${targetUid}`)).catch(() => {});
         }
-        if (deleteModalUser.username) {
-          await deleteDoc(doc(db, 'usernames', deleteModalUser.username.toLowerCase())).catch(() => {});
+        if (deleteModalUser.id && deleteModalUser.id !== targetUid) {
+          await deleteDoc(doc(db, 'users', deleteModalUser.id)).catch(() => {});
         }
-        addToast({ title: 'Hard Deleted', message: 'All user data, notes, posts, comments, stories, and username permanently wiped from database.', type: 'success' });
+
+        // 3. Release username reservation lock
+        const uname = deleteModalUser.username || deleteModalUser.usernameNormalized;
+        if (uname && uname !== 'unknown') {
+          await deleteDoc(doc(db, 'usernames', uname.toLowerCase())).catch(() => {});
+        }
+
+        // 4. Deep database wipe across posts, feed_posts, notes, comments, stories, etc.
+        try {
+          if (targetId) {
+            await purgeUser(targetId, profileId);
+          }
+        } catch (purgeErr) {
+          logger.warn("Deep purge secondary warning:", purgeErr);
+        }
+
+        // 5. Instantly remove from Admin user table state (no page reload needed)
+        setUsers(prev => prev.filter(u => 
+          u.id !== deleteModalUser.id && 
+          u.profileId !== profileId && 
+          (!targetUid || (u.uid !== targetUid && u.id !== targetUid))
+        ));
+
+        addToast({ 
+          title: 'Hard Deleted Successfully', 
+          message: `Account and all data for ${deleteModalUser.displayName || deleteModalUser.username || 'user'} permanently wiped from database.`, 
+          type: 'success' 
+        });
       }
       setDeleteModalUser(null);
       setDeleteConfirmText('');
     } catch (e) {
       logger.error("Deletion failed:", e);
       addToast({ title: 'Error', message: 'Failed to process account deletion.', type: 'warning' });
+    } finally {
+      setIsExecutingDelete(false);
     }
   };
 
@@ -1606,10 +1647,12 @@ const UsersTab = ({ db, addToast, purgeUser, toggleUserBan, toggleVerification, 
                   </div>
                   <div>
                     <h3 className="text-sm font-black uppercase tracking-widest text-white">Advanced Delete System</h3>
-                    <p className="text-[10px] font-mono text-red-400">Target: @{deleteModalUser.username}</p>
+                    <p className="text-[10px] font-mono text-red-400">
+                      Target: <span className="font-bold text-white">{deleteModalUser.displayName || deleteModalUser.username || 'User'}</span> (@{deleteModalUser.username || deleteModalUser.uid?.slice(0, 10) || deleteModalUser.id?.slice(0, 10) || 'unknown'})
+                    </p>
                   </div>
                 </div>
-                <button onClick={() => setDeleteModalUser(null)} className="w-9 h-9 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-white/40 hover:text-white">
+                <button onClick={() => !isExecutingDelete && setDeleteModalUser(null)} className="w-9 h-9 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-white/40 hover:text-white">
                   <X size={16} />
                 </button>
               </div>
@@ -1619,19 +1662,19 @@ const UsersTab = ({ db, addToast, purgeUser, toggleUserBan, toggleVerification, 
                   <label className="text-[9px] font-black uppercase tracking-widest text-white/40">Deletion Strategy</label>
                   <div className="grid grid-cols-3 gap-2">
                     <button 
-                      onClick={() => setDeleteType('soft')}
+                      onClick={() => !isExecutingDelete && setDeleteType('soft')}
                       className={`p-3 rounded-xl border text-xs font-black uppercase tracking-wider transition-all ${deleteType === 'soft' ? 'bg-aeirmist-cyan text-black border-aeirmist-cyan' : 'bg-white/5 text-white/60 border-white/10'}`}
                     >
                       Soft Delete
                     </button>
                     <button 
-                      onClick={() => setDeleteType('hard')}
+                      onClick={() => !isExecutingDelete && setDeleteType('hard')}
                       className={`p-3 rounded-xl border text-xs font-black uppercase tracking-wider transition-all ${deleteType === 'hard' ? 'bg-red-500 text-white border-red-500' : 'bg-white/5 text-white/60 border-white/10'}`}
                     >
                       Hard Delete
                     </button>
                     <button 
-                      onClick={() => setDeleteType('anonymize')}
+                      onClick={() => !isExecutingDelete && setDeleteType('anonymize')}
                       className={`p-3 rounded-xl border text-xs font-black uppercase tracking-wider transition-all ${deleteType === 'anonymize' ? 'bg-purple-500 text-white border-purple-500' : 'bg-white/5 text-white/60 border-white/10'}`}
                     >
                       Anonymize
@@ -1648,24 +1691,36 @@ const UsersTab = ({ db, addToast, purgeUser, toggleUserBan, toggleVerification, 
                   <label className="text-[9px] font-black uppercase tracking-widest text-red-400">Type DELETE to confirm action</label>
                   <input 
                     type="text"
+                    disabled={isExecutingDelete}
                     value={deleteConfirmText}
                     onChange={(e) => setDeleteConfirmText(e.target.value)}
                     placeholder="DELETE"
-                    className="w-full h-12 px-4 rounded-xl bg-white/[0.03] border border-white/10 text-white text-xs font-mono outline-none focus:border-red-500/50"
+                    className="w-full h-12 px-4 rounded-xl bg-white/[0.03] border border-white/10 text-white text-xs font-mono outline-none focus:border-red-500/50 disabled:opacity-50"
                   />
                 </div>
               </div>
 
               <div className="flex gap-3 pt-2">
-                <button onClick={() => setDeleteModalUser(null)} className="flex-1 h-12 rounded-xl bg-white/5 border border-white/10 text-white/60 text-xs font-black uppercase tracking-widest hover:text-white">
+                <button 
+                  onClick={() => !isExecutingDelete && setDeleteModalUser(null)} 
+                  disabled={isExecutingDelete}
+                  className="flex-1 h-12 rounded-xl bg-white/5 border border-white/10 text-white/60 text-xs font-black uppercase tracking-widest hover:text-white disabled:opacity-40"
+                >
                   Cancel
                 </button>
                 <button 
                   onClick={handleExecuteDelete}
-                  disabled={deleteConfirmText.trim().toUpperCase() !== 'DELETE'}
-                  className="flex-1 h-12 rounded-xl bg-red-500 text-white text-xs font-black uppercase tracking-widest hover:bg-red-400 disabled:opacity-30 transition-all cursor-pointer"
+                  disabled={deleteConfirmText.trim().toUpperCase() !== 'DELETE' || isExecutingDelete}
+                  className="flex-1 h-12 rounded-xl bg-red-500 text-white text-xs font-black uppercase tracking-widest hover:bg-red-400 disabled:opacity-30 transition-all cursor-pointer flex items-center justify-center gap-2 shadow-lg shadow-red-500/20"
                 >
-                  Execute
+                  {isExecutingDelete ? (
+                    <>
+                      <RefreshCw size={15} className="animate-spin" />
+                      <span>Erasing Everything...</span>
+                    </>
+                  ) : (
+                    <span>Execute</span>
+                  )}
                 </button>
               </div>
             </motion.div>

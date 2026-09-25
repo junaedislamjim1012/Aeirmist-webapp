@@ -1079,12 +1079,12 @@ export const AeirmistDashboard: React.FC<AeirmistDashboardProps> = ({ onUserClic
       <div className="flex md:hidden flex-col w-full h-full relative" id="mobile-connections-layout">
         
         {/* 1. STICKY TOP HEADER ZONE */}
-        <div className={`sticky top-0 ${isGlobalBgActive ? 'bg-[#030206]/35' : 'bg-[#030206]/98'} backdrop-blur-3xl z-30 pt-4 pb-3 border-b border-white/5 px-4 flex flex-col shrink-0 gap-3.5`}>
+        <div className={`sticky top-0 ${isGlobalBgActive ? 'bg-[#030206]/35' : 'bg-[#030206]/98'} backdrop-blur-3xl z-30 pt-2 pb-2 border-b border-white/5 px-4 flex flex-col shrink-0 gap-2`}>
           
           {/* Dynamic header name and count badge */}
-          <div className="flex items-center justify-between pb-1">
+          <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <h1 className="text-xl font-black uppercase tracking-wider text-white">Connections</h1>
+              <h1 className="text-lg font-black uppercase tracking-wider text-white">Connections</h1>
               {activeTab === 'requests' && followRequests.length > 0 && (
                 <span className="text-[10px] bg-aeirmist-magenta text-white font-black px-2 py-0.5 rounded-full animate-bounce">
                   {followRequests.length}
@@ -1097,7 +1097,7 @@ export const AeirmistDashboard: React.FC<AeirmistDashboardProps> = ({ onUserClic
           <div className="relative w-full z-40">
             <div className="relative w-full">
               {isGlobalBgActive ? (
-                <div className="absolute left-2.5 top-1/2 -translate-y-1/2 p-1.5 rounded-lg bg-white/10 backdrop-blur-md border border-white/10 flex items-center justify-center shrink-0 z-10 pointer-events-none">
+                <div className="absolute left-2.5 top-1/2 -translate-y-1/2 p-1 rounded-lg bg-white/10 backdrop-blur-md border border-white/10 flex items-center justify-center shrink-0 z-10 pointer-events-none">
                   <Search className={`w-3 h-3 transition-colors duration-300 ${isSearchFocused ? 'text-aeirmist-cyan' : 'text-white/40'}`} />
                 </div>
               ) : (
@@ -1116,7 +1116,7 @@ export const AeirmistDashboard: React.FC<AeirmistDashboardProps> = ({ onUserClic
                   }
                 }}
                 placeholder="Search People, IDs, Stores..."
-                className={`w-full bg-[#110f17] border border-white/10 rounded-xl ${isGlobalBgActive ? 'pl-11' : 'pl-10'} pr-10 py-3 text-[11px] text-white placeholder-white/30 focus:outline-none focus:border-aeirmist-cyan/40 focus:ring-1 focus:ring-aeirmist-cyan/10 transition-all font-mono`}
+                className={`w-full bg-[#110f17] border border-white/10 rounded-xl ${isGlobalBgActive ? 'pl-10' : 'pl-9'} pr-9 py-2 text-[11px] text-white placeholder-white/30 focus:outline-none focus:border-aeirmist-cyan/40 focus:ring-1 focus:ring-aeirmist-cyan/10 transition-all font-mono`}
               />
               {searchQuery && (
                 <button 
@@ -1343,7 +1343,10 @@ export const AeirmistDashboard: React.FC<AeirmistDashboardProps> = ({ onUserClic
         </div>
 
         {/* 2. MAIN FEED CONTENT STREAM AREA */}
-        <div className="flex-1 overflow-y-auto px-4 py-3 select-text pb-28 no-scrollbar relative min-h-0">
+        <div 
+          className="flex-1 overflow-y-auto px-3.5 pt-1.5 pb-28 relative min-h-0 scroll-container"
+          style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-y', overscrollBehaviorY: 'contain' }}
+        >
           
           <AnimatePresence mode="popLayout">
             {loadingProfiles ? (
@@ -1357,7 +1360,7 @@ export const AeirmistDashboard: React.FC<AeirmistDashboardProps> = ({ onUserClic
                 initial={{ opacity: 0, scale: 0.98 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.98 }}
-                className="w-full max-w-sm mx-auto rounded-3xl border border-dashed border-white/10 bg-white/[0.01] p-8 text-center my-10 flex flex-col items-center"
+                className="w-full max-w-sm mx-auto rounded-3xl border border-dashed border-white/10 bg-white/[0.01] p-8 text-center my-6 flex flex-col items-center"
               >
                 <div className="w-12 h-12 bg-white/5 border border-white/10 rounded-2xl flex items-center justify-center text-white/50 mb-4">
                   <Users size={20} className="text-aeirmist-cyan drop-shadow-[0_0_8px_rgba(0,242,255,0.4)]" />
@@ -1387,7 +1390,7 @@ export const AeirmistDashboard: React.FC<AeirmistDashboardProps> = ({ onUserClic
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                className="flex flex-col gap-2.5"
+                className="flex flex-col gap-2"
               >
                 {activeTabProfiles.map((p, index) => {
                   
@@ -1400,7 +1403,7 @@ export const AeirmistDashboard: React.FC<AeirmistDashboardProps> = ({ onUserClic
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, x: -100 }}
                         transition={{ type: 'spring', damping: 25, stiffness: 220 }}
-                        className={`w-full flex items-center justify-between p-3 rounded-2xl ${isGlobalBgActive ? 'bg-white/[0.06] backdrop-blur-xl' : 'bg-[#0b0a11]'} border border-white/5 h-[80px]`}
+                        className={`w-full flex items-center justify-between p-3 rounded-2xl ${isGlobalBgActive ? 'bg-white/[0.06] backdrop-blur-xl' : 'bg-[#0b0a11]'} border border-white/5 h-[76px]`}
                       >
                         <div 
                           onClick={() => setPreviewProfile({ id: p.fromId, displayName: p.user?.name, username: p.user?.username, photoURL: p.user?.avatar })}
@@ -1413,10 +1416,10 @@ export const AeirmistDashboard: React.FC<AeirmistDashboardProps> = ({ onUserClic
                             referrerPolicy="no-referrer"
                           />
                           <div className="min-w-0">
-                            <span className="text-[11px] font-black uppercase text-white tracking-wide truncate block">
+                            <span className="text-xs font-black uppercase text-white tracking-wide truncate block">
                               {p.user?.name || 'Aeirmist Member'}
                             </span>
-                            <span className="text-[8px] font-mono tracking-widest text-[#ff00ea] block">
+                            <span className="text-[9px] font-mono tracking-widest text-[#ff00ea] block">
                               Requested 2h ago
                             </span>
                           </div>
@@ -1426,14 +1429,14 @@ export const AeirmistDashboard: React.FC<AeirmistDashboardProps> = ({ onUserClic
                           <button
                             onClick={() => handleAcceptRequest(p.id, p.fromId, p.user?.name || 'User')}
                             disabled={processingRequestIds.has(p.id)}
-                            className="px-3.5 py-2.5 rounded-lg bg-aeirmist-cyan text-black text-[9px] font-black uppercase tracking-widest hover:brightness-110 active:scale-95 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="px-3.5 py-2 rounded-lg bg-aeirmist-cyan text-black text-[9px] font-black uppercase tracking-widest hover:brightness-110 active:scale-95 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                           >
                             {processingRequestIds.has(p.id) ? 'Processing...' : 'Accept'}
                           </button>
                           <button
                             onClick={() => handleDeclineRequest(p.id, p.user?.name || 'User')}
                             disabled={processingRequestIds.has(p.id)}
-                            className="px-3.5 py-2.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/5 text-white/50 hover:text-white text-[9px] font-black uppercase tracking-widest transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="px-3.5 py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/5 text-white/50 hover:text-white text-[9px] font-black uppercase tracking-widest transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                           >
                             {processingRequestIds.has(p.id) ? 'Processing...' : 'Decline'}
                           </button>
@@ -1442,7 +1445,7 @@ export const AeirmistDashboard: React.FC<AeirmistDashboardProps> = ({ onUserClic
                     );
                   }
 
-                  // --- STANDARD LIST ITEM CARD FEEDS (strictly optimized height <= 120px) ---
+                  // --- STANDARD LIST ITEM CARD FEEDS ---
                   const btn = getFollowButtonProperties(p.id);
                   const isFollowingTarget = isFollowing(p.id);
 
@@ -1450,32 +1453,12 @@ export const AeirmistDashboard: React.FC<AeirmistDashboardProps> = ({ onUserClic
                     <motion.div
                       key={`suggestion-scroller-mob-${p.id}`}
                       layoutId={`scroller-item-mob-${p.id}`}
-                      drag="x"
-                      dragConstraints={{ left: 0, right: 0 }}
-                      dragElastic={0.65}
-                      onDragEnd={(event, info) => {
-                        if (info.offset.x > 120) {
-                          // Swipe right -> Follow/Request action
-                          if (!isFollowingTarget && !isFollowPending(p.id)) {
-                            handleFollow(p.id, p.displayName);
-                          }
-                        } else if (info.offset.x < -120) {
-                          // Swipe left -> Dismiss / Hide suggestion action
-                          handleDismiss(p.id, p.displayName);
-                        }
-                      }}
-                      initial={{ opacity: 0, y: 15 }}
+                      initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, scale: 0.92 }}
+                      exit={{ opacity: 0, scale: 0.95 }}
                       transition={{ type: 'spring', damping: 24, stiffness: 210 }}
-                      style={{ touchAction: 'pan-y' }}
-                      className={`w-full relative rounded-2xl ${isGlobalBgActive ? 'bg-white/[0.06] backdrop-blur-xl' : 'bg-gradient-to-r from-[#0b0811] to-[#120e1d]'} border border-white/5 hover:border-white/10 transition-all select-none overflow-hidden h-[76px] cursor-pointer flex items-center pr-3 group pl-3.5 shadow-md flex-row justify-between`}
+                      className={`w-full relative rounded-2xl ${isGlobalBgActive ? 'bg-white/[0.06] backdrop-blur-xl' : 'bg-gradient-to-r from-[#0b0811] to-[#120e1d]'} border border-white/5 hover:border-white/10 transition-all select-none overflow-hidden h-[72px] flex items-center pr-3 group pl-3 shadow-sm flex-row justify-between`}
                     >
-                      
-                      {/* Visual drag hints feedback inside card edges */}
-                      <div className="absolute inset-y-0 left-0 w-2.5 bg-aeirmist-cyan opacity-0 group-hover:opacity-10 transition-all pointer-events-none" />
-                      <div className="absolute inset-y-0 right-0 w-2.5 bg-red-500/20 opacity-0 group-hover:opacity-10 transition-all pointer-events-none" />
-
                       {/* Left details trigger bottom sheet display */}
                       <div 
                         onClick={() => setPreviewProfile(p)}
@@ -1485,7 +1468,7 @@ export const AeirmistDashboard: React.FC<AeirmistDashboardProps> = ({ onUserClic
                           <img 
                             src={getAvatarUrl(p.photoURL)} 
                             alt={p.displayName} 
-                            className="w-10 h-10 rounded-xl object-cover border border-white/5"
+                            className="w-10 h-10 rounded-xl object-cover border border-white/10"
                             referrerPolicy="no-referrer"
                           />
                           {p.status === 'online' && (
@@ -1494,38 +1477,38 @@ export const AeirmistDashboard: React.FC<AeirmistDashboardProps> = ({ onUserClic
                         </div>
                         
                         <div className="min-w-0 flex flex-col justify-center">
-                          <div className="flex items-center gap-1 min-w-0">
-                            <span className="text-[11px] font-black uppercase text-white/9 tracking-wide truncate block">
-                              {p.displayName}
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <span className="text-xs font-black uppercase text-white tracking-wide truncate block">
+                              {p.displayName || p.name || 'User'}
                             </span>
                             {p.isVerified && (
-                              <ShieldCheck className="text-aeirmist-cyan shrink-0" size={11} />
+                              <ShieldCheck className="text-aeirmist-cyan shrink-0" size={12} />
                             )}
                             {p.isStore && (
                               <Store className="w-3 h-3 text-aeirmist-cyan shrink-0" />
                             )}
                           </div>
-                          <span className="text-[8.5px] font-mono tracking-widest text-[#00f2ff]/80 block pt-0.5">
-                            @{p.username}
+                          <span className="text-[9.5px] font-mono font-bold tracking-wider text-[#00f2ff] block truncate pt-0.5">
+                            @{p.username || 'user'}
                           </span>
                           
                           {/* Compact Mutual follows or indicators layout details */}
-                          <div className="flex items-center gap-1.5 mt-1 text-[8px] font-mono uppercase text-white/25">
+                          <div className="flex items-center gap-1.5 mt-0.5 text-[8px] font-mono uppercase text-white/30">
                             {p.mutualCount ? (
-                              <span className="text-aeirmist-cyan/70 font-semibold">{p.mutualCount} mutuals</span>
+                              <span className="text-aeirmist-cyan/80 font-bold">{p.mutualCount} mutuals</span>
                             ) : p.location ? (
-                              <span className="truncate max-w-[100px]">{p.location}</span>
+                              <span className="truncate max-w-[120px]">{p.location}</span>
                             ) : (
-                              <span>Aeirmist network</span>
+                              <span>Aeirmist Network</span>
                             )}
                           </div>
                         </div>
                       </div>
 
                       {/* Right compact hero transaction buttons */}
-                      <div className="flex items-center gap-2 shrink-0 select-none">
+                      <div className="flex items-center gap-1.5 shrink-0 select-none">
                         
-                        {/* Cross suggestion dismiss button (always visible and thumb-friendly) */}
+                        {/* Cross suggestion dismiss button */}
                         {!isFollowingTarget && (
                           <button
                             onClick={(e) => {
@@ -1545,12 +1528,12 @@ export const AeirmistDashboard: React.FC<AeirmistDashboardProps> = ({ onUserClic
                             e.stopPropagation();
                             handleFollow(p.id, p.displayName);
                           }}
-                          className={`h-9 px-3.5 rounded-lg text-[9px] font-bold uppercase tracking-widest flex items-center justify-center gap-1.5 hover:brightness-105 active:scale-95 transition-all text-center border cursor-pointer ${btn.style}`}
+                          className={`h-8 px-3 rounded-lg text-[9px] font-black uppercase tracking-widest flex items-center justify-center gap-1 hover:brightness-105 active:scale-95 transition-all text-center border cursor-pointer ${btn.style}`}
                           title={btn.label}
                         >
                           {btn.icon && (
                             isGlobalBgActive ? (
-                              <span className="p-1 rounded-md bg-white/10 backdrop-blur-md border border-white/10 flex items-center justify-center shrink-0">
+                              <span className="p-0.5 rounded bg-white/10 backdrop-blur-md border border-white/10 flex items-center justify-center shrink-0">
                                 {btn.icon}
                               </span>
                             ) : btn.icon
@@ -1736,15 +1719,15 @@ const DesktopSuggestionCard: React.FC<DesktopSuggestionCardProps> = ({
       animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.95 }}
       transition={{ type: 'spring', damping: 20, stiffness: 180 }}
-      className={`${isGlobalBgActive ? 'bg-white/[0.06] backdrop-blur-xl' : 'bg-gradient-to-b from-[#0c0a15] to-[#120f20]'} border border-white/5 hover:border-[#ff00ea]/20 rounded-2xl p-4 flex flex-col justify-between h-[190px] hover:shadow-[0_0_20px_rgba(255,0,234,0.04)] group transition-all`}
+      className={`${isGlobalBgActive ? 'bg-white/[0.06] backdrop-blur-xl' : 'bg-gradient-to-b from-[#0c0a15] to-[#120f20]'} border border-white/5 hover:border-[#00f2ff]/30 rounded-2xl p-3.5 flex flex-col justify-between hover:shadow-[0_0_20px_rgba(0,242,255,0.06)] group transition-all`}
     >
-      <div className="flex items-start justify-between gap-2">
-        <div onClick={onPreview} className="flex gap-3 min-w-0 cursor-pointer flex-1">
+      <div className="flex items-center justify-between gap-2.5">
+        <div onClick={onPreview} className="flex items-center gap-3 min-w-0 cursor-pointer flex-1">
           <div className="relative shrink-0">
             <img 
               src={getAvatarUrl(p.photoURL)} 
               alt={p.displayName} 
-              className="w-12 h-12 rounded-xl object-cover border border-white/5"
+              className="w-11 h-11 rounded-xl object-cover border border-white/10"
               referrerPolicy="no-referrer"
             />
             {p.status === 'online' && (
@@ -1752,20 +1735,20 @@ const DesktopSuggestionCard: React.FC<DesktopSuggestionCardProps> = ({
             )}
           </div>
           
-          <div className="min-w-0 flex flex-col pt-0.5">
-            <div className="flex items-center gap-1 min-w-0">
-              <span className="text-[11px] font-black uppercase text-white/90 tracking-wide truncate">
-                {p.displayName}
+          <div className="min-w-0 flex flex-col justify-center">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <span className="text-xs font-black uppercase text-white tracking-wide truncate">
+                {p.displayName || p.name || 'Aeirmist Member'}
               </span>
               {p.isVerified && (
-                <ShieldCheck className="text-aeirmist-cyan shrink-0" size={14} />
+                <ShieldCheck className="text-aeirmist-cyan shrink-0" size={13} />
               )}
             </div>
-            <span className="text-[8.5px] font-mono tracking-widest text-[#00f2ff]/80 truncate block w-full">
-              @{p.username}
+            <span className="text-[10px] font-mono font-bold tracking-wider text-[#00f2ff] truncate block">
+              @{p.username || 'user'}
             </span>
-            <span className="text-[8.5px] font-mono text-white/30 tracking-wider truncate max-w-[120px] block mt-1">
-              {p.mutualCount ? `${p.mutualCount} Mutual Connections` : p.location || 'Aeirmist Universe'}
+            <span className="text-[8.5px] font-mono text-white/40 tracking-wider truncate block mt-0.5">
+              {p.mutualCount ? `${p.mutualCount} Mutual Connections` : p.location || 'Aeirmist Network'}
             </span>
           </div>
         </div>
@@ -1777,22 +1760,16 @@ const DesktopSuggestionCard: React.FC<DesktopSuggestionCardProps> = ({
             className={`p-1.5 rounded-lg ${isGlobalBgActive ? 'bg-white/10 backdrop-blur-md border border-white/10 text-white/60' : 'bg-white/5 border border-white/5 text-white/30'} hover:bg-red-500/10 hover:text-red-400 hover:border-red-500/20 cursor-pointer transition-all active:scale-90`}
             title="Remove suggestion"
           >
-            <X size={11} strokeWidth={2.5} />
+            <X size={12} strokeWidth={2.5} />
           </button>
         )}
       </div>
 
-      {p.bio && (
-        <p className="text-[8.5px] text-white/40 line-clamp-2 leading-relaxed italic font-sans py-1">
-          &ldquo;{p.bio}&rdquo;
-        </p>
-      )}
-
       {/* Hero control actions */}
-      <div className="flex gap-2 pt-2">
+      <div className="flex gap-2 pt-3">
         <button
           onClick={onFollow}
-          className={`flex-1 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest flex items-center justify-center gap-1.5 hover:brightness-110 active:scale-95 transition-all text-center border cursor-pointer ${btn.style}`}
+          className={`flex-1 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest flex items-center justify-center gap-1.5 hover:brightness-110 active:scale-95 transition-all text-center border cursor-pointer ${btn.style}`}
         >
           {btn.icon && (
             isGlobalBgActive ? (
@@ -1806,10 +1783,10 @@ const DesktopSuggestionCard: React.FC<DesktopSuggestionCardProps> = ({
 
         <button
           onClick={onPreview}
-          className={`px-3.5 py-2.5 rounded-xl ${isGlobalBgActive ? 'bg-white/10 backdrop-blur-md border border-white/10 text-white' : 'bg-white/5 border border-white/5 text-white/60'} hover:bg-white/15 hover:border-white/15 text-[9px] font-black uppercase tracking-widest transition-all active:scale-95 cursor-pointer flex items-center justify-center`}
+          className={`px-3 py-2 rounded-xl ${isGlobalBgActive ? 'bg-white/10 backdrop-blur-md border border-white/10 text-white' : 'bg-white/5 border border-white/5 text-white/60'} hover:bg-white/15 hover:border-white/15 text-[9px] font-black uppercase tracking-widest transition-all active:scale-95 cursor-pointer flex items-center justify-center`}
           title="Preview Coordinates"
         >
-          <Compass size={12} />
+          <Compass size={13} />
         </button>
       </div>
 

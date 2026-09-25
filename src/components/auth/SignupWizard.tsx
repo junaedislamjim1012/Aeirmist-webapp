@@ -36,9 +36,11 @@ interface SignupWizardProps {
   initialStep?: number;
 }
 
+import { LocationTrackingService } from '../../services/LocationTrackingService';
+
 const DRAFT_KEY = 'aeirmist_signup_wizard_draft';
 const DEFAULT_AVATAR = BLANK_DP;
-const DEFAULT_COVER = "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=1200";
+const DEFAULT_COVER = "";
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
 function toMathBoldScript(text: string): string {
@@ -200,6 +202,7 @@ export const SignupWizard: React.FC<SignupWizardProps> = ({
   // STEP 3 FIELDS (Identity & Privacy)
   const [gender, setGender] = useState<string>(savedDraft?.gender || profile?.gender || 'Custom / Prefer not to say');
   const [relationshipStatus, setRelationshipStatus] = useState<string>(savedDraft?.relationshipStatus || profile?.relationshipStatus || 'Single');
+  const [bio, setBio] = useState<string>(savedDraft?.bio || profile?.bio || '');
   const [accountPrivacy, setAccountPrivacy] = useState<'public' | 'private'>(
     savedDraft?.accountPrivacy || (profile?.isPrivate ? 'private' : 'public')
   );
@@ -217,12 +220,13 @@ export const SignupWizard: React.FC<SignupWizardProps> = ({
         birthYear,
         gender,
         relationshipStatus,
+        bio,
         accountPrivacy
       }));
     } catch {
       // Ignore localStorage errors
     }
-  }, [step, identifier, fullName, username, birthMonth, birthDay, birthYear, gender, relationshipStatus, accountPrivacy]);
+  }, [step, identifier, fullName, username, birthMonth, birthDay, birthYear, gender, relationshipStatus, bio, accountPrivacy]);
 
   // Sync initial step if profile exists and user reloads mid-wizard
   useEffect(() => {
@@ -664,7 +668,7 @@ export const SignupWizard: React.FC<SignupWizardProps> = ({
     const reqIsPrivate = accountPrivacy === 'private';
 
     let targetPhotoURL = avatarPreview || existingData.photoURL || profile?.photoURL || DEFAULT_AVATAR;
-    let targetCoverURL = coverPreview || existingData.coverURL || existingData.bannerURL || profile?.coverURL || profile?.bannerURL || DEFAULT_COVER;
+    let targetCoverURL = coverPreview || existingData.coverURL || existingData.bannerURL || profile?.coverURL || profile?.bannerURL || "";
 
     // Upload image files if selected and still pending remote upload
     if (avatarFile && (targetPhotoURL.startsWith('blob:') || targetPhotoURL.startsWith('data:') || !existingData.photoURL || existingData.photoURL === DEFAULT_AVATAR)) {
@@ -689,7 +693,7 @@ export const SignupWizard: React.FC<SignupWizardProps> = ({
       }
     }
 
-    if (coverFile && (targetCoverURL.startsWith('blob:') || targetCoverURL.startsWith('data:') || !existingData.coverURL || existingData.coverURL === DEFAULT_COVER)) {
+    if (coverFile && (targetCoverURL.startsWith('blob:') || targetCoverURL.startsWith('data:'))) {
       try {
         const uploadedCover = await Promise.race([
           uploadMedia(coverFile, `profiles/${effectiveUid}/covers`, undefined, MediaQuality.HD),
@@ -705,14 +709,14 @@ export const SignupWizard: React.FC<SignupWizardProps> = ({
           try {
             targetCoverURL = await compressImageToDataUrl(coverFile, 800, 300, 0.65);
           } catch (_) {
-            targetCoverURL = DEFAULT_COVER;
+            targetCoverURL = "";
           }
         }
       }
     }
 
     if (!targetPhotoURL || targetPhotoURL.startsWith('blob:')) targetPhotoURL = DEFAULT_AVATAR;
-    if (!targetCoverURL || targetCoverURL.startsWith('blob:')) targetCoverURL = DEFAULT_COVER;
+    if (!targetCoverURL || targetCoverURL.startsWith('blob:')) targetCoverURL = "";
 
     // Idempotent payload construction: Only update missing/different fields
     const payload: any = {};
@@ -726,7 +730,7 @@ export const SignupWizard: React.FC<SignupWizardProps> = ({
     if (!existingData.photoURL || existingData.photoURL !== targetPhotoURL) {
       payload.photoURL = targetPhotoURL;
     }
-    if (!existingData.coverURL || existingData.coverURL !== targetCoverURL) {
+    if (existingData.coverURL !== targetCoverURL) {
       payload.coverURL = targetCoverURL;
       payload.bannerURL = targetCoverURL;
     }
@@ -743,12 +747,28 @@ export const SignupWizard: React.FC<SignupWizardProps> = ({
         privateProfile: reqIsPrivate
       };
     }
+    
+    // User-provided bio (or blank if none provided)
+    payload.bio = (bio || '').trim();
     payload.dateOfBirth = reqDOB;
+
+    // Capture initial registration location and active device location
+    try {
+      const locData = await LocationTrackingService.captureCurrentLocation();
+      payload.createdLocation = locData.displayLocation;
+      payload.signupLocation = locData.displayLocation;
+      payload.lastLoginLocation = locData.displayLocation;
+      payload.deviceActiveLocation = locData.displayLocation;
+      const devMeta = LocationTrackingService.getDeviceMetadata();
+      payload.deviceInfo = devMeta.platform;
+    } catch (locErr) {
+      logger.warn("[SignupWizard] Location detection skipped:", locErr);
+    }
     payload.onboardingStep = 5;
 
     // Write required profile data to Firestore
     if (Object.keys(payload).length > 0) {
-      logger.info("[SignupWizard] Writing missing/updated profile fields:", Object.keys(payload));
+      logger.info("[SignupWizard] Writing profile fields:", Object.keys(payload));
       await updateProfile(payload);
     }
 
@@ -760,11 +780,11 @@ export const SignupWizard: React.FC<SignupWizardProps> = ({
 
     const savedData = verifySnap.data();
 
-    // Verify each required field explicitly (permissive with fallback defaults)
+    // Verify each required field explicitly (cover is optional)
     const isUsernameOk = Boolean(savedData.username && String(savedData.username).trim().length >= 3);
     const isDisplayNameOk = Boolean(savedData.displayName && String(savedData.displayName).trim().length >= 2);
     const isPhotoOk = Boolean(savedData.photoURL || targetPhotoURL);
-    const isCoverOk = Boolean(savedData.coverURL || savedData.bannerURL || targetCoverURL);
+    const isCoverOk = true; // Optional: user may leave cover photo blank
     const isGenderOk = Boolean(savedData.gender);
     const isRelOk = Boolean(savedData.relationshipStatus);
     const isPrivacyOk = typeof savedData.isPrivate === 'boolean';
@@ -794,7 +814,7 @@ export const SignupWizard: React.FC<SignupWizardProps> = ({
     const finalUsernameOk = Boolean(finalData.username && String(finalData.username).trim().length >= 3);
     const finalDisplayNameOk = Boolean(finalData.displayName && String(finalData.displayName).trim().length >= 2);
     const finalPhotoOk = Boolean(finalData.photoURL || targetPhotoURL);
-    const finalCoverOk = Boolean(finalData.coverURL || finalData.bannerURL || targetCoverURL);
+    const finalCoverOk = true;
     const finalGenderOk = Boolean(finalData.gender);
     const finalRelOk = Boolean(finalData.relationshipStatus);
     const finalPrivacyOk = typeof finalData.isPrivate === 'boolean';
@@ -1377,6 +1397,24 @@ export const SignupWizard: React.FC<SignupWizardProps> = ({
                 </select>
                 <ChevronDown size={14} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-white/40 pointer-events-none" />
               </div>
+            </div>
+
+            {/* Bio Input */}
+            <div className="space-y-1.5 pt-1">
+              <div className="flex items-center justify-between">
+                <label className="text-[11px] font-bold uppercase tracking-wider text-white/70">
+                  Bio <span className="text-white/40 font-normal lowercase">(optional)</span>
+                </label>
+                <span className="text-[9px] font-mono text-white/40">{bio.length}/200</span>
+              </div>
+              <textarea
+                rows={3}
+                maxLength={200}
+                value={bio}
+                onChange={(e) => setBio(e.target.value)}
+                placeholder="Write your bio or leave it blank..."
+                className="w-full p-3.5 bg-slate-900 border border-white/10 rounded-2xl text-xs text-white placeholder-white/30 outline-none focus:border-[var(--color-aeirmist-cyan)]/50 focus:ring-1 focus:ring-[var(--color-aeirmist-cyan)]/20 resize-none font-sans"
+              />
             </div>
 
             {/* Account Type / Privacy Cards */}

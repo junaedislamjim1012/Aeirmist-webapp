@@ -63,7 +63,8 @@ import {
   Sun,
   Moon,
   Sparkles,
-  Save
+  Save,
+  MapPin
 } from 'lucide-react';
 import { useAeirmist } from '../../context/AeirmistContext';
 import { getCanonicalUid, getProfileId, normalizeAdminUser } from '@/src/utils/identityUtils';
@@ -1394,6 +1395,42 @@ const UsersTab = ({ db, addToast, purgeUser, toggleUserBan, toggleVerification, 
                       </span>
                       <span className="font-mono text-aeirmist-cyan font-bold block select-all">
                         {formatAccountCreationDate(selectedUserForDrawer)}
+                      </span>
+                    </div>
+
+                    <div className="space-y-1 p-3 rounded-xl bg-black/30 border border-white/5">
+                      <span className="text-[10px] font-bold text-white/40 uppercase tracking-wider block flex items-center gap-1">
+                        <MapPin size={11} className="text-aeirmist-cyan" /> ID Create Location
+                      </span>
+                      <span className="font-mono text-white/90 block select-all">
+                        {selectedUserForDrawer.createdLocation || selectedUserForDrawer.signupLocation || 'Not recorded'}
+                      </span>
+                    </div>
+
+                    <div className="space-y-1 p-3 rounded-xl bg-black/30 border border-white/5">
+                      <span className="text-[10px] font-bold text-white/40 uppercase tracking-wider block flex items-center gap-1">
+                        <MapPin size={11} className="text-aeirmist-magenta" /> Last Login Location
+                      </span>
+                      <span className="font-mono text-white/90 block select-all">
+                        {selectedUserForDrawer.lastLoginLocation || selectedUserForDrawer.loginLocation || 'Not recorded'}
+                      </span>
+                    </div>
+
+                    <div className="space-y-1 p-3 rounded-xl bg-black/30 border border-white/5">
+                      <span className="text-[10px] font-bold text-white/40 uppercase tracking-wider block flex items-center gap-1">
+                        <Activity size={11} className="text-emerald-400" /> Active Device Location
+                      </span>
+                      <span className="font-mono text-emerald-400 font-bold block select-all">
+                        {selectedUserForDrawer.deviceActiveLocation || selectedUserForDrawer.activeLocation || selectedUserForDrawer.location || 'Online Node'}
+                      </span>
+                    </div>
+
+                    <div className="space-y-1 p-3 rounded-xl bg-black/30 border border-white/5">
+                      <span className="text-[10px] font-bold text-white/40 uppercase tracking-wider block flex items-center gap-1">
+                        <Smartphone size={11} className="text-violet-400" /> Active Device / Platform
+                      </span>
+                      <span className="font-mono text-white/90 block select-all">
+                        {selectedUserForDrawer.deviceInfo || selectedUserForDrawer.platform || 'Web / Capacitor'}
                       </span>
                     </div>
 

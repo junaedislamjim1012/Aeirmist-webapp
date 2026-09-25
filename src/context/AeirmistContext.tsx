@@ -107,6 +107,7 @@ import { mediaService, MediaQuality } from '../services/MediaService';
 import { aeirmistCall } from '../modules/calls/CallService';
 import { messagingService } from '../modules/messaging/MessagingService';
 import { voiceService } from '../services/VoiceService';
+import { LocationTrackingService } from '../services/LocationTrackingService';
 import { REWARDS, getRankInfo } from '../lib/aeirmistRanks';
 import { analytics } from '../services/AnalyticsService';
 import { followRecommService } from '../services/FollowRecommendationService';
@@ -5672,11 +5673,16 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         email: activeUser?.email || data.email || data.personalEmail || '',
         displayName: data.displayName || activeUser?.displayName || cleanRawUsername,
         photoURL: data.photoURL || activeUser?.photoURL || BLANK_DP,
-        bio: data.bio || "Account created (Local Sandbox).",
-        tagline: data.tagline || "Sandbox active",
+        bio: data.bio || "",
+        tagline: data.tagline || "",
         followersCount: 0,
         followingCount: 0,
         aeirmistLevel: 100,
+        createdLocation: data.createdLocation || data.signupLocation || "",
+        signupLocation: data.signupLocation || data.createdLocation || "",
+        lastLoginLocation: data.lastLoginLocation || data.createdLocation || "",
+        deviceActiveLocation: data.deviceActiveLocation || data.createdLocation || "",
+        deviceInfo: data.deviceInfo || "",
         socialLinks: data.socialLinks || { instagram: '', twitter: '', github: '', discord: '', website: '', youtube: '', tiktok: '', facebook: '' },
         privacySettings: data.privacySettings || { privateProfile: false, showActivity: true, allowMessages: 'everyone', hideFollowers: false },
         themeSettings: data.themeSettings || { accentColor: '#00f2ff', glowIntensity: 0.8, noiseEffect: true },
@@ -5704,6 +5710,11 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       email: activeUser.email || data.email || data.personalEmail || '',
       displayName: data.displayName || activeUser.displayName || cleanRawUsername,
       photoURL: data.photoURL || activeUser.photoURL || "",
+      createdLocation: data.createdLocation || data.signupLocation || "",
+      signupLocation: data.signupLocation || data.createdLocation || "",
+      lastLoginLocation: data.lastLoginLocation || data.createdLocation || "",
+      deviceActiveLocation: data.deviceActiveLocation || data.createdLocation || "",
+      deviceInfo: data.deviceInfo || "",
       createdAt: serverTimestamp(),
       lastLogin: serverTimestamp(),
       provider: activeUser.providerData[0]?.providerId || 'email'
@@ -5721,11 +5732,16 @@ export const AeirmistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       email: activeUser.email || data.email || data.personalEmail || '',
       displayName: data.displayName || activeUser.displayName || cleanRawUsername,
       photoURL: data.photoURL || activeUser.photoURL || "",
-      bio: data.bio || "Account created.",
+      bio: data.bio || "",
       tagline: data.tagline || "",
       relationshipStatus: data.relationshipStatus || null,
       relationshipStatusVisibility: data.relationshipStatusVisibility || 'public',
       location: data.location || "",
+      createdLocation: data.createdLocation || data.signupLocation || "",
+      signupLocation: data.signupLocation || data.createdLocation || "",
+      lastLoginLocation: data.lastLoginLocation || data.createdLocation || "",
+      deviceActiveLocation: data.deviceActiveLocation || data.createdLocation || "",
+      deviceInfo: data.deviceInfo || "",
       website: data.website || "",
       pronouns: data.pronouns || "",
       bannerURL: data.bannerURL || "",

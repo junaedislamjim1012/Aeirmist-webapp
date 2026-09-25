@@ -166,6 +166,26 @@ function evaluateFirestoreRule({
     }
   }
 
+  // 5. VAULT MEDIA
+  if (collection === 'vault_media') {
+    if (!isSignedIn) return { allowed: false, reason: 'Unauthenticated vault_media access blocked' };
+    if (action === 'create') {
+      const isOwner = incomingData.userId === auth.uid ||
+                      incomingData.userId === `profile_${auth.uid}` ||
+                      incomingData.ownerUid === auth.uid;
+      if (!isOwner) return { allowed: false, reason: 'Vault media owner forgery blocked' };
+      return { allowed: true, reason: 'Vault media create permitted for owner' };
+    }
+    if (action === 'read' || action === 'update' || action === 'delete') {
+      const existing = existingData || {};
+      const isOwner = existing.userId === auth.uid ||
+                      existing.userId === `profile_${auth.uid}` ||
+                      existing.ownerUid === auth.uid;
+      if (!isOwner) return { allowed: false, reason: 'Vault media owner isolation violation' };
+      return { allowed: true, reason: 'Vault media operation permitted for owner' };
+    }
+  }
+
   return { allowed: false, reason: 'No matching rule allowed this operation' };
 }
 
@@ -497,6 +517,72 @@ assertRule(
   },
   true,
   'Valid engagement interaction'
+);
+
+// ---------------------------------------------------------
+// SECTION 5: VAULT MEDIA SECURITY TESTS
+// ---------------------------------------------------------
+assertRule(
+  'ATTACK: Attacker attempts to write into User B vault_media',
+  {
+    collection: 'vault_media',
+    action: 'create',
+    auth: { uid: 'user_eve' },
+    incomingData: {
+      userId: 'user_bob',
+      ownerUid: 'user_bob',
+      url: 'https://storage/vault/exploit.png'
+    }
+  },
+  false,
+  'Vault media owner forgery blocked'
+);
+
+assertRule(
+  'LEGIT: User B uploads photo into vault_media using real UID',
+  {
+    collection: 'vault_media',
+    action: 'create',
+    auth: { uid: 'user_bob' },
+    incomingData: {
+      userId: 'user_bob',
+      ownerUid: 'user_bob',
+      url: 'https://storage/vault/user_bob/photo.png'
+    }
+  },
+  true,
+  'Vault media create permitted for owner'
+);
+
+assertRule(
+  'LEGIT: User B uploads photo into vault_media using profile ID',
+  {
+    collection: 'vault_media',
+    action: 'create',
+    auth: { uid: 'user_bob' },
+    incomingData: {
+      userId: 'profile_user_bob',
+      ownerUid: 'user_bob',
+      url: 'https://storage/vault/profile_user_bob/photo.png'
+    }
+  },
+  true,
+  'Vault media create permitted for owner'
+);
+
+assertRule(
+  'ATTACK: Non-owner attempts to read User B vault_media',
+  {
+    collection: 'vault_media',
+    action: 'read',
+    auth: { uid: 'user_eve' },
+    existingData: {
+      userId: 'user_bob',
+      ownerUid: 'user_bob'
+    }
+  },
+  false,
+  'Vault media owner isolation violation'
 );
 
 console.log('=========================================================');

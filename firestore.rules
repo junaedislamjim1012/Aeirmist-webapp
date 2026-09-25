@@ -484,6 +484,20 @@ service cloud.firestore {
       );
     }
 
+    // 13B. VAULT MEDIA: Owner only (supports both uid and profile_uid)
+    match /vault_media/{mediaId} {
+      allow read, update, delete: if isSignedIn() && (
+        resource.data.userId == request.auth.uid ||
+        resource.data.userId == ('profile_' + request.auth.uid) ||
+        resource.data.ownerUid == request.auth.uid
+      );
+      allow create: if isSignedIn() && (
+        request.resource.data.userId == request.auth.uid ||
+        request.resource.data.userId == ('profile_' + request.auth.uid) ||
+        request.resource.data.ownerUid == request.auth.uid
+      );
+    }
+
     // 14. CHAT NICKNAMES: Owner only
     match /chat_nickname/{docId} {
       allow read, write: if isSignedIn() && (

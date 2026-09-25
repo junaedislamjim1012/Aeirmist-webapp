@@ -8,7 +8,11 @@ service firebase.storage {
     }
     
     function isOwner(userId) {
-      return isSignedIn() && request.auth.uid == userId;
+      return isSignedIn() && (
+        request.auth.uid == userId ||
+        ('profile_' + request.auth.uid) == userId ||
+        request.auth.uid == ('profile_' + userId)
+      );
     }
 
     // Verify chat participant by checking Firestore conversation document

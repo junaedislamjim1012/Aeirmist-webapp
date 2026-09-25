@@ -1,7 +1,7 @@
 import React, { useState, useRef, useLayoutEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 const EmojiPicker = React.lazy(() => import('emoji-picker-react'));
-import { Reply, Forward, Edit2, Trash2, Heart, Copy, Smile, Loader2, Sparkles, Zap, MoreVertical, Pin, Bookmark, Languages, Info } from 'lucide-react';
+import { Reply, Forward, Edit2, Trash2, Heart, Copy, Smile, Loader2, Sparkles, Zap, MoreVertical, Pin, Bookmark, Languages, Info, Download } from 'lucide-react';
 import { Message } from '../../types/messenger';
 import { VoicePlayback } from './VoicePlayback';
 import { Check, CheckCheck, Eye, EyeOff } from 'lucide-react';
@@ -9,6 +9,7 @@ import { useAeirmist } from '../../context/AeirmistContext';
 import { getAvatarUrl } from '../../lib/avatar';
 import { formatShortTimestamp, formatTimeOnly } from '../../lib/date';
 import { TelegramMediaAlbum, AlbumItem, isAutoMediaPlaceholder } from './TelegramMediaAlbum';
+import { DownloadManagerService } from '../../services/DownloadManagerService';
 
 const moods = {
   ecstatic: '⚡',
@@ -58,7 +59,7 @@ export const MessageItem = React.memo<{
   isFirstInSequence,
   isLastInSequence
 }) => {
-  const { addReaction: syncReaction, deleteMessage, removeReaction, profile } = useAeirmist();
+  const { addReaction: syncReaction, deleteMessage, removeReaction, profile, addToast } = useAeirmist();
   const [showMenu, setShowMenu] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -573,6 +574,23 @@ export const MessageItem = React.memo<{
               </div>
 
               <div className="space-y-1">
+                {(effectiveAlbum.length > 0 || message.mediaUrl) && (
+                  <OptionItem 
+                    icon={<Download />} 
+                    label="Save to Gallery" 
+                    onClick={async () => {
+                      setShowMenu(false);
+                      const targetUrl = effectiveAlbum[0]?.url || message.mediaUrl;
+                      if (!targetUrl) return;
+                      const res = await DownloadManagerService.downloadMediaFile(targetUrl);
+                      if (res.success) {
+                        addToast?.({ title: 'Saved to Gallery', message: 'Media saved directly to device storage.', type: 'success' });
+                      } else {
+                        addToast?.({ title: 'Download Issue', message: res.error || 'Failed to save media.', type: 'warning' });
+                      }
+                    }} 
+                  />
+                )}
                 <OptionItem icon={<Reply />} label="Reply" onClick={() => { setShowMenu(false); onReply?.(message); }} />
                 <OptionItem icon={<Copy />} label="Copy Text" onClick={() => { setShowMenu(false); navigator.clipboard.writeText(message.text || ''); }} />
                 <OptionItem icon={<Forward />} label="Forward" onClick={() => { setShowMenu(false); onForward?.(message); }} />

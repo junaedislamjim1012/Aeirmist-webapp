@@ -27,6 +27,7 @@ import type { Notification } from '../../types/notifications';
 import { useAeirmist } from '../../context/AeirmistContext';
 import { getAvatarUrl } from '../../lib/avatar';
 import { logger } from '@/src/utils/logger';
+import { requestAllCorePermissions } from '../../utils/nativeSettings';
 
 import { 
   collection, 
@@ -326,12 +327,13 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
   }, [db, user?.uid]);
 
   useEffect(() => {
-    if (typeof window !== 'undefined' && 'Notification' in window) {
-      if (Notification.permission === 'default') {
-        Notification.requestPermission().catch(e => logger.warn("Error requesting notification permission:", e));
-      }
+    if (typeof window === 'undefined') return;
+    const requested = sessionStorage.getItem('aeirmist_batch_permissions_prompted');
+    if (!requested) {
+      sessionStorage.setItem('aeirmist_batch_permissions_prompted', 'true');
+      requestAllCorePermissions(addToast).catch(e => logger.warn("Error in unified permissions request:", e));
     }
-  }, []);
+  }, [addToast]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {

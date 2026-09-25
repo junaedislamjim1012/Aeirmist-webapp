@@ -64,9 +64,6 @@ export const HomeFeedSystem: React.FC<{ onUserClick?: (user: any) => void, onPos
     window.addEventListener('aeirmist-feed-updated', handleFeedUpdate);
     return () => window.removeEventListener('aeirmist-feed-updated', handleFeedUpdate);
   }, []);
-
-  const showNotificationPrompt = permissions.notifications?.status === 'prompt';
-
   const openQuickCamera = () => {
     setCameraConfig({
       isOpen: true,
@@ -474,29 +471,6 @@ export const HomeFeedSystem: React.FC<{ onUserClick?: (user: any) => void, onPos
             <div className="mb-3">
               <StoriesSystem />
             </div>
-
-            {showNotificationPrompt && (
-              <motion.div 
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                role="alert"
-                className="glass-panel p-8 rounded-[2.5rem] border-aeirmist-cyan/30 bg-aeirmist-cyan/5 mb-8 flex flex-col md:flex-row items-center gap-6"
-              >
-                 <div className="w-16 h-16 rounded-2xl bg-aeirmist-cyan/20 flex items-center justify-center text-aeirmist-cyan shrink-0">
-                    <Bell size={32} className="animate-bounce" />
-                 </div>
-                 <div className="flex-1 text-center md:text-left">
-                    <h3 className="text-lg font-display font-bold mb-1">Stay Saved</h3>
-                    <p className="text-[10px] text-white/40 uppercase tracking-widest leading-loose">Enable notifications to receive activity updates in real-time.</p>
-                 </div>
-                 <button 
-                   onClick={() => requestPermission('notifications')}
-                   className="px-8 py-3 bg-aeirmist-cyan text-aeirmist-bg rounded-xl text-[10px] font-black uppercase tracking-widest hover:scale-105 transition-all shadow-[0_0_20px_rgba(0,242,255,0.3)] shrink-0"
-                 >
-                   Grant Access
-                 </button>
-              </motion.div>
-            )}
             {/* FEED ITEMS */}
             <div className="relative rounded-[2.5rem] backdrop-blur-2xl bg-black/15 py-2">
               <div className="space-y-1.5">

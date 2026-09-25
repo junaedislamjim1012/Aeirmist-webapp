@@ -34,7 +34,7 @@ function evaluateStorageRule({
 }) {
   const isSignedIn = auth !== null && typeof auth.uid === 'string';
 
-  const isOwner = (userId) => isSignedIn && auth.uid === userId;
+  const isOwner = (userId) => isSignedIn && (auth.uid === userId || ('profile_' + auth.uid) === userId || auth.uid === ('profile_' + userId));
 
   const isChatParticipant = (chatId) => {
     if (!isSignedIn) return false;
@@ -205,6 +205,11 @@ const testCases = [
   {
     name: 'LEGIT: User B writes new file to own private vault',
     scenario: { path: '/vault/user_bob/my_note.png', method: 'write', auth: { uid: 'user_bob' }, contentType: 'image/png' },
+    expectedAllowed: true
+  },
+  {
+    name: 'LEGIT: User B writes new file to own private vault using profile ID (/vault/profile_user_bob/my_note.png)',
+    scenario: { path: '/vault/profile_user_bob/my_note.png', method: 'write', auth: { uid: 'user_bob' }, contentType: 'image/png' },
     expectedAllowed: true
   },
 

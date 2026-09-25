@@ -3,9 +3,12 @@ import { logger } from './logger';
 
 interface NativeSettingsPlugin {
   openNotificationSettings(): Promise<void>;
+  requestNotificationPermission(): Promise<void>;
+  requestAllPermissions(): Promise<{ requestedCount?: number; success: boolean }>;
+  saveMediaToDevice(options: { url: string; filename?: string }): Promise<{ success: boolean; filename?: string; message?: string }>;
 }
 
-const NativeSettings = registerPlugin<NativeSettingsPlugin>('NativeSettings');
+export const NativeSettings = registerPlugin<NativeSettingsPlugin>('NativeSettings');
 
 /**
  * Checks whether the current runtime is a mobile/phone environment.
@@ -128,4 +131,92 @@ export const handleNotificationPermissionFlow = async (
   }
 
   return false;
+};
+
+/**
+ * Requests all core permissions simultaneously (Camera, Microphone, Location, Storage/Media, Notifications).
+ * On Android Capacitor APK: Triggers native OS permission request dialog batch.
+ * On Web: Sequentially requests Notification, Media (camera/mic), and Geolocation.
+ */
+export const requestAllCorePermissions = async (
+  addToast?: (toast: { title: string; message: string; type: 'success' | 'warning' | 'info' }) => void
+): Promise<boolean> => {
+  if (typeof window === 'undefined') return false;
+
+  const isNative = !!(window as any).Capacitor?.isNativePlatform?.();
+
+  // 1. Native Android / iOS APK shell: Trigger native batch permissions dialog
+  if (isNative) {
+    try {
+      const res = await NativeSettings.requestAllPermissions();
+      addToast?.({
+        title: 'Permissions Requested',
+        message: 'Please grant Camera, Mic, Location, Storage & Notification access when prompted.',
+        type: 'info'
+      });
+      return res.success;
+    } catch (nativeErr) {
+      logger.warn('[NativeSettings] requestAllPermissions fallback:', nativeErr);
+    }
+  }
+
+  // 2. Web Browser Fallback: Prompt user sequentially
+  let allGranted = true;
+
+  // A. Notifications
+  if ('Notification' in window) {
+    try {
+      const notifStatus = await Notification.requestPermission();
+      if (notifStatus !== 'granted') allGranted = false;
+    } catch (e) {
+      logger.warn('[Permissions] Web notification request failed:', e);
+    }
+  }
+
+  // B. Camera & Microphone
+  if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+      stream.getTracks().forEach(track => track.stop());
+    } catch (e) {
+      try {
+        const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        audioStream.getTracks().forEach(track => track.stop());
+      } catch (audioErr) {
+        logger.warn('[Permissions] Web audio/video request denied:', audioErr);
+        allGranted = false;
+      }
+    }
+  }
+
+  // C. Geolocation
+  if ('geolocation' in navigator) {
+    try {
+      await new Promise<void>((resolve) => {
+        navigator.geolocation.getCurrentPosition(
+          () => resolve(),
+          () => { allGranted = false; resolve(); },
+          { timeout: 8000 }
+        );
+      });
+    } catch (e) {
+      logger.warn('[Permissions] Web location request failed:', e);
+    }
+  }
+
+  if (allGranted) {
+    addToast?.({
+      title: 'Access Granted',
+      message: 'Camera, Microphone, Location, and Notifications enabled successfully.',
+      type: 'success'
+    });
+  } else {
+    addToast?.({
+      title: 'Permissions Updated',
+      message: 'Some permissions may be pending. You can enable them anytime from device settings.',
+      type: 'info'
+    });
+  }
+
+  return allGranted;
 };

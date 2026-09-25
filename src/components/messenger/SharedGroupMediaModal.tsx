@@ -8,6 +8,7 @@ import {
 import { collection, query, orderBy, limit, onSnapshot, Firestore } from 'firebase/firestore';
 import { getAvatarUrl } from '../../lib/avatar';
 import { logger } from '@/src/utils/logger';
+import { DownloadManagerService } from '../../services/DownloadManagerService';
 
 
 interface SharedGroupMediaModalProps {
@@ -369,16 +370,20 @@ export const SharedGroupMediaModal: React.FC<SharedGroupMediaModalProps> = ({
                         )}
 
                         {url && (
-                          <a
-                            href={url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            download
-                            className="h-9 px-3.5 rounded-xl bg-aeirmist-cyan/10 hover:bg-aeirmist-cyan/20 border border-aeirmist-cyan/30 text-aeirmist-cyan text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+                          <button
+                            onClick={async () => {
+                              const res = await DownloadManagerService.downloadMediaFile(url, name);
+                              if (res.success) {
+                                addToast?.({ title: 'Saved to Gallery', message: 'File saved directly to device storage.', type: 'success' });
+                              } else {
+                                addToast?.({ title: 'Download Issue', message: res.error || 'Failed to save file.', type: 'warning' });
+                              }
+                            }}
+                            className="h-9 px-3.5 rounded-xl bg-aeirmist-cyan/10 hover:bg-aeirmist-cyan/20 border border-aeirmist-cyan/30 text-aeirmist-cyan text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer active:scale-95"
                           >
                             <Download size={14} />
                             <span className="hidden sm:inline">Download</span>
-                          </a>
+                          </button>
                         )}
                       </div>
                     </motion.div>
@@ -523,16 +528,22 @@ export const SharedGroupMediaModal: React.FC<SharedGroupMediaModalProps> = ({
                         <Copy size={18} />
                       </button>
 
-                      <a
-                        href={mediaListOnly[selectedMediaIndex].mediaUrl || mediaListOnly[selectedMediaIndex].attachmentUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        download
-                        className="p-2.5 bg-white/5 hover:bg-white/10 rounded-xl text-white/70 hover:text-aeirmist-cyan transition-colors cursor-pointer"
-                        title="Download"
+                      <button
+                        onClick={async () => {
+                          const targetUrl = mediaListOnly[selectedMediaIndex]?.mediaUrl || mediaListOnly[selectedMediaIndex]?.attachmentUrl;
+                          if (!targetUrl) return;
+                          const res = await DownloadManagerService.downloadMediaFile(targetUrl);
+                          if (res.success) {
+                            addToast?.({ title: 'Saved to Gallery', message: 'File saved directly to device storage.', type: 'success' });
+                          } else {
+                            addToast?.({ title: 'Download Issue', message: res.error || 'Failed to save file.', type: 'warning' });
+                          }
+                        }}
+                        className="p-2.5 bg-white/5 hover:bg-white/10 rounded-xl text-white/70 hover:text-aeirmist-cyan transition-colors cursor-pointer active:scale-95"
+                        title="Save to Gallery"
                       >
                         <Download size={18} />
-                      </a>
+                      </button>
                     </>
                   ) : null}
 

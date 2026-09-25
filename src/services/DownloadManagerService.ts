@@ -197,4 +197,70 @@ export class DownloadManagerService {
     }
     return candidate;
   }
+
+  /**
+   * Save/download media file directly to device gallery/downloads without opening a browser tab.
+   * On Native Android APK: Saves to Pictures/Aeirmist via Android DownloadManager (auto-indexed to Gallery).
+   * On Web Browser: Fetches blob and downloads locally with zero browser tab opening.
+   */
+  public static async downloadMediaFile(
+    url: string, 
+    customFilename?: string
+  ): Promise<{ success: boolean; filename?: string; error?: string }> {
+    if (!url) return { success: false, error: 'Empty media URL' };
+
+    const isNative = this.isNativeAndroid();
+    const resolvedName = customFilename || (() => {
+      const isVideo = url.includes('.mp4') || (url.includes('video') && !url.includes('image'));
+      const ext = isVideo ? '.mp4' : '.jpg';
+      return `Aeirmist_${Date.now()}${ext}`;
+    })();
+
+    // 1. Native Android: Save directly to phone gallery
+    if (isNative && (window as any).Capacitor?.Plugins?.NativeSettings?.saveMediaToDevice) {
+      try {
+        const res = await (window as any).Capacitor.Plugins.NativeSettings.saveMediaToDevice({
+          url,
+          filename: resolvedName
+        });
+        return { success: true, filename: resolvedName };
+      } catch (nativeErr: any) {
+        logger.warn('[DownloadManagerService] Native save failed, trying blob download:', nativeErr);
+      }
+    }
+
+    // 2. Web fallback: In-memory blob anchor (no _blank, no new tab!)
+    try {
+      const response = await fetch(url, { mode: 'cors' });
+      if (!response.ok) throw new Error(`HTTP error ${response.status}`);
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = resolvedName;
+      link.style.display = 'none';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 2000);
+      return { success: true, filename: resolvedName };
+    } catch (err: any) {
+      logger.warn('[DownloadManagerService] Blob download failed, trying direct link download:', err);
+      try {
+        const directLink = document.createElement('a');
+        directLink.href = url;
+        directLink.download = resolvedName;
+        directLink.style.display = 'none';
+        document.body.appendChild(directLink);
+        directLink.click();
+        document.body.removeChild(directLink);
+        return { success: true, filename: resolvedName };
+      } catch (directErr: any) {
+        logger.error('[DownloadManagerService] All download strategies failed:', directErr);
+        return { success: false, error: directErr?.message || 'Download failed' };
+      }
+    }
+  }
 }

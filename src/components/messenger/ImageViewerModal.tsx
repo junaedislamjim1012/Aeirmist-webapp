@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, ZoomIn, ZoomOut, Download, RefreshCw, Heart, MessageCircle, Repeat, ChevronLeft, ChevronRight } from 'lucide-react';
 import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
+import { useAeirmist } from '../../context/AeirmistContext';
+import { DownloadManagerService } from '../../services/DownloadManagerService';
 
 interface ImageViewerModalProps {
   isOpen: boolean;
@@ -18,6 +20,8 @@ export const ImageViewerModal: React.FC<ImageViewerModalProps> = ({
   images,
   initialIndex = 0
 }) => {
+  const { addToast } = useAeirmist();
+  const [isDownloading, setIsDownloading] = useState(false);
   const activeList = images && images.length > 0 ? images : [imageUrl];
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
 
@@ -105,15 +109,36 @@ export const ImageViewerModal: React.FC<ImageViewerModalProps> = ({
                   <button onClick={() => resetTransform()} className="p-2.5 bg-white/5 rounded-xl text-white/70 hover:text-white hover:bg-white/10 transition-colors active:scale-95" title="Reset View">
                     <RefreshCw size={18} />
                   </button>
-                  <a 
-                    href={currentImage} 
-                    download 
-                    target="_blank" 
-                    rel="noreferrer"
-                    className="p-2.5 bg-white/5 rounded-xl text-white/70 hover:text-aeirmist-cyan hover:bg-white/10 transition-colors active:scale-95"
+                  <button 
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                      if (isDownloading) return;
+                      setIsDownloading(true);
+                      try {
+                        const res = await DownloadManagerService.downloadMediaFile(currentImage);
+                        if (res.success) {
+                          addToast?.({
+                            title: 'Saved to Gallery',
+                            message: 'Image saved directly to device storage.',
+                            type: 'success'
+                          });
+                        } else {
+                          addToast?.({
+                            title: 'Download Failed',
+                            message: res.error || 'Could not save image to device.',
+                            type: 'warning'
+                          });
+                        }
+                      } finally {
+                        setIsDownloading(false);
+                      }
+                    }}
+                    disabled={isDownloading}
+                    className="p-2.5 bg-white/5 rounded-xl text-white/70 hover:text-aeirmist-cyan hover:bg-white/10 transition-colors active:scale-95 cursor-pointer disabled:opacity-50 flex items-center justify-center"
+                    title="Save to Device / Gallery"
                   >
-                    <Download size={18} />
-                  </a>
+                    {isDownloading ? <RefreshCw size={18} className="animate-spin text-aeirmist-cyan" /> : <Download size={18} />}
+                  </button>
                   <div className="w-px h-6 bg-white/10 mx-1" />
                   <button onClick={onClose} className="p-2.5 bg-red-500/20 rounded-xl text-red-400 hover:text-red-300 hover:bg-red-500/30 transition-colors active:scale-95">
                     <X size={18} />

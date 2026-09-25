@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { useAeirmist } from '../../../context/AeirmistContext';
 import { logger } from '@/src/utils/logger';
+import { DownloadManagerService } from '../../../services/DownloadManagerService';
 
 
 export const MediaViewer = ({ 
@@ -39,25 +40,17 @@ export const MediaViewer = ({
     const handleDownload = async () => {
         if (!currentMedia?.url) return;
         try {
-            const response = await fetch(currentMedia.url);
-            const blob = await response.blob();
-            const blobUrl = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = blobUrl;
             const ext = currentMedia.type === 'video' ? 'mp4' : 'jpg';
-            a.download = currentMedia.name || `vault_media_${Date.now()}.${ext}`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(blobUrl);
-            addToast({ title: "Saved to Device", message: "File saved to local storage.", type: "success" });
-        } catch (err) {
-            const a = document.createElement('a');
-            a.href = currentMedia.url;
-            a.download = currentMedia.name || 'vault_media';
-            a.target = '_blank';
-            a.click();
-            addToast({ title: "Media Link Opened", message: "Use right-click/long press to save.", type: "info" });
+            const filename = currentMedia.name || `vault_media_${Date.now()}.${ext}`;
+            const res = await DownloadManagerService.downloadMediaFile(currentMedia.url, filename);
+            if (res.success) {
+                addToast({ title: "Saved to Device", message: "Media saved directly to device storage.", type: "success" });
+            } else {
+                addToast({ title: "Download Issue", message: res.error || "Could not complete download.", type: "warning" });
+            }
+        } catch (err: any) {
+            logger.warn("MediaViewer download fallback error:", err);
+            addToast({ title: "Download Error", message: "Failed to save file to device.", type: "warning" });
         }
     };
 

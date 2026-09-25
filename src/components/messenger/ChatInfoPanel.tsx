@@ -29,6 +29,7 @@ import { getAvatarUrl } from '../../lib/avatar';
 import { collection, query, where, getDocs, limit, orderBy, doc, updateDoc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
 import { Chat } from '../../types/messenger';
 import { logger } from '@/src/utils/logger';
+import { DownloadManagerService } from '../../services/DownloadManagerService';
 
 
 export const ChatInfoPanel = ({ 
@@ -497,16 +498,20 @@ export const ChatInfoPanel = ({
                   
                   <div className="flex items-center gap-3">
                     {url && (
-                      <a 
-                        href={url} 
-                        target="_blank" 
-                        rel="noopener noreferrer" 
-                        download
-                        className="p-2.5 rounded-xl bg-white/5 border border-white/10 text-white/70 hover:text-white hover:bg-white/10 transition-all flex items-center justify-center"
-                        title="Download"
+                      <button 
+                        onClick={async () => {
+                          const res = await DownloadManagerService.downloadMediaFile(url);
+                          if (res.success) {
+                            addToast?.({ title: 'Saved to Gallery', message: 'File saved directly to device storage.', type: 'success' });
+                          } else {
+                            addToast?.({ title: 'Download Issue', message: res.error || 'Failed to save file.', type: 'warning' });
+                          }
+                        }}
+                        className="p-2.5 rounded-xl bg-white/5 border border-white/10 text-white/70 hover:text-white hover:bg-white/10 transition-all flex items-center justify-center cursor-pointer active:scale-95"
+                        title="Save to Gallery"
                       >
                         <Download size={18} />
-                      </a>
+                      </button>
                     )}
                     <button 
                       onClick={() => setSelectedMediaIndex(null)}

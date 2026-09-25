@@ -638,29 +638,33 @@ export const Vault: React.FC<VaultProps> = ({
   useEffect(() => {
     if (!db || !profile?.id || !isUnlocked) return;
     
+    const userKeys = Array.from(new Set([profile.id, profile.uid].filter(Boolean)));
     const q = query(
       collection(db, 'vault_media'), 
-      where('userId', '==', profile.id)
+      where('userId', 'in', userKeys)
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const media = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setPrivacyMedia(media);
+    }, (err) => {
+      logger.warn('[Vault] vault_media subscription fallback:', err);
     });
 
     return () => unsubscribe();
-  }, [db, profile?.id, isUnlocked]);
+  }, [db, profile?.id, profile?.uid, isUnlocked]);
 
   const handleMediaUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0 || !db || !profile?.id) return;
 
+    const targetUid = profile.uid || profile.id;
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       try {
         let mediaUrl = '';
         if (uploadMedia) {
-          mediaUrl = await uploadMedia(file, `vault/${profile.id}`);
+          mediaUrl = await uploadMedia(file, `vault/${targetUid}`);
         } else {
           mediaUrl = await new Promise<string>((resolve, reject) => {
             const reader = new FileReader();
@@ -672,6 +676,7 @@ export const Vault: React.FC<VaultProps> = ({
 
         await addDoc(collection(db, 'vault_media'), {
           userId: profile.id,
+          ownerUid: targetUid,
           url: mediaUrl,
           type: file.type.startsWith('video') ? 'video' : 'image',
           name: file.name,
@@ -689,11 +694,15 @@ export const Vault: React.FC<VaultProps> = ({
         logger.error("Vault media upload failed:", err);
         addToast({
           title: "Upload Error",
-          message: "Failed to secure media in Vault.",
+          message: err?.message || "Failed to secure media in Vault.",
           type: "warning"
         });
       }
     }
+    // Reset file input target value so subsequent uploads of same file trigger onChange
+    try {
+      e.target.value = '';
+    } catch {}
   };
 
   const handleVaultDelete = async (id: string) => {

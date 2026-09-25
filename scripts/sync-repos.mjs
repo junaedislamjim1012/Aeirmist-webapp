@@ -21,9 +21,15 @@ try {
   } catch {
     console.log('No new changes to commit in App repo.');
   }
-  console.log('Pushing to GitHub Aeirmist-app- (origin master)...');
+  // Update local main branch to match master
+  try {
+    execSync('git branch -f main master', { cwd: APP_REPO, stdio: 'inherit' });
+  } catch {}
+
+  console.log('Pushing to GitHub Aeirmist-app- (origin master and origin main)...');
   execSync('git push origin master', { cwd: APP_REPO, stdio: 'inherit' });
-  console.log('✅ App repo pushed successfully!\n');
+  execSync('git push origin master:main', { cwd: APP_REPO, stdio: 'inherit' });
+  console.log('✅ App repo pushed to both master and main branches successfully!\n');
 } catch (e) {
   console.error('⚠️ App repo push notice:', e.message);
 }
@@ -70,9 +76,12 @@ if (fs.existsSync(WEB_REPO)) {
     } catch {
       console.log('No new changes to commit in Web repo.');
     }
-    console.log('Pushing to GitHub Aeirmist-webapp (origin main)...');
+    console.log('Pushing to GitHub Aeirmist-webapp (origin main and origin master)...');
     execSync('git push origin main', { cwd: WEB_REPO, stdio: 'inherit' });
-    console.log('✅ Web repo pushed successfully!\n');
+    try {
+      execSync('git push origin main:master', { cwd: WEB_REPO, stdio: 'inherit' });
+    } catch {}
+    console.log('✅ Web repo pushed to both main and master branches successfully!\n');
   } catch (e) {
     console.error('⚠️ Web repo push notice:', e.message);
   }

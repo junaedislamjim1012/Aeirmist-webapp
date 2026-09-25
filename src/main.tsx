@@ -166,8 +166,7 @@ if (typeof window !== 'undefined') {
 
   window.addEventListener('error', (event) => {
     if (event.message && event.message.includes('Cannot set property fetch of #<Window>')) {
-      logger.warn('Suppressed environmental fetch patch error.');
-      event.preventDefault();
+      logger.warn('Environmental fetch patch warning:', event.error || event.message);
     }
   });
 

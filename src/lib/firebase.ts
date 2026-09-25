@@ -61,8 +61,7 @@ if (typeof window !== 'undefined') {
       msg.includes('Failed to fetch dynamically imported module') ||
       msg.includes('AbortError')
     ) {
-      logger.warn('Prevented uncaught background error:', msg);
-      event.preventDefault();
+      logger.warn('Background promise notice:', msg);
     }
   });
 }

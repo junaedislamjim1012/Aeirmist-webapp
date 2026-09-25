@@ -1,6 +1,5 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { Volume2, VolumeX, Play, Pause, Maximize, Film, Loader2 } from 'lucide-react';
-import { mediaService } from '../../services/MediaService';
 import { logger } from '@/src/utils/logger';
 
 interface VideoPlayerProps {
@@ -21,8 +20,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   poster,
   title,
   caption,
-  useCache = false,
-  controls = false,
   autoPlay = false,
   onNavigateToWatch
 }) => {
@@ -34,12 +31,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [isBuffering, setIsBuffering] = useState(false);
-  const [currentSrc, setCurrentSrc] = useState(src);
   const [showControls, setShowControls] = useState(true);
-  const [capturedPoster, setCapturedPoster] = useState<string | null>(null);
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Derive smart poster (Cloudinary auto-thumbnail, explicit poster, or captured frame)
+  // Derive high-resolution poster from Cloudinary if not explicitly provided
   const derivedPoster = useMemo(() => {
     if (poster && poster.trim()) return poster;
     if (!src) return undefined;
@@ -51,34 +46,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     return undefined;
   }, [poster, src]);
 
-  const effectivePoster = derivedPoster || capturedPoster;
-
-  // Video URL with #t=0.001 first-frame seeking for browsers that support it
-  const videoSrcWithFragment = useMemo(() => {
-    if (!currentSrc) return '';
-    if (currentSrc.includes('#t=')) return currentSrc;
-    return `${currentSrc}#t=0.001`;
-  }, [currentSrc]);
-
-  // Cached media loader
-  useEffect(() => {
-    if (!useCache || !src) {
-      setCurrentSrc(src);
-      return;
-    }
-
-    let isMounted = true;
-    const loadCachedVideo = async () => {
-      try {
-        const cachedUrl = await mediaService.getCachedMediaURL(src, 'video/mp4');
-        if (isMounted) setCurrentSrc(cachedUrl);
-      } catch (e) {
-        if (isMounted) setCurrentSrc(src);
-      }
-    };
-    loadCachedVideo();
-    return () => { isMounted = false; };
-  }, [src, useCache]);
+  // Clean direct streaming source URL
+  const videoSrc = src;
 
   // AutoPlay on Scroll Intersection Observer (only if autoPlay is requested)
   useEffect(() => {
@@ -103,7 +72,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           }
         });
       },
-      { threshold: 0.45 }
+      { threshold: 0.5 }
     );
 
     if (containerRef.current) {
@@ -120,17 +89,48 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     const video = videoRef.current;
     if (!video) return;
 
-    if (isPlaying) {
+    if (video.paused || !isPlaying) {
+      const playPromise = video.play();
+      if (playPromise !== undefined) {
+        playPromise
+          .then(() => {
+            setIsPlaying(true);
+            setIsBuffering(false);
+            resetControlsTimer();
+          })
+          .catch((err) => {
+            logger.info("Unmuted play blocked by browser, falling back to muted play:", err);
+            video.muted = true;
+            setIsMuted(true);
+            video.play()
+              .then(() => {
+                setIsPlaying(true);
+                setIsBuffering(false);
+                resetControlsTimer();
+              })
+              .catch((e2) => logger.warn("Playback error:", e2));
+          });
+      }
+    } else {
       video.pause();
       setIsPlaying(false);
       setShowControls(true);
+    }
+  };
+
+  const handleContainerClick = (e: React.MouseEvent) => {
+    // If clicking outside controls and button:
+    // If already playing, toggle play/pause
+    if (isPlaying) {
+      handlePlayPause(e);
+      return;
+    }
+    // If paused, open in Videos section if handler is provided
+    if (onNavigateToWatch) {
+      e.stopPropagation();
+      onNavigateToWatch();
     } else {
-      video.play()
-        .then(() => {
-          setIsPlaying(true);
-          resetControlsTimer();
-        })
-        .catch((err) => logger.info(err));
+      handlePlayPause(e);
     }
   };
 
@@ -155,31 +155,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     const video = videoRef.current;
     if (video && video.duration) {
       setDuration(video.duration);
-    }
-  };
-
-  // Capture canvas poster frame if no thumbnail URL was provided
-  const handleLoadedData = () => {
-    setIsBuffering(false);
-    if (!derivedPoster && !capturedPoster && videoRef.current) {
-      try {
-        const vid = videoRef.current;
-        if (vid.videoWidth > 0 && vid.videoHeight > 0) {
-          const canvas = document.createElement('canvas');
-          canvas.width = Math.min(vid.videoWidth, 640);
-          canvas.height = Math.round((canvas.width / vid.videoWidth) * vid.videoHeight);
-          const ctx = canvas.getContext('2d');
-          if (ctx) {
-            ctx.drawImage(vid, 0, 0, canvas.width, canvas.height);
-            const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
-            if (dataUrl && dataUrl.length > 100) {
-              setCapturedPoster(dataUrl);
-            }
-          }
-        }
-      } catch (e) {
-        // Cross-origin canvas capture might be blocked; browser #t=0.001 handles fallback
-      }
     }
   };
 
@@ -225,15 +200,15 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   return (
     <div 
       ref={containerRef} 
-      onClick={handlePlayPause}
+      onClick={handleContainerClick}
       onMouseMove={resetControlsTimer}
-      className="relative w-full h-full min-h-[240px] max-h-[540px] overflow-hidden group/video bg-[#080b12] flex items-center justify-center cursor-pointer select-none"
+      className="relative w-full h-full min-h-[240px] max-h-[540px] overflow-hidden group/video bg-[#04060a] flex items-center justify-center cursor-pointer select-none"
     >
-      {/* Video Element */}
+      {/* Native HTML5 Video Element - Clean Direct CDN Stream */}
       <video
         ref={videoRef}
-        src={videoSrcWithFragment}
-        poster={effectivePoster}
+        src={videoSrc}
+        poster={derivedPoster}
         className={className}
         loop
         muted={isMuted}
@@ -241,39 +216,41 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         preload="metadata"
         onTimeUpdate={handleTimeUpdate}
         onLoadedMetadata={handleLoadedMetadata}
-        onLoadedData={handleLoadedData}
         onWaiting={() => setIsBuffering(true)}
+        onCanPlay={() => setIsBuffering(false)}
         onPlaying={() => {
           setIsBuffering(false);
           setIsPlaying(true);
         }}
         onPause={() => setIsPlaying(false)}
+        onError={(err) => {
+          logger.warn("Video stream error:", err);
+          setIsBuffering(false);
+        }}
       />
 
-      {/* Poster Background or First Frame Preview */}
-      {!isPlaying && effectivePoster && (
+      {/* Poster Background Preview when paused */}
+      {!isPlaying && derivedPoster && (
         <div 
-          className="absolute inset-0 bg-cover bg-center opacity-90 filter blur-[0.5px] pointer-events-none transition-opacity duration-500"
-          style={{ backgroundImage: `url(${effectivePoster})` }}
+          className="absolute inset-0 bg-cover bg-center opacity-85 filter blur-[0.3px] pointer-events-none transition-opacity duration-300"
+          style={{ backgroundImage: `url(${derivedPoster})` }}
         />
       )}
 
-      {/* Fallback Loading Skeleton if no poster and video metadata hasn't loaded */}
-      {!isPlaying && !effectivePoster && !duration && (
-        <div className="absolute inset-0 bg-[#07090f] flex flex-col items-center justify-center gap-2 pointer-events-none">
-          <div className="w-14 h-14 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center text-aeirmist-cyan/60">
-            <Film size={26} className="animate-pulse" />
-          </div>
-          <span className="text-[10px] font-mono uppercase tracking-widest text-white/40">Loading Media...</span>
-        </div>
-      )}
-
-      {/* TOP HEADER OVERLAY (Video Badge & Info) */}
-      <div className={`absolute top-0 left-0 right-0 p-3 bg-gradient-to-b from-black/85 via-black/40 to-transparent flex items-center justify-between z-20 transition-opacity duration-300 ${(!isPlaying || showControls) ? 'opacity-100' : 'opacity-0 md:group-hover/video:opacity-100'}`}>
+      {/* TOP HEADER OVERLAY (Videos Section Pill + Title) */}
+      <div className={`absolute top-0 left-0 right-0 p-3 bg-gradient-to-b from-black/90 via-black/50 to-transparent flex items-center justify-between z-20 transition-opacity duration-300 ${(!isPlaying || showControls) ? 'opacity-100' : 'opacity-0 md:group-hover/video:opacity-100'}`}>
         <div className="flex items-center gap-2 min-w-0 pr-3">
-          <span className="px-2.5 py-1 rounded-full bg-aeirmist-cyan/20 border border-aeirmist-cyan/40 text-aeirmist-cyan text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 backdrop-blur-md shadow-sm shrink-0">
-            <Film size={11} className="fill-current" /> Video
-          </span>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onNavigateToWatch?.();
+            }}
+            className="px-2.5 py-1 rounded-full bg-aeirmist-cyan/20 hover:bg-aeirmist-cyan hover:text-black border border-aeirmist-cyan/40 text-aeirmist-cyan text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 backdrop-blur-md shadow-md transition-all active:scale-95 cursor-pointer pointer-events-auto shrink-0"
+            title="Open in Videos section"
+          >
+            <Film size={11} className="fill-current" /> Watch in Videos ↗
+          </button>
           {displayHeadline && (
             <span className="text-xs font-semibold text-white/95 truncate drop-shadow-md">
               {displayHeadline}
@@ -288,7 +265,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         )}
       </div>
 
-      {/* CENTER PLAY BUTTON / BUFFERING INDICATOR */}
+      {/* CENTER PLAY BUTTON / BUFFERING SPINNER (Clean, high contrast, guaranteed play) */}
       <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
         {isBuffering ? (
           <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-black/75 backdrop-blur-md border border-aeirmist-cyan/50 flex items-center justify-center text-aeirmist-cyan shadow-[0_0_35px_rgba(0,242,255,0.4)]">
@@ -298,7 +275,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           <button
             type="button"
             onClick={handlePlayPause}
-            className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-black/65 hover:bg-black/85 backdrop-blur-md border-2 border-white/30 hover:border-aeirmist-cyan text-white shadow-[0_8px_32px_rgba(0,0,0,0.8)] flex items-center justify-center group-hover/video:scale-110 active:scale-95 transition-all duration-300 pointer-events-auto cursor-pointer"
+            className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-black/60 hover:bg-black/85 backdrop-blur-xl border-2 border-white/30 hover:border-aeirmist-cyan text-white shadow-[0_8px_32px_rgba(0,0,0,0.8)] flex items-center justify-center group-hover/video:scale-110 active:scale-95 transition-all duration-300 pointer-events-auto cursor-pointer"
             aria-label="Play video"
           >
             <Play size={28} className="fill-aeirmist-cyan text-aeirmist-cyan ml-1 drop-shadow-[0_0_15px_rgba(0,242,255,0.8)]" />
@@ -306,7 +283,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         ) : null}
       </div>
 
-      {/* DEDICATED BOTTOM-SIDE MUTE / UNMUTE BUTTON (User requirement: niche side e mute/unmute button) */}
+      {/* DEDICATED BOTTOM-RIGHT FLOATING MUTE / UNMUTE BUTTON */}
       <button 
         type="button"
         onClick={handleMuteToggle}
@@ -321,7 +298,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         )}
       </button>
 
-      {/* BOTTOM CONTROLS & TIMELINE (Timeline Scrubber + Fullscreen) */}
+      {/* BOTTOM CONTROLS & TIMELINE */}
       <div className={`absolute bottom-0 left-0 right-0 p-3 pt-6 bg-gradient-to-t from-black/95 via-black/60 to-transparent flex flex-col gap-2 z-20 transition-opacity duration-300 ${(!isPlaying || showControls) ? 'opacity-100' : 'opacity-0 md:group-hover/video:opacity-100'}`}>
         {/* Timeline Scrubber */}
         <div 
@@ -336,7 +313,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           </div>
         </div>
 
-        {/* Action Controls Row (Padding on right to leave room for the floating mute button) */}
+        {/* Action Controls Row (Right padding to avoid floating mute button) */}
         <div className="flex items-center justify-between text-white text-xs pointer-events-auto pr-14">
           <div className="flex items-center gap-2.5">
             {/* Play/Pause Button */}
@@ -356,6 +333,21 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
+            {/* Open in Videos section button */}
+            {onNavigateToWatch && (
+              <button 
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onNavigateToWatch();
+                }}
+                className="px-2.5 py-1 rounded-lg bg-black/60 hover:bg-aeirmist-cyan hover:text-black border border-white/15 flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-white transition-all active:scale-90 cursor-pointer"
+                title="Watch in Videos Feed"
+              >
+                <Film size={12} /> Videos ↗
+              </button>
+            )}
+
             {/* Fullscreen Button */}
             <button 
               type="button"

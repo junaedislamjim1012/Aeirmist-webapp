@@ -1586,7 +1586,12 @@ function AppContent() {
                               onUserClick={handleUserClick} 
                               onPostClick={handlePostClick}
                               onCreate={handleCreatePostClick} 
-                              onNavigate={(tab) => setActiveTab(tab as any)} 
+                              onNavigate={(tab, param) => {
+                                setActiveTab(tab as any);
+                                if (tab === 'videos' && param) {
+                                  setViewingVideoId(param);
+                                }
+                              }} 
                             />
                           </Suspense>
                         </ErrorBoundary>

@@ -38,7 +38,7 @@ import { logger } from '@/src/utils/logger';
 const InsightsDashboard = React.lazy(() => import('../analytics/InsightsDashboard').then(m => ({ default: m.InsightsDashboard })));
 
 interface PostCardProps {
-  onNavigate?: (tab: string) => void;
+  onNavigate?: (tab: string, param?: string) => void;
   post: {
     id: string;
     userId?: string;
@@ -1728,12 +1728,15 @@ export const PremiumPostCard = React.memo<PostCardProps>(({ post, onUserClick, o
               <Collage 
                 items={collageItems} 
                 fitMode={(post as any).fitMode || 'cover'} 
-                caption={post.content || (post as any).caption || (post as any).title}
+                caption={postCaption}
                 poster={(post as any).thumbnail || (post as any).thumbnailURL || (post as any).coverImage}
                 onItemClick={() => {
                   if ((post as any).type !== 'video' && collageItems?.[0]?.type !== 'video') {
                     onPostClick?.(post.id);
                   }
+                }}
+                onNavigateToWatch={() => {
+                  onNavigate?.('videos', (post as any).videoId || post.id);
                 }}
                 renderLightboxSidebar={renderLightboxSidebar}
               />

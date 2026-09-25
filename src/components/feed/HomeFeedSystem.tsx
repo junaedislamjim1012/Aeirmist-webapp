@@ -26,7 +26,7 @@ import { LocalSqlService } from '../../services/LocalSqlService';
 import { feedRankingService, FeedMode } from '../../services/FeedRankingService';
 
 
-export const HomeFeedSystem: React.FC<{ onUserClick?: (user: any) => void, onPostClick?: (postId: string) => void, onCreate?: () => void, onNavigate?: (tab: string) => void }> = React.memo(({ onUserClick, onPostClick, onCreate, onNavigate }) => {
+export const HomeFeedSystem: React.FC<{ onUserClick?: (user: any) => void, onPostClick?: (postId: string) => void, onCreate?: () => void, onNavigate?: (tab: string, param?: string) => void }> = React.memo(({ onUserClick, onPostClick, onCreate, onNavigate }) => {
   const [posts, setPosts] = useState<any[]>(() => {
     // Attempt instant hydration from local cache
     try {

@@ -16,6 +16,7 @@ interface CollageProps {
   caption?: string;
   poster?: string;
   onItemClick?: (idx: number) => void;
+  onNavigateToWatch?: () => void;
   renderLightboxSidebar?: () => React.ReactNode;
 }
 
@@ -24,7 +25,8 @@ export const Collage: React.FC<CollageProps> = ({
   fitMode = 'cover', 
   caption,
   poster,
-  onItemClick, 
+  onItemClick,
+  onNavigateToWatch, 
   renderLightboxSidebar 
 }) => {
   const [modalOpen, setModalOpen] = useState(false);
@@ -108,7 +110,7 @@ export const Collage: React.FC<CollageProps> = ({
             className={customClass} 
             poster={poster}
             caption={caption}
-            useCache 
+            onNavigateToWatch={onNavigateToWatch}
           />
         ) : (
           <SafeImage 
@@ -160,7 +162,7 @@ export const Collage: React.FC<CollageProps> = ({
                     className="w-full h-full object-contain" 
                     poster={poster}
                     caption={caption}
-                    useCache 
+                    onNavigateToWatch={onNavigateToWatch}
                   />
                 ) : (
                   <SafeImage 

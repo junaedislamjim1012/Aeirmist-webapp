@@ -148,38 +148,16 @@ if ('serviceWorker' in navigator) {
 // Centralized Error Handling & Vite HMR Noise Silence
 // ============================================================
 if (typeof window !== 'undefined') {
-  // Silence typical Vite HMR connection errors in the console which are expected in this env
-  const originalError = console.error;
-  const originalWarn = console.warn;
-  
-  console.error = (...args) => {
-    const errorStr = args.map(arg => String(arg)).join(' ');
-    
-    // Suppress typical environment noise or firestore quota errors from displaying heavily
-    if (
-      errorStr.includes('[vite] failed to connect to websocket') ||
-      errorStr.includes('WebSocket closed without opened') ||
-      errorStr.includes('quota-exceeded') ||
-      errorStr.includes('Quota limit exceeded') ||
-      errorStr.includes('resource-exhausted') ||
-      errorStr.includes('Free daily write units per project')
-    ) {
-      // Log as a subtle warn/info instead of error to prevent blocking
-      originalWarn.apply(console, ["[Suppressed Firestore Quota/HMR Noise]", ...args]);
-      return;
-    }
-    
-    originalError.apply(console, args);
-  };
-
-  console.warn = (...args) => {
-    if (args[0] && typeof args[0] === 'string' && (
-      args[0].includes('[vite] failed to connect')
-    )) {
-      return; // Suppress noise
-    }
-    originalWarn.apply(console, args);
-  };
+  if (import.meta.env.DEV) {
+    // Silence development-only Vite HMR websocket noise when developing locally
+    const originalWarn = console.warn;
+    console.warn = (...args) => {
+      if (args[0] && typeof args[0] === 'string' && args[0].includes('[vite] failed to connect')) {
+        return;
+      }
+      originalWarn.apply(console, args);
+    };
+  }
 
   window.addEventListener('error', (event) => {
     if (event.message && event.message.includes('Cannot set property fetch of #<Window>')) {

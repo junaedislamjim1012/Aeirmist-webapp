@@ -295,9 +295,23 @@ class FeedRankingService {
 
       // Mode: Following
       if (feedMode === 'following') {
-        // Strictly posts from followed accounts (user's real following list)
-        const isFollowed = following.includes(authorId) || following.includes(authorUid);
-        return isFollowed;
+        const authorCandidates = [
+          p.authorId,
+          p.authorUid,
+          p.userId,
+          p.author?.id,
+          p.author?.uid,
+          authorId,
+          authorUid
+        ].filter(Boolean);
+
+        const followingSet = new Set([
+          ...following,
+          ...following.map((id: string) => id.replace(/^profile_/, '')),
+          ...following.map((id: string) => 'profile_' + id.replace(/^profile_/, ''))
+        ]);
+
+        return authorCandidates.some(id => followingSet.has(id));
       }
 
       // Mode: Friends (Mutual follows or Close Friends)
@@ -318,9 +332,15 @@ class FeedRankingService {
     if (feedMode === 'latest' || feedMode === 'following' || feedMode === 'friends' || feedMode === 'saved') {
       return eligiblePosts.sort((a, b) => this.getPostTimeMs(b) - this.getPostTimeMs(a)).map(p => {
         const authorId = p.authorId || p.authorUid || '';
-        const isFollowed = following.includes(authorId);
+        const authorCandidates = [p.authorId, p.authorUid, p.userId, p.author?.id, p.author?.uid, authorId].filter(Boolean);
+        const followingSet = new Set([
+          ...following,
+          ...following.map((id: string) => id.replace(/^profile_/, '')),
+          ...following.map((id: string) => 'profile_' + id.replace(/^profile_/, ''))
+        ]);
+        const isFollowed = authorCandidates.some(id => followingSet.has(id));
         const isMutual = isFollowed && followers.includes(authorId);
-        const isOwn = authorId === myProfileId;
+        const isOwn = authorCandidates.some(id => id === myProfileId || id === myUid);
 
         let reasonType: RankingReason['type'] = 'fresh';
         let reasonText = 'Latest post in chronological order';

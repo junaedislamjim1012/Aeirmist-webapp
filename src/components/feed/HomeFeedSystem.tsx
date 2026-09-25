@@ -207,9 +207,25 @@ export const HomeFeedSystem: React.FC<{ onUserClick?: (user: any) => void, onPos
         const authorUid = p.authorUid || p.author?.uid || '';
         const isOwn = authorId === profile.id || authorUid === user.uid;
 
-        // Feed Mode specific filtering
+        // Feed Mode specific filtering: strictly posts from users in following list
         if (feedMode === 'following') {
-          return following.includes(authorId) || following.includes(authorUid);
+          const authorCandidates = [
+            p.authorId,
+            p.authorUid,
+            p.userId,
+            p.author?.id,
+            p.author?.uid,
+            authorId,
+            authorUid
+          ].filter(Boolean);
+
+          const followingSet = new Set([
+            ...following,
+            ...following.map((id: string) => id.replace(/^profile_/, '')),
+            ...following.map((id: string) => 'profile_' + id.replace(/^profile_/, ''))
+          ]);
+
+          return authorCandidates.some(id => followingSet.has(id));
         }
 
         if (feedMode === 'friends') {

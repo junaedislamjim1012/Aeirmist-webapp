@@ -11,15 +11,29 @@ service firebase.storage {
       return isSignedIn() && request.auth.uid == userId;
     }
 
+    // Verify chat participant by checking Firestore conversation document
+    function isChatParticipant(chatId) {
+      return isSignedIn() && (
+        (firestore.exists(/databases/(default)/documents/conversations/$(chatId)) && (
+          request.auth.uid in firestore.get(/databases/(default)/documents/conversations/$(chatId)).data.participants ||
+          ('profile_' + request.auth.uid) in firestore.get(/databases/(default)/documents/conversations/$(chatId)).data.participants
+        )) ||
+        (firestore.exists(/databases/(default)/documents/chats/$(chatId)) && (
+          request.auth.uid in firestore.get(/databases/(default)/documents/chats/$(chatId)).data.participants ||
+          ('profile_' + request.auth.uid) in firestore.get(/databases/(default)/documents/chats/$(chatId)).data.participants
+        ))
+      );
+    }
+
     // -- CONTENT VALIDATION HELPERS --
     function isValidImage() {
       return request.resource.contentType.matches('image/.*')
-        && request.resource.size < 20 * 1024 * 1024; // Max 20MB
+        && request.resource.size < 25 * 1024 * 1024; // Max 25MB
     }
 
     function isValidVideo() {
       return request.resource.contentType.matches('video/.*')
-        && request.resource.size < 100 * 1024 * 1024; // Max 100MB
+        && request.resource.size < 200 * 1024 * 1024; // Max 200MB
     }
 
     function isValidAudio() {
@@ -39,7 +53,7 @@ service firebase.storage {
       allow write: if isOwner(userId) && isValidMedia();
     }
     
-    // Specific avatar and profile picture paths
+    // Specific avatar and profile picture paths - strictly owner-only write
     match /avatars/{userId}/{allPaths=**} {
       allow read: if true;
       allow write: if isOwner(userId) && isValidImage();
@@ -50,7 +64,7 @@ service firebase.storage {
       allow write: if isOwner(userId) && isValidImage();
     }
     
-    // Posts & Reels media uploaded by user
+    // Posts & Reels media uploaded by user - public read for web/SEO, owner-only write
     match /posts/{userId}/{allPaths=**} {
       allow read: if true;
       allow write: if isOwner(userId) && isValidMedia();
@@ -71,18 +85,29 @@ service firebase.storage {
       allow write: if isOwner(userId) && isValidMedia();
     }
 
-    // Private Vault files — owner-only read AND write
+    // Stores & Products media - public read, owner-only write
+    match /stores/{userId}/{allPaths=**} {
+      allow read: if true;
+      allow write: if isOwner(userId) && isValidMedia();
+    }
+
+    match /products/{userId}/{allPaths=**} {
+      allow read: if true;
+      allow write: if isOwner(userId) && isValidMedia();
+    }
+
+    // Private Vault files — strictly owner-only read AND write
     match /vault/{userId}/{allPaths=**} {
-      allow read, write: if isOwner(userId);
+      allow read, write: if isOwner(userId) && isValidMedia();
     }
 
-    // Chat attachments — authenticated participants can read/write with media validation
+    // Chat attachments — strictly participant-bound
     match /chats/{chatId}/{allPaths=**} {
-      allow read: if isSignedIn();
-      allow write: if isSignedIn() && isValidMedia();
+      allow read: if isChatParticipant(chatId);
+      allow write: if isChatParticipant(chatId) && isValidMedia();
     }
 
-    // Report/support attachments — user-scoped, owner writes, admin reads
+    // Report/support attachments — user-scoped, owner writes, signed-in staff reads
     match /reports/{userId}/{allPaths=**} {
       allow read: if isSignedIn();
       allow write: if isOwner(userId) && isValidImage();
@@ -115,7 +140,7 @@ service firebase.storage {
       allow write: if isOwner(userId) && isValidImage();
     }
 
-    // Default deny for everything else
+    // Default deny for everything else (including root-level /vault or /chats without valid parameters)
     match /{allPaths=**} {
       allow read, write: if false;
     }

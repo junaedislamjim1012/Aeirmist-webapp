@@ -337,7 +337,9 @@ export const PostStudio: React.FC<PostStudioProps> = React.memo(({ onClose, init
 
       const payload: any = {
         content: caption,
+        caption: caption,
         mediaUrls: uploadedUrls,
+        mediaType: selectedType === 'video' ? 'video' : 'image',
         type: selectedType,
         authorId: profile?.id || 'unknown',
         authorUid: user?.uid || 'unknown',
@@ -366,6 +368,14 @@ export const PostStudio: React.FC<PostStudioProps> = React.memo(({ onClose, init
       if (recordedAudio) payload.voiceUrl = recordedAudio;
       if (selectedType === 'text') {
         payload.gradientId = selectedGradient.id;
+      }
+      if (selectedType === 'video' && uploadedUrls[0]) {
+        const vidUrl = uploadedUrls[0];
+        if (vidUrl.includes('/video/upload/')) {
+          payload.thumbnail = vidUrl
+            .replace('/video/upload/', '/video/upload/so_0.5,f_jpg,q_auto/')
+            .replace(/\.[a-zA-Z0-9]+(\?.*)?$/, '.jpg$1');
+        }
       }
 
       await addDoc(collection(db, 'posts'), payload);

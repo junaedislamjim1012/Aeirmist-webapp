@@ -92,12 +92,14 @@ export const Collage: React.FC<CollageProps> = ({
   };
 
   const renderMediaCell = (item: MediaItem, idx: number, customClass: string = `w-full h-full ${fitMode === 'contain' ? 'object-contain bg-black/40' : 'object-cover object-center'}`) => {
-    const isVideo = item.type === 'video';
+    const isVideo = item.type === 'video' || (Boolean(item.url) && (item.url.includes('/video/upload/') || /\.(mp4|webm|mov|m4v|ogg|mkv)(\?.*)?$/i.test(item.url)));
 
     return (
       <div 
         key={idx} 
-        onClick={() => handleThumbnailClick(idx)}
+        onClick={() => {
+          if (!isVideo) handleThumbnailClick(idx);
+        }}
         className="relative w-full h-full overflow-hidden hover:opacity-95 transition-opacity cursor-pointer group bg-black/30"
       >
         {isVideo ? (
@@ -138,7 +140,13 @@ export const Collage: React.FC<CollageProps> = ({
       {count === 1 ? (
         <div className={`w-full ${singleAspectClass} mx-auto flex items-center justify-center relative overflow-hidden bg-black/40`}>
           {fitMode === 'contain' ? (
-            <div className="relative w-full h-full flex items-center justify-center overflow-hidden bg-black/60" onClick={() => handleThumbnailClick(0)}>
+            <div 
+              className="relative w-full h-full flex items-center justify-center overflow-hidden bg-black/60" 
+              onClick={() => {
+                const isFirstVideo = items[0].type === 'video' || (Boolean(items[0].url) && (items[0].url.includes('/video/upload/') || /\.(mp4|webm|mov|m4v)(\?.*)?$/i.test(items[0].url)));
+                if (!isFirstVideo) handleThumbnailClick(0);
+              }}
+            >
               <img 
                 src={items[0].url} 
                 alt="" 

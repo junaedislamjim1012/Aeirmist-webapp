@@ -935,13 +935,25 @@ export const PremiumPostCard = React.memo<PostCardProps>(({ post, onUserClick, o
     ? post.mediaUrls 
     : (post.mediaUrl ? [post.mediaUrl] : []);
 
+  const isVideoUrl = (url: string) => {
+    if (!url) return false;
+    return (
+      url.includes('/video/upload/') ||
+      /\.(mp4|webm|mov|m4v|ogg|mkv)(\?.*)?$/i.test(url)
+    );
+  };
+
+  const isPostVideo = post.mediaType === 'video' || (post as any).type === 'video';
+
   const collageItems: MediaItem[] = post.mediaItems || rawImages.map((url, index) => ({
     url,
-    type: (index === 0 && post.mediaType === 'video') ? 'video' : 'image'
+    type: (isPostVideo || isVideoUrl(url)) ? 'video' : 'image'
   }));
 
+  const postCaption = post.content || (post as any).caption || (post as any).text || (post as any).description || (post as any).title || '';
+
   const hasMedia = collageItems.length > 0;
-  const isShortTextOnly = !hasMedia && post.content && post.content.length < 130 && (post as any).gradientId !== 'plain';
+  const isShortTextOnly = !hasMedia && postCaption && postCaption.length < 130 && (post as any).gradientId !== 'plain';
 
   // Highlights Hashtags and Mentions elegantly
   const renderParsedContent = (text: string, isLarge: boolean = false) => {
@@ -1592,24 +1604,24 @@ export const PremiumPostCard = React.memo<PostCardProps>(({ post, onUserClick, o
                 </button>
               </div>
             </div>
-          ) : post.content && (
+          ) : postCaption ? (
             <div onClick={() => onPostClick?.(post.id)} className="cursor-pointer">
               {isShortTextOnly ? (
                 <div className="px-5 py-8 sm:px-8 sm:py-12 text-center bg-gradient-to-br from-[#0c1322] via-[#050912] to-[#120822] border-y border-white/5 relative flex flex-col items-center justify-center min-h-[160px] sm:min-h-[200px]">
                   <div className="absolute inset-0 bg-grid-pattern opacity-[0.04]" />
                   <p className="text-base sm:text-2xl font-black text-white leading-relaxed tracking-tight select-text text-center relative z-10 font-display drop-shadow-[0_2px_12px_rgba(255,255,255,0.1)]">
-                    {renderParsedContent(post.content, true)}
+                    {renderParsedContent(postCaption, true)}
                   </p>
                 </div>
               ) : (
-                <div className="px-5 pb-2.5 sm:px-6 sm:pb-3 text-left">
-                  <p className="text-xs sm:text-sm text-white/85 leading-relaxed font-semibold tracking-wide">
-                    {renderParsedContent(post.content, false)}
+                <div className="px-5 pb-3 sm:px-6 sm:pb-3.5 text-left">
+                  <p className="text-xs sm:text-sm text-white/90 leading-relaxed font-medium tracking-wide whitespace-pre-line">
+                    {renderParsedContent(postCaption, false)}
                   </p>
                 </div>
               )}
             </div>
-          )}
+          ) : null}
 
           {/* Interactive premium Voice Note Player for recorded audio */}
           {(post as any).voice && (

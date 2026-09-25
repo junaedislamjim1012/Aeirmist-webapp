@@ -485,15 +485,15 @@ export const AeirmistDashboard: React.FC<AeirmistDashboardProps> = ({ onUserClic
   }, [profiles, searchQuery, profile]);
 
   return (
-    <div id="connections-dashboard-hub" className={`w-full min-h-screen flex flex-col ${isGlobalBgActive ? 'bg-[#030206]/40 backdrop-blur-xl' : 'bg-[#030206]'} text-white/90 relative select-none font-sans overflow-y-auto scroll-container pb-24`}>
+    <div id="connections-dashboard-hub" className={`w-full h-full min-h-0 flex-1 flex flex-col ${isGlobalBgActive ? 'bg-[#030206]/40 backdrop-blur-xl' : 'bg-[#030206]'} text-white/90 relative select-none font-sans overflow-hidden`}>
       
       {/* ========================================== */}
       {/*        1. DESKTOP VIEWPORT LAYOUT          */}
       {/* ========================================== */}
-      <div className="hidden md:flex w-full h-full relative" id="desktop-connections-layout">
+      <div className="hidden md:flex w-full h-full min-h-0 flex-1 relative overflow-hidden" id="desktop-connections-layout">
         
         {/* LEFT FIXED SIDEBAR */}
-        <div className={`w-64 shrink-0 ${isGlobalBgActive ? 'bg-[#07060c]/40 backdrop-blur-xl' : 'bg-[#07060c]'} border-r border-white/5 flex flex-col p-4 h-full`}>
+        <div className={`w-64 shrink-0 ${isGlobalBgActive ? 'bg-[#07060c]/40 backdrop-blur-xl' : 'bg-[#07060c]'} border-r border-white/5 flex flex-col p-4 h-full overflow-y-auto no-scrollbar`}>
           <div className="flex items-center justify-between pb-6 mb-2 border-b border-white/5">
             <div className="flex items-center gap-2">
               {isGlobalBgActive ? (
@@ -554,7 +554,7 @@ export const AeirmistDashboard: React.FC<AeirmistDashboardProps> = ({ onUserClic
         </div>
 
         {/* RIGHT MAIN AREA */}
-        <div className={`flex-1 flex flex-col h-full ${isGlobalBgActive ? 'bg-transparent' : 'bg-[#030206]'} overflow-hidden`}>
+        <div className={`flex-1 flex flex-col h-full min-h-0 ${isGlobalBgActive ? 'bg-transparent' : 'bg-[#030206]'} overflow-hidden relative`}>
           
           {/* SEARCH HEADER */}
           <div className={`${isGlobalBgActive ? 'bg-[#030206]/30' : 'bg-[#030206]/95'} backdrop-blur-3xl px-6 py-4 border-b border-white/5 flex gap-4 items-center justify-between shrink-0 relative z-40`}>
@@ -781,7 +781,14 @@ export const AeirmistDashboard: React.FC<AeirmistDashboardProps> = ({ onUserClic
           </div>
 
       {/* MAIN GRID VIEW AREA */}
-      <div className="flex-1 overflow-y-auto p-6 pb-24 no-scrollbar">
+      <div 
+        className="flex-1 overflow-y-auto p-6 pb-36 min-h-0 scroll-container"
+        style={{ 
+          WebkitOverflowScrolling: 'touch', 
+          touchAction: 'pan-y', 
+          overscrollBehaviorY: 'contain' 
+        }}
+      >
         {activeTab === 'for-you' && (
           <div className="mb-8 p-6 rounded-[2.5rem] bg-gradient-to-br from-aeirmist-cyan/5 to-aeirmist-magenta/5 border border-white/5">
             <div className="flex items-center justify-between mb-4">
@@ -1076,7 +1083,7 @@ export const AeirmistDashboard: React.FC<AeirmistDashboardProps> = ({ onUserClic
       {/* ========================================== */}
       {/*        2. MOBILE VIEWPORT LAYOUT           */}
       {/* ========================================== */}
-      <div className="flex md:hidden flex-col w-full h-full relative" id="mobile-connections-layout">
+      <div className="flex md:hidden flex-col w-full h-full min-h-0 flex-1 relative overflow-hidden" id="mobile-connections-layout">
         
         {/* 1. STICKY TOP HEADER ZONE */}
         <div className={`sticky top-0 ${isGlobalBgActive ? 'bg-[#030206]/35' : 'bg-[#030206]/98'} backdrop-blur-3xl z-30 pt-2 pb-2 border-b border-white/5 px-4 flex flex-col shrink-0 gap-2`}>
@@ -1344,7 +1351,7 @@ export const AeirmistDashboard: React.FC<AeirmistDashboardProps> = ({ onUserClic
 
         {/* 2. MAIN FEED CONTENT STREAM AREA */}
         <div 
-          className="flex-1 overflow-y-auto px-3.5 pt-1.5 pb-28 relative min-h-0 scroll-container"
+          className="flex-1 overflow-y-auto px-3.5 pt-1.5 pb-36 relative min-h-0 scroll-container"
           style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-y', overscrollBehaviorY: 'contain' }}
         >
           
@@ -1493,15 +1500,15 @@ export const AeirmistDashboard: React.FC<AeirmistDashboardProps> = ({ onUserClic
                           </span>
                           
                           {/* Compact Mutual follows or indicators layout details */}
-                          <div className="flex items-center gap-1.5 mt-0.5 text-[8px] font-mono uppercase text-white/30">
-                            {p.mutualCount ? (
-                              <span className="text-aeirmist-cyan/80 font-bold">{p.mutualCount} mutuals</span>
-                            ) : p.location ? (
-                              <span className="truncate max-w-[120px]">{p.location}</span>
-                            ) : (
-                              <span>Aeirmist Network</span>
-                            )}
-                          </div>
+                          {(p.mutualCount || p.location) && (
+                            <div className="flex items-center gap-1.5 mt-0.5 text-[8px] font-mono uppercase text-white/30">
+                              {p.mutualCount ? (
+                                <span className="text-aeirmist-cyan/80 font-bold">{p.mutualCount} mutuals</span>
+                              ) : p.location ? (
+                                <span className="truncate max-w-[120px]">{p.location}</span>
+                              ) : null}
+                            </div>
+                          )}
                         </div>
                       </div>
 
@@ -1747,9 +1754,11 @@ const DesktopSuggestionCard: React.FC<DesktopSuggestionCardProps> = ({
             <span className="text-[10px] font-mono font-bold tracking-wider text-[#00f2ff] truncate block">
               @{p.username || 'user'}
             </span>
-            <span className="text-[8.5px] font-mono text-white/40 tracking-wider truncate block mt-0.5">
-              {p.mutualCount ? `${p.mutualCount} Mutual Connections` : p.location || 'Aeirmist Network'}
-            </span>
+            {(p.mutualCount || p.location) && (
+              <span className="text-[8.5px] font-mono text-white/40 tracking-wider truncate block mt-0.5">
+                {p.mutualCount ? `${p.mutualCount} Mutual Connections` : p.location}
+              </span>
+            )}
           </div>
         </div>
 

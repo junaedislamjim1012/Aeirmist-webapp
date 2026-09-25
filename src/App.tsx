@@ -1651,12 +1651,12 @@ function AppContent() {
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
                     transition={{ duration: 0.1, ease: "easeOut" }}
-                    className="flex-1 h-full overflow-y-auto overflow-x-hidden scroll-container flex flex-col"
+                    className="flex-1 h-full min-h-0 overflow-hidden flex flex-col"
                   >
                     {featureFlags?.discover === false ? (
                       <ComingSoonScreen sectorName="Explore & Connections Hub" onHomeClick={() => setActiveTab('feed')} />
                     ) : (
-                      <div className="w-full h-full">
+                      <div className="w-full h-full min-h-0 flex flex-col flex-1">
                         <ErrorBoundary inline>
                           <Suspense fallback={<LazyFallback />}>
                             <AeirmistDashboard onUserClick={handleUserClick} onMessageClick={handleMessageClick} />

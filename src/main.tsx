@@ -23,9 +23,14 @@ securityShield.initialize();
 applyDeviceOptimizations();
 
 // ============================================================
-// Register Service Worker for PWA/TWA support
+// Register Service Worker for PWA/TWA support (Bypass on Native Capacitor)
 // ============================================================
-if ('serviceWorker' in navigator) {
+const isNativeCapacitor = typeof window !== 'undefined' && Boolean(
+  (window as any).Capacitor?.isNativePlatform?.() || 
+  navigator?.userAgent?.includes('Capacitor')
+);
+
+if ('serviceWorker' in navigator && !isNativeCapacitor) {
   window.addEventListener('load', () => {
     try {
       navigator.serviceWorker.register('/sw.js')
@@ -167,13 +172,14 @@ if (typeof window !== 'undefined') {
   });
 
   window.addEventListener('unhandledrejection', (event) => {
-    // Gracefully handle quota or network failures
+    // Gracefully report quota or network failures while preserving observability
     if (event.reason && (
       event.reason.code === 'quota-exceeded' || 
       String(event.reason).includes('Quota')
     )) {
-      logger.warn('System under heavy load. Pausing background tasks.');
-      event.preventDefault();
+      logger.warn('Storage quota warning or network pressure:', event.reason);
+    } else {
+      logger.error('Unhandled Promise Rejection:', event.reason);
     }
   });
 }

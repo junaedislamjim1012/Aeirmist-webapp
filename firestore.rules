@@ -168,6 +168,39 @@ service cloud.firestore {
       );
     }
 
+    // Engagement Counter Integrity Helper
+    function isValidCounterChange(fieldName) {
+      return !incoming().keys().hasAll([fieldName]) || (
+        incoming()[fieldName] is int && incoming()[fieldName] >= 0 && (
+          !existing().keys().hasAll([fieldName]) ||
+          incoming()[fieldName] == existing()[fieldName] ||
+          incoming()[fieldName] == existing()[fieldName] + 1 ||
+          incoming()[fieldName] == existing()[fieldName] - 1
+        )
+      );
+    }
+
+    function isValidEngagementUpdate() {
+      return incoming().diff(existing()).affectedKeys().hasOnly([
+        'likes', 'likesCount', 'likedBy', 'bookmarks', 'bookmarksCount', 'savedBy', 
+        'sharesCount', 'commentsCount', 'viewsCount', 'poll', 'updatedAt'
+      ]) &&
+      (!incoming().diff(existing()).affectedKeys().hasAny(['likesCount']) || isValidCounterChange('likesCount')) &&
+      (!incoming().diff(existing()).affectedKeys().hasAny(['bookmarksCount']) || isValidCounterChange('bookmarksCount')) &&
+      (!incoming().diff(existing()).affectedKeys().hasAny(['commentsCount']) || isValidCounterChange('commentsCount')) &&
+      (!incoming().diff(existing()).affectedKeys().hasAny(['sharesCount']) || isValidCounterChange('sharesCount'));
+    }
+
+    // Notification Type Whitelist Helper
+    function isAllowedNotificationType(type) {
+      return type in [
+        'like', 'comment', 'follow', 'follow_request', 'mention', 
+        'message', 'repost', 'reaction', 'call', 'reply', 'gift', 
+        'share', 'tag', 'security_new_device', 'verification_status', 
+        'login_alert', 'system'
+      ];
+    }
+
     // ==========================================
     // -- COLLECTION RULES --
     // ==========================================
@@ -254,10 +287,7 @@ service cloud.firestore {
           (resource.data.authorUid == request.auth.uid || resource.data.userId == request.auth.uid) &&
           !incoming().diff(existing()).affectedKeys().hasAny(['authorUid', 'userId', 'createdAt'])
         ) ||
-        incoming().diff(existing()).affectedKeys().hasOnly([
-          'likes', 'likesCount', 'likedBy', 'bookmarks', 'bookmarksCount', 'savedBy', 
-          'sharesCount', 'commentsCount', 'viewsCount', 'poll', 'updatedAt'
-        ]) ||
+        isValidEngagementUpdate() ||
         isModerator()
       );
       allow delete: if isSignedIn() && (
@@ -304,10 +334,7 @@ service cloud.firestore {
           (resource.data.authorUid == request.auth.uid || resource.data.userId == request.auth.uid) &&
           !incoming().diff(existing()).affectedKeys().hasAny(['authorUid', 'userId', 'createdAt'])
         ) ||
-        incoming().diff(existing()).affectedKeys().hasOnly([
-          'likes', 'likesCount', 'likedBy', 'bookmarks', 'bookmarksCount', 'savedBy', 
-          'sharesCount', 'commentsCount', 'viewsCount', 'poll', 'updatedAt'
-        ]) ||
+        isValidEngagementUpdate() ||
         isModerator()
       );
       allow delete: if isSignedIn() && (
@@ -317,14 +344,18 @@ service cloud.firestore {
       );
     }
 
-    // 7. POST INSIGHTS: Read restricted to post author or admin; updates restricted to viewer metrics; create verified
+    // 7. POST INSIGHTS: Read restricted to post author or admin; updates restricted to viewer metrics; create verified author only
     match /post_insights/{postId} {
       allow read: if isSignedIn() && (
         isAdmin() ||
         get(/databases/$(database)/documents/posts/$(postId)).data.authorUid == request.auth.uid ||
         get(/databases/$(database)/documents/posts/$(postId)).data.userId == request.auth.uid
       );
-      allow create: if isSignedIn() && request.resource.data.postId == postId && exists(/databases/$(database)/documents/posts/$(postId));
+      allow create: if isSignedIn() && request.resource.data.postId == postId && exists(/databases/$(database)/documents/posts/$(postId)) && (
+        get(/databases/$(database)/documents/posts/$(postId)).data.authorUid == request.auth.uid ||
+        get(/databases/$(database)/documents/posts/$(postId)).data.userId == request.auth.uid ||
+        isAdmin()
+      );
       allow update: if isSignedIn() && (
         incoming().diff(existing()).affectedKeys().hasOnly(['totalViews', 'viewSources', 'audience', 'profileClicks', 'lastUpdated']) ||
         get(/databases/$(database)/documents/posts/$(postId)).data.authorUid == request.auth.uid ||
@@ -341,7 +372,7 @@ service cloud.firestore {
         request.resource.data.viewerUid == request.auth.uid ||
         request.resource.data.viewerId == request.auth.uid ||
         request.resource.data.viewerId == ('profile_' + request.auth.uid)
-      );
+      ) && request.resource.data.keys().hasAll(['postId']) && exists(/databases/$(database)/documents/posts/$(request.resource.data.postId));
       allow read: if isSignedIn() && (
         resource == null || 
         get(/databases/$(database)/documents/posts/$(resource.data.postId)).data.authorUid == request.auth.uid ||
@@ -502,10 +533,18 @@ service cloud.firestore {
     match /notifications/{notifId} {
       allow get, list: if isNotificationRecipient(resource.data);
       allow create: if isSignedIn() && (
-        request.resource.data.fromUserUid == request.auth.uid ||
-        request.resource.data.fromUserId == request.auth.uid ||
-        request.resource.data.fromUserId == ('profile_' + request.auth.uid) ||
-        isAdmin()
+        isAdmin() ||
+        (
+          (!request.resource.data.keys().hasAll(['type']) || isAllowedNotificationType(request.resource.data.type)) &&
+          (
+            request.resource.data.userId == request.auth.uid ||
+            request.resource.data.userId == ('profile_' + request.auth.uid) ||
+            request.resource.data.fromUserUid == request.auth.uid ||
+            request.resource.data.fromUserId == request.auth.uid ||
+            request.resource.data.fromUserId == ('profile_' + request.auth.uid) ||
+            (request.resource.data.keys().hasAll(['senderId']) && request.resource.data.senderId == request.auth.uid)
+          )
+        )
       );
       allow update, delete: if isNotificationRecipient(resource.data);
     }

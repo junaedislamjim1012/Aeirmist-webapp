@@ -10,11 +10,16 @@ import {
   Download,
   AlertTriangle,
   Clock,
-  Settings
+  Settings,
+  Folder,
+  FolderCheck,
+  CheckCircle2,
+  RotateCcw
 } from 'lucide-react';
 import { useAeirmist } from '../../../context/AeirmistContext';
 import { DigitalModule } from '../../ui/DigitalComponents';
 import { cloudinaryService } from '../../../services/cloudinaryService';
+import { DownloadManagerService, DownloadMode, DownloadPathConfig } from '../../../services/DownloadManagerService';
 
 
 const StorageSettings = () => {
@@ -88,6 +93,9 @@ const StorageSettings = () => {
           />
         </div>
       </section>
+
+      {/* Telegram-Style Download Path Selector */}
+      <DownloadPathSection addToast={addToast} />
 
       {/* Cloudinary CDN Storage Config */}
       <CloudinaryConfigSection addToast={addToast} />
@@ -280,6 +288,197 @@ const CloudinaryConfigSection = ({ addToast }: { addToast: any }) => {
             </div>
           </div>
         )}
+      </div>
+    </section>
+  );
+};
+
+const DownloadPathSection = ({ addToast }: { addToast: any }) => {
+  const [config, setConfig] = React.useState<DownloadPathConfig>({
+    mode: 'system_downloads',
+    displayPath: 'Downloads / Aeirmist',
+    isAvailable: true,
+    isNative: false
+  });
+  const [loading, setLoading] = React.useState(false);
+
+  React.useEffect(() => {
+    DownloadManagerService.getConfig().then(setConfig);
+  }, []);
+
+  const handleSelectMode = async (mode: DownloadMode) => {
+    if (mode === 'custom' && !config.customUri && !config.customName) {
+      handlePickCustomFolder();
+      return;
+    }
+    const ok = await DownloadManagerService.setMode(mode);
+    if (ok) {
+      const updated = await DownloadManagerService.getConfig();
+      setConfig(updated);
+      addToast?.({
+        title: 'DOWNLOAD PATH UPDATED',
+        message: `Mode set to: ${mode === 'system_downloads' ? 'Aeirmist System Downloads' : mode === 'temp' ? 'Temporary App Cache' : 'Custom Folder'}`,
+        type: 'success'
+      });
+    }
+  };
+
+  const handlePickCustomFolder = async () => {
+    setLoading(true);
+    try {
+      const res = await DownloadManagerService.pickCustomFolder();
+      if (res.success) {
+        const updated = await DownloadManagerService.getConfig();
+        setConfig(updated);
+        addToast?.({
+          title: 'FOLDER SELECTED',
+          message: `Download directory configured: ${res.name}`,
+          type: 'success'
+        });
+      } else if (!res.canceled && res.error) {
+        addToast?.({
+          title: 'FOLDER PICKER ERROR',
+          message: res.error,
+          type: 'error'
+        });
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleReset = async () => {
+    await DownloadManagerService.resetToDefault();
+    const updated = await DownloadManagerService.getConfig();
+    setConfig(updated);
+    addToast?.({
+      title: 'DOWNLOAD PATH RESET',
+      message: 'Restored default Downloads / Aeirmist folder',
+      type: 'info'
+    });
+  };
+
+  return (
+    <section className="space-y-6">
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-aeirmist-cyan/10 flex items-center justify-center text-aeirmist-cyan">
+            <Folder size={18} />
+          </div>
+          <div>
+            <h3 className="text-sm font-bold uppercase tracking-wider text-white/80">Download Path</h3>
+            <span className="text-[9px] font-bold text-aeirmist-cyan uppercase tracking-widest bg-aeirmist-cyan/10 px-2 py-0.5 rounded-full inline-block mt-0.5">
+              {config.isNative ? 'Native SAF Storage' : 'Standard Web Storage'}
+            </span>
+          </div>
+        </div>
+
+        <button
+          onClick={handleReset}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/5 border border-white/10 text-[9px] font-bold uppercase tracking-widest text-white/50 hover:text-white hover:bg-white/10 transition-all cursor-pointer"
+          title="Reset to default system downloads folder"
+        >
+          <RotateCcw size={11} />
+          Reset Default
+        </button>
+      </div>
+
+      <div className="p-6 rounded-3xl bg-white/[0.02] border border-white/5 space-y-6">
+        {/* Current Active Location Display */}
+        <div className="p-4 rounded-2xl bg-black/40 border border-white/10 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3 overflow-hidden">
+            <div className="w-10 h-10 rounded-xl bg-aeirmist-cyan/15 flex items-center justify-center text-aeirmist-cyan shrink-0">
+              <FolderCheck size={20} />
+            </div>
+            <div className="min-w-0">
+              <span className="text-[9px] font-black uppercase tracking-widest text-white/40 block">Current Target Directory</span>
+              <p className="text-xs font-mono font-bold text-white truncate mt-0.5">{config.displayPath}</p>
+            </div>
+          </div>
+          {config.mode === 'custom' && (
+            <button
+              onClick={handlePickCustomFolder}
+              disabled={loading}
+              className="px-3 py-2 rounded-xl bg-aeirmist-cyan/20 border border-aeirmist-cyan/40 text-aeirmist-cyan text-[9px] font-bold uppercase tracking-wider hover:bg-aeirmist-cyan hover:text-black transition-all shrink-0 cursor-pointer"
+            >
+              {loading ? 'Opening...' : 'Change Folder'}
+            </button>
+          )}
+        </div>
+
+        {/* 3 Download Modes Options */}
+        <div className="space-y-3">
+          <label className="text-[10px] font-bold uppercase tracking-widest text-white/60 block">Select Download Flow</label>
+          
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            {/* Mode 1: System Downloads */}
+            <button
+              onClick={() => handleSelectMode('system_downloads')}
+              className={`p-4 rounded-2xl border text-left transition-all relative cursor-pointer ${
+                config.mode === 'system_downloads'
+                  ? 'bg-aeirmist-cyan/10 border-aeirmist-cyan text-white shadow-[0_0_15px_rgba(0,242,255,0.15)]'
+                  : 'bg-white/[0.02] border-white/5 text-white/60 hover:border-white/10 hover:bg-white/[0.04]'
+              }`}
+            >
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-bold uppercase tracking-wider text-white">System Downloads</span>
+                {config.mode === 'system_downloads' && <CheckCircle2 size={16} className="text-aeirmist-cyan" />}
+              </div>
+              <p className="text-[10px] text-white/40 leading-relaxed">
+                Safe default folder inside system Downloads (Downloads / Aeirmist).
+              </p>
+            </button>
+
+            {/* Mode 2: Temp Folder */}
+            <button
+              onClick={() => handleSelectMode('temp')}
+              className={`p-4 rounded-2xl border text-left transition-all relative cursor-pointer ${
+                config.mode === 'temp'
+                  ? 'bg-aeirmist-cyan/10 border-aeirmist-cyan text-white shadow-[0_0_15px_rgba(0,242,255,0.15)]'
+                  : 'bg-white/[0.02] border-white/5 text-white/60 hover:border-white/10 hover:bg-white/[0.04]'
+              }`}
+            >
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-bold uppercase tracking-wider text-white">Temp / App Cache</span>
+                {config.mode === 'temp' && <CheckCircle2 size={16} className="text-aeirmist-cyan" />}
+              </div>
+              <p className="text-[10px] text-white/40 leading-relaxed">
+                Ephemeral app storage. Can be purged on logout or storage cleanup.
+              </p>
+            </button>
+
+            {/* Mode 3: Custom Folder (SAF) */}
+            <button
+              onClick={() => handleSelectMode('custom')}
+              className={`p-4 rounded-2xl border text-left transition-all relative cursor-pointer ${
+                config.mode === 'custom'
+                  ? 'bg-aeirmist-cyan/10 border-aeirmist-cyan text-white shadow-[0_0_15px_rgba(0,242,255,0.15)]'
+                  : 'bg-white/[0.02] border-white/5 text-white/60 hover:border-white/10 hover:bg-white/[0.04]'
+              }`}
+            >
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-bold uppercase tracking-wider text-white">Custom SAF Folder</span>
+                {config.mode === 'custom' && <CheckCircle2 size={16} className="text-aeirmist-cyan" />}
+              </div>
+              <p className="text-[10px] text-white/40 leading-relaxed">
+                {config.customName ? `Selected: ${config.customName}` : 'Choose any accessible folder via native Android SAF picker.'}
+              </p>
+            </button>
+          </div>
+        </div>
+
+        {/* Info footer */}
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2 border-t border-white/5 text-[10px] text-white/40">
+          <span>Compliant with Android 10+ scoped storage. No broad storage permissions required.</span>
+          <button
+            onClick={handlePickCustomFolder}
+            disabled={loading}
+            className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white/80 text-[10px] font-bold uppercase tracking-wider hover:bg-white/10 hover:text-white transition-all flex items-center justify-center gap-2 cursor-pointer"
+          >
+            <Folder size={14} className="text-aeirmist-cyan" />
+            {loading ? 'Opening SAF Picker...' : 'Open Android Folder Picker'}
+          </button>
+        </div>
       </div>
     </section>
   );

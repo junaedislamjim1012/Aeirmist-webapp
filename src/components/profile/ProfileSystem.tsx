@@ -27,7 +27,7 @@ import { ProfileCompletionCard } from './ProfileCompletionCard';
 import { QuartCard } from './QuartCard';
 import { AeirmistCreatorStudio } from '../videos/AeirmistCreatorStudio';
 import { useNGL } from '../../hooks/useNGL';
-import { BarChart2, Sliders, Briefcase, Eye, BarChart3, Check } from 'lucide-react';
+import { BarChart2, Sliders, Briefcase, Eye, BarChart3, Check, Play } from 'lucide-react';
 import { usePostAnalytics } from '../../hooks/usePostAnalytics';
 import { postAnalytics } from '../../services/PostAnalyticsService';
 const InsightsDashboard = React.lazy(() => import('../analytics/InsightsDashboard').then(m => ({ default: m.InsightsDashboard })));
@@ -259,6 +259,7 @@ const ProfileSystem = ({ targetProfile, onMessageClick, onEditProfile, onUserCli
   const [editingPhoto, setEditingPhoto] = useState<{ file: File; src: string; type: 'avatar' | 'cover' } | null>(null);
   const [isNGLDashboardOpen, setIsNGLDashboardOpen] = useState(false);
   const [isNGLComposerOpen, setIsNGLComposerOpen] = useState(false);
+  const [isQRModalOpen, setIsQRModalOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   const [tempBio, setTempBio] = useState('');
@@ -585,11 +586,19 @@ const ProfileSystem = ({ targetProfile, onMessageClick, onEditProfile, onUserCli
   React.useEffect(() => {
     if (!db || !displayUser?.id) return;
     
-    const isOwn = displayUser.id === user?.uid;
+    const isOwn = displayUser.id === user?.uid || displayUser.id === profile?.id;
     
+    const storyCandidateUids = Array.from(new Set([
+      displayUser.id,
+      displayUser.uid,
+      displayUser.ownerUid,
+      displayUser.id.replace(/^profile_/, ''),
+      'profile_' + displayUser.id.replace(/^profile_/, '')
+    ].filter(Boolean)));
+
     const q = query(
       collection(db, 'stories'),
-      where('userId', '==', displayUser.id),
+      where('userId', 'in', storyCandidateUids),
       limit(20)
     );
     const unsub = onSnapshot(q, (snap) => {
@@ -680,9 +689,17 @@ const ProfileSystem = ({ targetProfile, onMessageClick, onEditProfile, onUserCli
     if (!db || !displayUser?.id) return;
     
     setLoadingPosts(true);
+    const authorCandidateIds = Array.from(new Set([
+      displayUser.id,
+      displayUser.uid,
+      displayUser.ownerUid,
+      displayUser.id.replace(/^profile_/, ''),
+      'profile_' + displayUser.id.replace(/^profile_/, '')
+    ].filter(Boolean)));
+
     const q = query(
       collection(db, 'posts'), 
-      where('authorId', '==', displayUser.id),
+      where('authorId', 'in', authorCandidateIds),
       limit(50)
     );
 
@@ -1145,8 +1162,8 @@ const ProfileSystem = ({ targetProfile, onMessageClick, onEditProfile, onUserCli
                   {editingPhoto && (
                     <DigitalImageEditor
                       imageSrc={editingPhoto.src}
-                      aspectRatio={editingPhoto.type === 'avatar' ? 1 : 2.7}
-                      title={editingPhoto.type === 'avatar' ? 'Update profile picture' : 'Update cover photo'}
+                      aspectRatio={editingPhoto.type === 'avatar' ? 1 : 3}
+                      title={editingPhoto.type === 'avatar' ? 'Update profile picture' : 'Update cover photo (1080p HD)'}
                       onSave={handleSaveEditedPhoto}
                       onCancel={() => {
                         if (editingPhoto.src) URL.revokeObjectURL(editingPhoto.src);
@@ -1263,7 +1280,7 @@ const ProfileSystem = ({ targetProfile, onMessageClick, onEditProfile, onUserCli
               <motion.div 
                 whileHover={{ rotateX: 5, rotateY: 5, scale: 1.02 }}
                 style={{ perspective: 1000 }}
-                className="relative p-1 transition-all duration-700"
+                className="relative p-1.5 bg-white dark:bg-transparent rounded-[2.2rem] shadow-xl dark:shadow-none ring-4 ring-white/95 dark:ring-transparent transition-all duration-700"
               >
                 {/* DP FRAME IMPROVEMENT: Double Border + Glow */}
                 <div className={`absolute inset-0 blur-md opacity-0 group-hover:opacity-100 transition-opacity rounded-[2.2rem] ${isInfinity ? 'bg-aeirmist-magenta/40 opacity-100 animate-pulse' : 'bg-aeirmist-cyan/30'}`} />
@@ -1323,7 +1340,7 @@ const ProfileSystem = ({ targetProfile, onMessageClick, onEditProfile, onUserCli
                   whileHover={{ scale: 1.1, backgroundColor: 'rgba(0, 242, 255, 0.8)' }}
                   whileTap={{ scale: 0.9 }}
                   onClick={handleAvatarInteraction}
-                  className="absolute bottom-2 right-2 w-10 h-10 rounded-xl bg-white/90 backdrop-blur-xl text-black flex items-center justify-center border-2 border-[#01050a] transition-all z-40 shadow-xl hover:bg-aeirmist-cyan hover:text-black cursor-pointer"
+                  className="absolute bottom-2 right-2 w-10 h-10 rounded-xl bg-white/90 backdrop-blur-xl text-black flex items-center justify-center border-2 border-slate-200 dark:border-[#01050a] transition-all z-40 shadow-xl hover:bg-aeirmist-cyan hover:text-black cursor-pointer"
                 >
                   <Camera size={16} />
                 </motion.button>
@@ -1808,7 +1825,7 @@ const ProfileSystem = ({ targetProfile, onMessageClick, onEditProfile, onUserCli
           <div className="space-y-4">
             {/* MOBILE COVER BANNER */}
             <div
-              className="w-full h-24 rounded-t-2xl relative overflow-hidden bg-gradient-to-r from-zinc-950 via-[#120e2e] to-black border-b border-white/5"
+              className="w-full h-24 rounded-t-2xl relative overflow-hidden bg-gradient-to-r from-slate-200 via-sky-100 to-indigo-100 dark:from-zinc-950 dark:via-[#120e2e] dark:to-black border-b border-slate-200/80 dark:border-white/5"
             >
               {isDataLoading ? (
                 <Skeleton className="w-full h-full opacity-20" />
@@ -1816,7 +1833,10 @@ const ProfileSystem = ({ targetProfile, onMessageClick, onEditProfile, onUserCli
                 <img
                   src={(isOwnProfile && localCoverURL) ? localCoverURL : displayUser.coverURL}
                   alt="Cover"
-                  className="w-full h-full object-cover"
+                  loading="eager"
+                  decoding="async"
+                  fetchPriority="high"
+                  className="w-full h-full object-cover transition-opacity duration-300"
                   referrerPolicy="no-referrer"
                 />
               )}
@@ -1853,13 +1873,13 @@ const ProfileSystem = ({ targetProfile, onMessageClick, onEditProfile, onUserCli
 
             {/* Horizontal DP & Stats Row */}
             <div className="flex items-center gap-6 justify-between px-4">
-              {/* Square DP with custom Neon Glow Border */}
+              {/* Square DP with custom Neon Glow Border and crisp elevated white frame in light mode */}
               <div className="relative group shrink-0">
-                <div className="absolute inset-0 bg-gradient-to-tr from-aeirmist-cyan to-aeirmist-magenta rounded-xl blur px-[1px] opacity-35 animate-pulse" />
+                <div className="absolute inset-0 bg-gradient-to-tr from-aeirmist-cyan to-aeirmist-magenta rounded-2xl blur px-[1px] opacity-35 animate-pulse" />
                 
                 <div 
                   onClick={handleAvatarInteraction}
-                  className="relative z-10 w-20 h-20 rounded-xl overflow-hidden border border-aeirmist-cyan shadow-[0_0_12px_rgba(0,242,255,0.6)] cursor-pointer bg-[#050a0f] flex items-center justify-center"
+                  className="relative z-10 w-20 h-20 rounded-2xl overflow-hidden border-2 border-white dark:border-aeirmist-cyan ring-4 ring-white/95 dark:ring-transparent shadow-xl cursor-pointer bg-white dark:bg-[#050a0f] flex items-center justify-center p-0.5"
                 >
                   <img 
                     src={(isOwnProfile && localAvatarURL) ? localAvatarURL : (getAvatarUrl(displayUser?.photoURL) || undefined)} 
@@ -1868,7 +1888,7 @@ const ProfileSystem = ({ targetProfile, onMessageClick, onEditProfile, onUserCli
                     decoding="async"
                     fetchPriority="high"
                     style={{ imageRendering: 'auto' }}
-                    className="w-full h-full object-cover rounded-lg"
+                    className="w-full h-full object-cover rounded-xl contrast-[1.02] brightness-[1.01] dark:contrast-100 dark:brightness-100"
                     referrerPolicy="no-referrer"
                     onError={(e) => {
                       (e.target as HTMLImageElement).src = getAvatarUrl(null);
@@ -2370,7 +2390,27 @@ const ProfileSystem = ({ targetProfile, onMessageClick, onEditProfile, onUserCli
             </div>
           )}
 
+          {/* QR Code Modal */}
+          {isQRModalOpen && (
+            <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setIsQRModalOpen(false)} className="absolute inset-0 bg-black/80 backdrop-blur-md" />
+              <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }} className="relative z-10 bg-[#080b12] border border-white/10 rounded-2xl p-6 flex flex-col items-center gap-4 w-72 shadow-2xl">
+                <button onClick={() => setIsQRModalOpen(false)} className="absolute top-3 right-3 p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-white/40 hover:text-white transition-all"><X size={14} /></button>
+                <div className="text-xs font-black uppercase text-white tracking-widest">Profile QR Code</div>
+                <div className="p-2 bg-white rounded-xl">
+                  <img src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(displayUser?.username ? window.location.origin + '/@' + displayUser.username : window.location.href)}`} alt="Profile QR" className="w-48 h-48 rounded-lg" />
+                </div>
+                <div className="text-center">
+                  <p className="text-[10px] text-white/40">Scan to visit</p>
+                  <p className="text-xs font-bold text-[#00f3ff]">@{displayUser?.username || 'profile'}</p>
+                </div>
+                <a href={`https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(displayUser?.username ? window.location.origin + '/@' + displayUser.username : window.location.href)}`} download={`aeirmist-${displayUser?.username || 'profile'}-qr.png`} target="_blank" rel="noreferrer" className="w-full py-2 bg-[#00f3ff]/10 border border-[#00f3ff]/20 rounded-xl text-xs text-[#00f3ff] font-bold text-center hover:bg-[#00f3ff]/20 transition-all">⬇ Download QR</a>
+              </motion.div>
+            </div>
+          )}
+
           {/* Creator Studio Dashboard Overlay */}
+
           {creatorStudioOpen && (
             <div className="fixed inset-0 z-[110] flex flex-col p-2 md:p-4 bg-[#01050a]/95 backdrop-blur-3xl overflow-y-auto">
               <div className="flex justify-end p-2 relative z-[120]">
@@ -2399,15 +2439,26 @@ const ProfileSystem = ({ targetProfile, onMessageClick, onEditProfile, onUserCli
         {/* Content Grid */}
         <div className="lg:hidden grid grid-cols-3 gap-1 sm:gap-4 md:gap-6 px-0">
           {!isLocked && activeTab === 'posts' && (() => {
-            const picturePosts = (posts || []).filter(post => {
-              if (!post || post.isArchived) return false;
+            const isPostVideo = (post: any) => {
+              if (!post) return false;
+              if (post.mediaType === 'video' || post.type === 'video' || post.isVideo) return true;
+              const checkUrl = (url: any) => {
+                if (!url || typeof url !== 'string') return false;
+                const clean = url.split('?')[0].toLowerCase();
+                return clean.endsWith('.mp4') || clean.endsWith('.mov') || clean.endsWith('.webm') || clean.endsWith('.mkv') || url.toLowerCase().includes('.mp4') || url.toLowerCase().includes('video');
+              };
+              if (checkUrl(post.mediaUrl) || checkUrl(post.mediaURL)) return true;
+              if (Array.isArray(post.mediaUrls) && post.mediaUrls.some((u: any) => checkUrl(u))) return true;
+              if (Array.isArray(post.mediaItems) && post.mediaItems.some((item: any) => item?.type === 'video' || checkUrl(item?.url))) return true;
+              return false;
+            };
+
+            const picturePosts = (posts || []).filter(post => post && !post.isArchived).filter(post => {
+              const isVideo = isPostVideo(post);
               const hasImage = (post.mediaUrls && post.mediaUrls.length > 0) || 
                                (post.mediaUrl) || 
                                (post.mediaURL) || 
                                (post.mediaItems && post.mediaItems.some((item: any) => item?.type === 'image'));
-              const isVideo = post.mediaType === 'video' || 
-                              (post.mediaItems && post.mediaItems.every((item: any) => item?.type === 'video')) || 
-                              (post.mediaUrl && post.mediaUrl.toString().endsWith('.mp4'));
               return hasImage && !isVideo;
             });
             return picturePosts.map(post => {
@@ -2417,13 +2468,21 @@ const ProfileSystem = ({ targetProfile, onMessageClick, onEditProfile, onUserCli
           })()}
           
           {activeTab === 'videos' && (() => {
-            const videoPosts = (posts || []).filter(p => {
-              if (!p || p.isArchived) return false;
-              return p.mediaType === 'video' || 
-              (p.mediaItems && p.mediaItems.some((item: any) => item?.type === 'video')) ||
-              (p.mediaUrls && (Array.isArray(p.mediaUrls) ? p.mediaUrls.some((url: any) => url?.toString().toLowerCase().includes('.mp4') || url?.toString().toLowerCase().includes('video')) : false)) ||
-              (p.mediaUrl && p.mediaUrl.toString().endsWith('.mp4'));
-            });
+            const isPostVideo = (post: any) => {
+              if (!post) return false;
+              if (post.mediaType === 'video' || post.type === 'video' || post.isVideo) return true;
+              const checkUrl = (url: any) => {
+                if (!url || typeof url !== 'string') return false;
+                const clean = url.split('?')[0].toLowerCase();
+                return clean.endsWith('.mp4') || clean.endsWith('.mov') || clean.endsWith('.webm') || clean.endsWith('.mkv') || url.toLowerCase().includes('.mp4') || url.toLowerCase().includes('video');
+              };
+              if (checkUrl(post.mediaUrl) || checkUrl(post.mediaURL)) return true;
+              if (Array.isArray(post.mediaUrls) && post.mediaUrls.some((u: any) => checkUrl(u))) return true;
+              if (Array.isArray(post.mediaItems) && post.mediaItems.some((item: any) => item?.type === 'video' || checkUrl(item?.url))) return true;
+              return false;
+            };
+
+            const videoPosts = (posts || []).filter(p => p && !p.isArchived).filter(p => isPostVideo(p));
             if (videoPosts.length > 0) {
               return videoPosts.map(post => {
                 if (!post) return null;
@@ -3236,12 +3295,12 @@ const HighlightItem = ({ h }: { h: any }) => (
       <div className="absolute inset-[-10%] border border-aeirmist-cyan/30 rounded-2xl animate-[spin_10s_linear_infinite] opacity-0 group-hover:opacity-100 transition-opacity" />
       <div className="absolute inset-[-5%] border border-white/5 rounded-2xl" />
       
-      <div className="relative z-10 w-16 h-16 sm:w-22 sm:h-22 rounded-2xl overflow-hidden border-[3px] border-[#01050a] bg-black ring-2 ring-white/5 group-hover:ring-aeirmist-cyan/50 transition-all duration-500 shadow-2xl">
+      <div className="relative z-10 w-16 h-16 sm:w-22 sm:h-22 rounded-2xl overflow-hidden border-[3px] border-white dark:border-[#01050a] bg-slate-100 dark:bg-black ring-2 ring-slate-200 dark:ring-white/5 group-hover:ring-aeirmist-cyan/50 transition-all duration-500 shadow-xl">
         <img src={h.coverUrl || undefined} className="w-full h-full object-cover grayscale-[0.6] group-hover:grayscale-0 transition-all duration-1000 group-hover:scale-125" alt="" />
         <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
       </div>
     </div>
-    <span className="text-[9px] font-black uppercase text-white/30 group-hover:text-aeirmist-cyan tracking-[0.3em] font-display transition-colors duration-500">
+    <span className="text-[9px] font-black uppercase text-slate-500 dark:text-white/30 group-hover:text-aeirmist-cyan tracking-[0.3em] font-display transition-colors duration-500">
       {h.label}
     </span>
   </div>
@@ -3268,36 +3327,46 @@ const PostCard = ({ post, onClick }: { post: any, onClick: () => void }) => {
   if (!post) return null;
   const hasMedia = (post.mediaUrls && post.mediaUrls.length > 0) || post.mediaURL || post.mediaUrl;
   
+  // Detect if post is a video
+  const isVideoPost = post.mediaType === 'video' || 
+    (post.mediaItems && post.mediaItems.some((item: any) => item?.type === 'video')) ||
+    (post.mediaUrl && post.mediaUrl.toString().toLowerCase().includes('.mp4')) ||
+    (post.mediaURL && post.mediaURL.toString().toLowerCase().includes('.mp4')) ||
+    (post.mediaUrls && post.mediaUrls.some((u: string) => u?.toString().toLowerCase().includes('.mp4') || u?.toString().toLowerCase().includes('video')));
+
   const type = (post.mediaUrls?.length || 0) > 1 ? 'collage' : ((post.mediaURL || post.mediaUrl) ? 'photo' : 'text');
   usePostAnalytics({ postId: post.id, type });
+
+  // Get the best thumbnail for video posts
+  const videoThumbnail = post.thumbnailUrl || post.thumbnailURL || post.videoThumbnail || post.coverUrl || post.coverURL || null;
+
+  const renderMediaItem = (url: string, className: string, key?: number) => {
+    const isVideoUrl = url?.toString().toLowerCase().includes('.mp4') || url?.toString().toLowerCase().includes('video');
+    
+    if (isVideoUrl) {
+      if (videoThumbnail) {
+        return <img key={key} src={videoThumbnail} className={className} alt="" referrerPolicy="no-referrer" />;
+      }
+      return <video key={key} src={`${url}#t=0.5`} className={className} muted preload="metadata" playsInline />;
+    }
+    return <img key={key} src={url} className={className} alt="" referrerPolicy="no-referrer" />;
+  };
 
   const renderCollage = () => {
     const urls = post.mediaUrls && post.mediaUrls.length > 0 ? post.mediaUrls : (post.mediaURL || post.mediaUrl ? [post.mediaURL || post.mediaUrl] : []);
     if (urls.length === 0) return null;
 
+    const itemClass = "w-full h-full object-cover transition-transform duration-[2s] group-hover:scale-110";
+    const itemClassSmall = "w-full h-full object-cover transition-transform duration-[2s] group-hover:scale-105";
+
     if (urls.length === 1) {
-      return (
-        <img 
-          src={urls[0]} 
-          className="w-full h-full object-cover transition-transform duration-[2s] group-hover:scale-110"
-          alt=""
-          referrerPolicy="no-referrer"
-        />
-      );
+      return renderMediaItem(urls[0], itemClass);
     }
 
     if (urls.length === 2) {
       return (
         <div className="grid grid-cols-2 gap-0.5 w-full h-full">
-          {urls.slice(0, 2).map((url: string, i: number) => (
-            <img 
-              key={i} 
-              src={url} 
-              className="w-full h-full object-cover transition-transform duration-[2s] group-hover:scale-105" 
-              alt=""
-              referrerPolicy="no-referrer"
-            />
-          ))}
+          {urls.slice(0, 2).map((url: string, i: number) => renderMediaItem(url, itemClassSmall, i))}
         </div>
       );
     }
@@ -3306,23 +3375,10 @@ const PostCard = ({ post, onClick }: { post: any, onClick: () => void }) => {
       return (
         <div className="grid grid-rows-[1.2fr_1fr] gap-0.5 w-full h-full">
           <div className="w-full h-full overflow-hidden">
-            <img 
-              src={urls[0]} 
-              className="w-full h-full object-cover transition-transform duration-[2s] group-hover:scale-105" 
-              alt=""
-              referrerPolicy="no-referrer"
-            />
+            {renderMediaItem(urls[0], itemClassSmall)}
           </div>
           <div className="grid grid-cols-2 gap-0.5 w-full h-full overflow-hidden">
-            {urls.slice(1, 3).map((url: string, i: number) => (
-              <img 
-                key={i} 
-                src={url} 
-                className="w-full h-full object-cover transition-transform duration-[2s] group-hover:scale-105" 
-                alt=""
-                referrerPolicy="no-referrer"
-              />
-            ))}
+            {urls.slice(1, 3).map((url: string, i: number) => renderMediaItem(url, itemClassSmall, i))}
           </div>
         </div>
       );
@@ -3333,12 +3389,7 @@ const PostCard = ({ post, onClick }: { post: any, onClick: () => void }) => {
       <div className="grid grid-cols-2 grid-rows-2 gap-0.5 w-full h-full relative">
         {urls.slice(0, 4).map((url: string, i: number) => (
           <div key={i} className="relative w-full h-full overflow-hidden">
-            <img 
-              src={url} 
-              className="w-full h-full object-cover transition-transform duration-[2s] group-hover:scale-105" 
-              alt=""
-              referrerPolicy="no-referrer"
-            />
+            {renderMediaItem(url, itemClassSmall, i)}
             {i === 3 && urls.length > 4 && (
               <div className="absolute inset-0 bg-black/60 flex items-center justify-center backdrop-blur-[1px]">
                 <span className="text-white text-xs sm:text-sm font-black text-center">+{urls.length - 4}</span>
@@ -3355,7 +3406,7 @@ const PostCard = ({ post, onClick }: { post: any, onClick: () => void }) => {
       id={`post-${post.id}`}
       whileHover={{ y: -8, scale: 1.02 }}
       onClick={onClick}
-      className="aspect-square relative group rounded-[1.8rem] overflow-hidden bg-[#050a0f] border border-white/5 cursor-pointer shadow-2xl transition-all duration-500"
+      className="aspect-square relative group rounded-md sm:rounded-xl md:rounded-2xl lg:rounded-[1.8rem] overflow-hidden bg-[#050a0f] border border-white/5 cursor-pointer shadow-2xl transition-all duration-500"
     >
       
       {hasMedia ? (
@@ -3370,6 +3421,14 @@ const PostCard = ({ post, onClick }: { post: any, onClick: () => void }) => {
             <span>Connections</span>
             <span className="text-aeirmist-cyan font-bold">Shared</span>
           </div>
+        </div>
+      )}
+
+      {/* Video Play Icon Overlay */}
+      {isVideoPost && hasMedia && (
+        <div className="absolute top-3 right-3 z-10 flex items-center gap-1 bg-black/60 backdrop-blur-sm rounded-full px-2 py-1">
+          <Play size={12} className="text-white fill-white" />
+          <span className="text-[9px] font-bold text-white uppercase tracking-wider">Video</span>
         </div>
       )}
 
